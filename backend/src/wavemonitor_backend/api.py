@@ -12,7 +12,10 @@ from wavemonitor_backend.models import (
     AlertEvent,
     DeliveryStatus,
     Instrument,
+    LastRuleState,
+    MarketType,
     PriceObservation,
+    Provider,
     SourceMapping,
     TelegramDelivery,
 )
@@ -22,6 +25,7 @@ from wavemonitor_backend.schemas import (
     InstrumentRequest,
     InstrumentResponse,
     InstrumentStatusResponse,
+    SourceMappingRequest,
     SourceMappingResponse,
     SourceStatusResponse,
 )
@@ -64,19 +68,16 @@ def update_instrument(session: Session, instrument_id: int, payload: InstrumentR
     instrument.near_support_threshold = payload.near_support_threshold
     instrument.risk_reward_threshold = payload.risk_reward_threshold
     instrument.updated_at = datetime.now(UTC)
-    for source in source_mappings_for(session, instrument_id):
-        session.delete(source)
+    sync_source_mappings(session, instrument_id, payload)
     session.add(instrument)
     session.commit()
-    add_source_mappings(session, instrument_id, payload)
     session.refresh(instrument)
     return instrument_response(session, instrument)
 
 
 def delete_instrument(session: Session, instrument_id: int) -> None:
     instrument = get_instrument(session, instrument_id)
-    for source in source_mappings_for(session, instrument_id):
-        session.delete(source)
+    delete_instrument_cascade(session, instrument_id)
     session.delete(instrument)
     session.commit()
 
@@ -160,15 +161,17 @@ def source_response(source: SourceMapping) -> SourceMappingResponse:
 
 def source_status(session: Session, source: SourceMapping) -> SourceStatusResponse:
     observation = latest_observation_for(session, source)
+    rule_state = latest_rule_state_for(session, source)
     return SourceStatusResponse(
         id=require_id(source.id),
         provider=source.provider,
         market_type=source.market_type,
         symbol=source.symbol,
         enabled=source.enabled,
-        last_price=decimal_to_api_string(observation.price) if observation is not None else None,
+        last_price=decimal_to_api_string(observation.price) if observation is not None and observation.price is not None else None,
         last_observed_at=observation.observed_at if observation is not None else None,
         last_error=observation.error if observation is not None else None,
+        last_invalid_state=rule_state.last_invalid_state if rule_state is not None else None,
     )
 
 
@@ -221,6 +224,64 @@ def add_source_mappings(session: Session, instrument_id: int, payload: Instrumen
             )
         )
     session.commit()
+
+
+def sync_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:
+    existing = {mapping_identity_key(source): source for source in source_mappings_for(session, instrument_id)}
+    desired_keys = {mapping_identity_key_from_request(source) for source in payload.source_mappings}
+    for key, row in list(existing.items()):
+        if key not in desired_keys:
+            delete_source_mapping_cascade(session, row)
+    for source in payload.source_mappings:
+        key = mapping_identity_key_from_request(source)
+        row = existing.get(key)
+        if row is None:
+            session.add(
+                SourceMapping(
+                    instrument_id=instrument_id,
+                    provider=source.provider,
+                    market_type=source.market_type,
+                    symbol=source.symbol,
+                    enabled=source.enabled,
+                )
+            )
+        else:
+            row.enabled = source.enabled
+            session.add(row)
+    session.commit()
+
+
+def mapping_identity_key(source: SourceMapping) -> tuple[Provider, MarketType, str]:
+    return (source.provider, source.market_type, source.symbol)
+
+
+def mapping_identity_key_from_request(source: SourceMappingRequest) -> tuple[Provider, MarketType, str]:
+    return (source.provider, source.market_type, source.symbol)
+
+
+def latest_rule_state_for(session: Session, source: SourceMapping) -> LastRuleState | None:
+    statement = select(LastRuleState).where(LastRuleState.source_mapping_id == require_id(source.id))
+    return session.exec(statement).first()
+
+
+def delete_instrument_cascade(session: Session, instrument_id: int) -> None:
+    for source in source_mappings_for(session, instrument_id):
+        delete_source_mapping_cascade(session, source)
+
+
+def delete_source_mapping_cascade(session: Session, source: SourceMapping) -> None:
+    source_id = require_id(source.id)
+    for observation in session.exec(
+        select(PriceObservation).where(PriceObservation.source_mapping_id == source_id)
+    ).all():
+        session.delete(observation)
+    for alert in session.exec(select(AlertEvent).where(AlertEvent.source_mapping_id == source_id)).all():
+        session.delete(alert)
+    for state in session.exec(
+        select(LastRuleState).where(LastRuleState.source_mapping_id == source_id)
+    ).all():
+        session.delete(state)
+    session.delete(source)
 
 
 def get_instrument(session: Session, instrument_id: int) -> Instrument:
