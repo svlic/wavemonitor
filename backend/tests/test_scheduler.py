@@ -253,7 +253,7 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
     assert [observation.error for observation in observations] == ["provider_error: provider down", None, None]
     assert [observation.price for observation in observations] == [
-        Decimal("0E-10"),
+        None,
         Decimal("100.0000000000"),
         Decimal("100.0000000000"),
     ]
@@ -263,3 +263,38 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     assert metrics.observations_written == 2
     assert metrics.telegram_deliveries_attempted == 2
     assert len(notifier.messages) == 2
+
+
+def test_poll_tick_skips_rules_and_telegram_for_disabled_instrument(session: Session):
+    instrument, sources = seed_instrument(session)
+    instrument.enabled = False
+    session.add(instrument)
+    session.commit()
+    clock = FakeClock(BASE_TIME)
+    notifier = FakeNotifier()
+    registry = AdapterRegistry(
+        adapters={
+            (Provider.YFINANCE, MarketType.EQUITY): FakePriceAdapter(
+                price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "100", BASE_TIME)
+            ),
+            (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
+                price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", BASE_TIME)
+            ),
+            (Provider.HYPERLIQUID, MarketType.PERPETUAL): FakePriceAdapter(
+                price(Provider.HYPERLIQUID, MarketType.PERPETUAL, "BTC", "100", BASE_TIME)
+            ),
+        }
+    )
+    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+
+    metrics = scheduler.run_tick(session)
+
+    observations = session.exec(select(PriceObservation).order_by(PriceObservation.source_mapping_id)).all()
+    assert len(observations) == 3
+    assert all(obs.price == Decimal("100.0000000000") for obs in observations)
+    assert session.exec(select(AlertEvent)).all() == []
+    assert session.exec(select(LastRuleState)).all() == []
+    assert notifier.messages == []
+    assert metrics.alert_events_created == 0
+    assert metrics.telegram_deliveries_attempted == 0
+    assert metrics.observations_written == 3

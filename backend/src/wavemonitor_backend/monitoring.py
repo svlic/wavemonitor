@@ -120,7 +120,7 @@ class MonitoringScheduler:
         finished_at = self._clock()
         metrics = RuntimeMetrics(
             scheduler_ready=True,
-            providers_ready=counts.source_errors == 0,
+            providers_ready=counts.providers_ready,
             enabled_sources=counts.enabled_sources,
             polled_sources=counts.polled_sources,
             observations_written=counts.observations_written,
@@ -159,6 +159,8 @@ class MonitoringScheduler:
         counts: TickCounts,
     ) -> TickCounts:
         record_price_observation(session, source, result)
+        if not instrument.enabled:
+            return counts.with_success(0, 0)
         evaluation = evaluate_and_persist_rules(
             session=session,
             instrument=instrument,
@@ -201,8 +203,15 @@ class TickCounts:
     polled_sources: int = 0
     observations_written: int = 0
     source_errors: int = 0
+    source_successes: int = 0
     alert_events_created: int = 0
     telegram_deliveries_attempted: int = 0
+
+    @property
+    def providers_ready(self) -> bool:
+        if self.polled_sources == 0:
+            return True
+        return self.source_errors == 0
 
     def with_success(self, alerts: int, deliveries: int) -> TickCounts:
         return TickCounts(
@@ -210,6 +219,7 @@ class TickCounts:
             polled_sources=self.polled_sources + 1,
             observations_written=self.observations_written + 1,
             source_errors=self.source_errors,
+            source_successes=self.source_successes + 1,
             alert_events_created=self.alert_events_created + alerts,
             telegram_deliveries_attempted=self.telegram_deliveries_attempted + deliveries,
         )
@@ -220,13 +230,14 @@ class TickCounts:
             polled_sources=self.polled_sources + 1,
             observations_written=self.observations_written,
             source_errors=self.source_errors + 1,
+            source_successes=self.source_successes,
             alert_events_created=self.alert_events_created,
             telegram_deliveries_attempted=self.telegram_deliveries_attempted,
         )
 
 
 def enabled_sources(session: Session) -> list[tuple[Instrument, SourceMapping]]:
-    instruments = session.exec(select(Instrument).where(Instrument.enabled).order_by(Instrument.id)).all()
+    instruments = session.exec(select(Instrument).order_by(Instrument.id)).all()
     pairs: list[tuple[Instrument, SourceMapping]] = []
     for instrument in instruments:
         instrument_id = require_id(instrument.id)
@@ -255,7 +266,7 @@ def record_source_error(session: Session, source: SourceMapping, error: AdapterE
     session.add(
         PriceObservation(
             source_mapping_id=require_id(source.id),
-            price=Decimal("0"),
+            price=None,
             observed_at=observed_at,
             error=f"{error.kind.value}: {error.message}",
         )
