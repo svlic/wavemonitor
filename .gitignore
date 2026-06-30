@@ -36,7 +36,8 @@ Thumbs.db
 *.swp
 *.swo
 
-# Project-specific
+# Project-specific (symlink at repo root; ignore name without trailing slash)
+.codegraph
 .codegraph/
 .omo/tmp/
 .omo/run-continuation/
