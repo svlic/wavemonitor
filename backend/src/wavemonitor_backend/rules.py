@@ -231,4 +231,7 @@ def next_alert_time(*, alerts: tuple[AlertDecision, ...], kind: AlertKind, previ
     return previous
 
 
-from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, persist_rule_evaluation
+from wavemonitor_backend.rule_persistence import (  # noqa: E402
+    evaluate_and_persist_rules as evaluate_and_persist_rules,
+    persist_rule_evaluation as persist_rule_evaluation,
+)

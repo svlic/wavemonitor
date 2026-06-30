@@ -9,12 +9,6 @@ TELEGRAM_BOT_TOKEN_ENV: Final[str] = "TELEGRAM_BOT_TOKEN"
 TELEGRAM_CHAT_ID_ENV: Final[str] = "TELEGRAM_CHAT_ID"
 
 
-class TelegramPublicStatus(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    telegram_ready: bool
-
-
 class Settings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -34,4 +28,4 @@ class Settings(BaseModel):
         return bool(self.telegram_bot_token and self.telegram_chat_id)
 
     def public_status(self) -> dict[str, bool]:
-        return TelegramPublicStatus(telegram_ready=self.telegram_ready).model_dump()
+        return {"telegram_ready": self.telegram_ready}

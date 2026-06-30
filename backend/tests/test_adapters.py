@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import NoReturn
 
-import pytest
-
 from wavemonitor_backend.adapters import (
     AdapterError,
     AdapterErrorKind,
