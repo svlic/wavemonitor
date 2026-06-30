@@ -78,7 +78,12 @@ def persist_rule_evaluation(
     state.near_support_last_alert_at = evaluation.next_state.near_support_last_alert_at
     state.risk_reward_last_alert_at = evaluation.next_state.risk_reward_last_alert_at
     state.breakout_last_alert_at = evaluation.next_state.breakout_last_alert_at
+    state.last_invalid_state = (
+        None if evaluation.invalid_state is None else evaluation.invalid_state.value
+    )
     state.updated_at = max((alert.triggered_at for alert in evaluation.alerts), default=state.updated_at)
+    if not events and evaluation.invalid_state is not None:
+        state.updated_at = datetime.now(UTC)
     session.add(state)
     session.commit()
     for event in events:

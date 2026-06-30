@@ -161,6 +161,7 @@ def test_status_endpoint_reports_sources_and_recent_alerts(client: TestClient):
                 "last_price": None,
                 "last_observed_at": None,
                 "last_error": None,
+                "last_invalid_state": None,
             }
         ],
         "recent_alerts": [],

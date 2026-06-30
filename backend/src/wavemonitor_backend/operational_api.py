@@ -45,7 +45,7 @@ def latest_price_response(
         provider=source.provider,
         market_type=source.market_type,
         symbol=source.symbol,
-        last_price=decimal_to_api_string(observation.price),
+        last_price=decimal_to_api_string(observation.price) if observation.price is not None else "",
         last_observed_at=observation.observed_at,
         last_error=observation.error,
     )

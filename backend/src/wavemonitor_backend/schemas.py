@@ -109,6 +109,7 @@ class SourceStatusResponse(BaseModel):
     last_price: str | None
     last_observed_at: datetime | None
     last_error: str | None
+    last_invalid_state: str | None = None
 
 
 class LatestPriceResponse(BaseModel):

@@ -8,9 +8,9 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
 from wavemonitor_backend.models import AlertEvent, AlertKind, Instrument, LastRuleState, MarketType, Provider, SourceMapping
+from wavemonitor_backend.rule_types import InvalidRuleState, RuleEvaluation
 from wavemonitor_backend.rules import (
     AlertDecision,
-    RuleEvaluation,
     RuleState,
     evaluate_and_persist_rules,
     persist_rule_evaluation,
@@ -92,6 +92,28 @@ def test_persistence_creates_alert_event_and_updates_last_rule_state(tmp_path: P
         assert stored_state.last_price == Decimal("100.0000000000")
         assert stored_state.near_support_active is True
         assert stored_state.near_support_last_alert_at == OBSERVED_AT.replace(tzinfo=None)
+        assert stored_state.last_invalid_state is None
+
+
+def test_persist_invalid_state_without_alerts(tmp_path: Path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'invalid.sqlite3'}", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument, source = persisted_instrument_and_source(session)
+        evaluation = RuleEvaluation(
+            alerts=(),
+            next_state=RuleState(last_price=Decimal("97")),
+            invalid_state=InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT,
+        )
+        persist_rule_evaluation(
+            session=session,
+            instrument_id=instrument.id,
+            source_mapping_id=source.id,
+            evaluation=evaluation,
+        )
+        stored_state = session.exec(select(LastRuleState)).one()
+        assert stored_state.last_invalid_state == "price_not_above_support"
+        assert session.exec(select(AlertEvent)).all() == []
 
 
 def test_evaluate_and_persist_uses_last_rule_state_for_dedupe(tmp_path: Path):

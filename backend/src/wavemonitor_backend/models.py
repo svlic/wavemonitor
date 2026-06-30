@@ -141,7 +141,7 @@ class PriceObservation(RuleDecimalMixin, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
-    price: Decimal = Field(sa_column=decimal_column())
+    price: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     observed_at: datetime = Field(sa_column=timestamp_column())
     raw_path: str | None = Field(default=None, max_length=120)
     error: str | None = Field(default=None, max_length=500)
@@ -178,6 +178,7 @@ class LastRuleState(RuleDecimalMixin, table=True):
     near_support_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
     risk_reward_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
     breakout_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    last_invalid_state: str | None = Field(default=None, max_length=80)
     updated_at: datetime = Field(sa_column=timestamp_column())
 
 
