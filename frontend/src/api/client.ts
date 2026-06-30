@@ -27,6 +27,10 @@ const TelegramTestResponseSchema = z.object({
   delivery_id: z.number().nullable().optional(),
 });
 
+const ApiErrorResponseSchema = z.object({
+  detail: z.string(),
+});
+
 export type TelegramTestResponse = z.infer<typeof TelegramTestResponseSchema>;
 
 const LatestPriceSchema = z.object({
@@ -140,7 +144,7 @@ export class ApiClient {
     schema: z.ZodType<T>,
     options?: RequestInit,
   ): Promise<T> {
-    const url = new URL(path, this.baseUrl);
+    const url = this.baseUrl === "" ? path : new URL(path, this.baseUrl);
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -150,7 +154,19 @@ export class ApiClient {
     });
 
     if (!response.ok) {
-      throw new ApiError(response.status, `API request failed: ${response.statusText}`);
+      let message = `API request failed: ${response.statusText}`;
+      try {
+        const data: unknown = await response.json();
+        const result = ApiErrorResponseSchema.safeParse(data);
+        if (result.success) {
+          message = result.data.detail;
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          throw error;
+        }
+      }
+      throw new ApiError(response.status, message);
     }
 
     if (response.status === 204) {
@@ -243,4 +259,4 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000");
+export const apiClient = new ApiClient(import.meta.env.VITE_API_BASE_URL ?? "");
