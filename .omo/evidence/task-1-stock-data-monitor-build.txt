@@ -1,0 +1,230 @@
+# Todo 1 Evidence - stock-data-monitor-build
+
+## Scope implemented
+Created the Todo 1 scaffold only under `/opt/ocode/wavemonitor`:
+- `backend/` FastAPI skeleton and tests
+- `frontend/` Vite React TypeScript skeleton and tests
+- `docker/` planned-layout placeholder
+- root `DESIGN.md`, `.env.example`, `.gitignore`, `pyproject.toml`
+- `.omo/evidence/` task evidence and server logs/PID receipts
+
+No trading, auth, charts, websocket, external market API, real Telegram credentials, or plan checkbox edits were added.
+
+## RED evidence
+
+### Backend RED attempt 1 - dependency environment issue, not accepted as intended RED
+Command:
+```bash
+pytest
+```
+Result:
+```text
+ERROR backend/tests/test_health.py
+ModuleNotFoundError: No module named 'fastapi'
+1 error in 0.05s
+```
+Disposition: rejected as intended RED because dependencies were not installed.
+
+### Backend RED accepted - missing product package
+Commands:
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -e ".[test]"
+.venv/bin/pytest
+```
+Result:
+```text
+ERROR backend/tests/test_health.py
+ModuleNotFoundError: No module named 'wavemonitor_backend'
+1 warning, 1 error in 0.41s
+```
+Why this is the right RED: tests referenced the intended `wavemonitor_backend.app.create_app`, and the product package did not exist yet.
+
+### Frontend RED accepted - missing app shell
+Commands:
+```bash
+npm install
+npm test
+```
+Result:
+```text
+Error: Failed to resolve import "../src/App" from "tests/App.test.tsx". Does the file exist?
+```
+Why this is the right RED: the test referenced the intended frontend root shell, and the product component did not exist yet.
+
+## GREEN evidence
+
+### Backend test discovery and behavior
+Command:
+```bash
+.venv/bin/pytest -vv
+```
+Result:
+```text
+collected 2 items
+backend/tests/test_health.py::test_health_reports_ok_and_telegram_not_ready_when_env_missing PASSED [ 50%]
+backend/tests/test_health.py::test_api_contract_stub_exposes_mvp_paths PASSED [100%]
+2 passed, 1 warning in 0.40s
+```
+Exact assertions proving no misleading success:
+- `/health` returns HTTP 200.
+- `/health` JSON equals `{ "status": "ok", "telegram_ready": false }` with Telegram env unset.
+- OpenAPI contains `/health`, `/api/instruments`, `/api/instruments/{instrument_id}`, `/api/instruments/{instrument_id}/status`, `/api/alerts`, `/api/runtime`, `/api/telegram/test`.
+
+### Frontend test discovery and behavior
+Command:
+```bash
+npm test
+```
+Result:
+```text
+Test Files  1 passed (1)
+Tests  1 passed (1)
+```
+Exact assertions proving no misleading success:
+- Heading `Stock Data Monitor` renders.
+- Mocked `fetch` returns HTTP 500.
+- `role="status"` shows `Runtime status is unavailable. Check that the backend is running.`
+
+### Frontend typecheck
+Command:
+```bash
+npm run typecheck
+```
+Result:
+```text
+tsc --noEmit
+(exit 0)
+```
+
+### Frontend build
+Command:
+```bash
+npm run build
+```
+Result:
+```text
+vite v8.1.0 building client environment for production...
+✓ 16 modules transformed.
+dist/index.html                   0.40 kB │ gzip:  0.27 kB
+dist/assets/index-BN_QWz8r.css    0.97 kB │ gzip:  0.50 kB
+dist/assets/index-Ct6Jdge-.js   191.62 kB │ gzip: 60.53 kB
+✓ built in 136ms
+```
+
+## Flaky-test rerun evidence
+
+### Backend focused rerun
+Command:
+```bash
+.venv/bin/pytest backend/tests/test_health.py -vv
+```
+Result:
+```text
+collected 2 items
+backend/tests/test_health.py::test_health_reports_ok_and_telegram_not_ready_when_env_missing PASSED [ 50%]
+backend/tests/test_health.py::test_api_contract_stub_exposes_mvp_paths PASSED [100%]
+2 passed, 1 warning in 0.68s
+```
+
+### Frontend focused rerun
+Command:
+```bash
+npm test
+```
+Result:
+```text
+Test Files  1 passed (1)
+Tests  1 passed (1)
+Duration 2.05s
+```
+
+## Manual QA surface proof
+
+### Backend health endpoint
+Commands:
+```bash
+.venv/bin/uvicorn wavemonitor_backend.app:app --host 127.0.0.1 --port 18000 > .omo/evidence/task-1-backend-server.log 2>&1 & printf '%s' "$!" > .omo/evidence/task-1-backend.pid
+python - <<'PY'
+import time
+from urllib.request import urlopen
+
+for _ in range(30):
+    try:
+        with urlopen('http://127.0.0.1:18000/health', timeout=1) as response:
+            print(response.status)
+            print(response.read().decode())
+            raise SystemExit(0)
+    except Exception:
+        time.sleep(0.2)
+raise SystemExit('backend did not become ready')
+PY
+```
+Result:
+```text
+200
+{"status":"ok","telegram_ready":false}
+```
+Artifacts:
+- `.omo/evidence/task-1-backend-server.log`
+- `.omo/evidence/task-1-backend.pid`
+
+### Frontend HTTP root
+Commands:
+```bash
+npm exec vite -- --host 127.0.0.1 --port 18080 --strictPort > ../.omo/evidence/task-1-frontend-server.log 2>&1 & printf '%s' "$!" > ../.omo/evidence/task-1-frontend.pid
+python - <<'PY'
+import time
+from urllib.request import urlopen
+
+for _ in range(30):
+    try:
+        with urlopen('http://127.0.0.1:18080/', timeout=1) as response:
+            body = response.read().decode()
+            print(response.status)
+            print('Stock Data Monitor' in body)
+            print(body[:120].replace('\n', ' '))
+            raise SystemExit(0)
+    except Exception:
+        time.sleep(0.2)
+raise SystemExit('frontend did not become ready')
+PY
+```
+Result:
+```text
+200
+True
+<!doctype html> <html lang="en">   <head>     <script type="module">import { injectIntoGlobalHook } from "/@react-refres
+```
+Artifacts:
+- `.omo/evidence/task-1-frontend-server.log`
+- `.omo/evidence/task-1-frontend.pid`
+
+## UltraQA classes
+
+### misleading_success_output
+Status: probed. Backend assertions check exact `/health` JSON and OpenAPI paths; frontend assertions check heading plus explicit recoverable API error after mocked HTTP 500. Commands exited 0 in GREEN runs.
+
+### dirty_worktree
+Status: probed by created-file listing after implementation. Expected created product/config paths are under `backend/`, `frontend/`, `docker/`, root config files, and `.omo/evidence/` only. No plan checkbox edits were made.
+
+### hung_or_long_commands
+Status: probed. Package installs and test/build commands were run with 120000 ms tool timeouts. Manual QA readiness loops were bounded to 30 attempts with 1s request timeout and 0.2s sleeps.
+
+### flaky_tests
+Status: probed. Backend focused tests and frontend tests were rerun after the first GREEN pass and remained passing.
+
+### stale_state
+Status: probed. Final verification commands ran after source/config edits and after `npm run build`, against current files in `/opt/ocode/wavemonitor`.
+
+## Cleanup receipt
+Cleanup performed after manual QA:
+- Backend PID file: `.omo/evidence/task-1-backend.pid`
+- Frontend PID file: `.omo/evidence/task-1-frontend.pid`
+- Spawned server processes killed after evidence capture.
+- Local generated dependency/build artifacts remain as normal scaffold outputs: `.venv/`, `frontend/node_modules/`, `frontend/dist/`, `.pytest_cache/` (ignored by `.gitignore` where applicable except existing evidence logs/PID receipts).
+
+## Risks / notes
+- FastAPI emitted `StarletteDeprecationWarning` recommending `httpx2`; tests still pass. This is a dependency warning, not a Todo 1 blocker.
+- Frontend `npm install` used latest package versions, producing `package-lock.json`; future todos may pin stricter versions if required.
+- Backend CRUD endpoints are contract stubs only; implementation is intentionally deferred to later todos.

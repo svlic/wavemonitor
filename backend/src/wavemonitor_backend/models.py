@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from enum import StrEnum
+from typing import Final, Self
+
+from pydantic import ConfigDict, field_validator, model_validator
+from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
+from sqlmodel import Field, SQLModel
+
+DECIMAL_MAX_DIGITS: Final[int] = 24
+DECIMAL_PLACES: Final[int] = 10
+
+
+def decimal_column(*, nullable: bool = False) -> Column[Decimal]:
+    return Column(Numeric(DECIMAL_MAX_DIGITS, DECIMAL_PLACES, asdecimal=True), nullable=nullable)
+
+
+def timestamp_column(*, nullable: bool = False) -> Column[datetime]:
+    return Column(DateTime(timezone=True), nullable=nullable)
+
+
+class Provider(StrEnum):
+    YFINANCE = "yfinance"
+    BINANCE = "binance"
+    HYPERLIQUID = "hyperliquid"
+
+
+class MarketType(StrEnum):
+    EQUITY = "equity"
+    USD_M_FUTURES = "usd_m_futures"
+    COIN_M_FUTURES = "coin_m_futures"
+    PERPETUAL = "perpetual"
+
+
+class AlertKind(StrEnum):
+    NEAR_SUPPORT = "near_support"
+    RISK_REWARD = "risk_reward"
+    RESISTANCE_BREAKOUT = "resistance_breakout"
+
+
+class DeliveryStatus(StrEnum):
+    SENT = "sent"
+    FAILED = "failed"
+
+
+class RuleDecimalMixin(SQLModel):
+    @field_validator(
+        "support",
+        "resistance",
+        "near_support_threshold",
+        "risk_reward_threshold",
+        "price",
+        "threshold",
+        "last_price",
+        mode="before",
+        check_fields=False,
+    )
+    @classmethod
+    def parse_decimal_from_string(cls, value: Decimal | str | int | float | None) -> Decimal | None:
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return value
+        if isinstance(value, str):
+            return Decimal(value)
+        if isinstance(value, int):
+            return Decimal(value)
+        if isinstance(value, float):
+            raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
+        raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
+
+
+class Instrument(RuleDecimalMixin, table=True):
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(min_length=1, max_length=120, index=True)
+    enabled: bool = Field(default=True)
+    support: Decimal = Field(sa_column=decimal_column())
+    resistance: Decimal = Field(sa_column=decimal_column())
+    near_support_threshold: Decimal = Field(sa_column=decimal_column())
+    risk_reward_threshold: Decimal = Field(sa_column=decimal_column())
+    created_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    updated_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+
+    @model_validator(mode="after")
+    def validate_rule_contract(self) -> Self:
+        if not self.has_complete_rule_values:
+            return self
+        if self.support >= self.resistance:
+            raise ValueError("support must be less than resistance")
+        if self.near_support_threshold <= Decimal("0") or self.near_support_threshold >= Decimal("1"):
+            raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
+        if self.risk_reward_threshold <= Decimal("0"):
+            raise ValueError("risk_reward_threshold must be greater than 0")
+        return self
+
+    @property
+    def has_complete_rule_values(self) -> bool:
+        return all(
+            value is not None
+            for value in (
+                self.support,
+                self.resistance,
+                self.near_support_threshold,
+                self.risk_reward_threshold,
+            )
+        )
+
+
+class SourceMapping(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("provider", "market_type", "symbol", name="uq_source_mapping_identity"),
+    )
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    provider: Provider = Field(index=True)
+    market_type: MarketType = Field(index=True)
+    symbol: str = Field(min_length=1, max_length=80, index=True)
+    enabled: bool = Field(default=True)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("symbol must not be blank")
+        return normalized
+
+    @property
+    def identity_key(self) -> str:
+        return f"{self.provider.value}:{self.market_type.value}:{self.symbol}"
+
+
+class PriceObservation(RuleDecimalMixin, table=True):
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
+    price: Decimal = Field(sa_column=decimal_column())
+    observed_at: datetime = Field(sa_column=timestamp_column())
+    raw_path: str | None = Field(default=None, max_length=120)
+    error: str | None = Field(default=None, max_length=500)
+
+
+class AlertEvent(RuleDecimalMixin, table=True):
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
+    alert_kind: AlertKind = Field(index=True)
+    price: Decimal = Field(sa_column=decimal_column())
+    support: Decimal = Field(sa_column=decimal_column())
+    resistance: Decimal = Field(sa_column=decimal_column())
+    threshold: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    message: str = Field(min_length=1, max_length=1000)
+    triggered_at: datetime = Field(sa_column=timestamp_column())
+
+
+class LastRuleState(RuleDecimalMixin, table=True):
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "source_mapping_id", name="uq_last_rule_state_source"),
+    )
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    instrument_id: int = Field(foreign_key="instrument.id", index=True)
+    source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
+    last_price: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    near_support_active: bool = Field(default=False)
+    risk_reward_active: bool = Field(default=False)
+    above_resistance_active: bool = Field(default=False)
+    near_support_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    risk_reward_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    breakout_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    updated_at: datetime = Field(sa_column=timestamp_column())
+
+
+class TelegramDelivery(SQLModel, table=True):
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: int | None = Field(default=None, primary_key=True)
+    status: DeliveryStatus = Field(index=True)
+    message_kind: str = Field(min_length=1, max_length=40, index=True)
+    message_text: str = Field(min_length=1, max_length=1000)
+    chat_ref: str = Field(default="redacted", max_length=40)
+    telegram_message_id: str | None = Field(default=None, max_length=120)
+    safe_error: str | None = Field(default=None, max_length=500)
+    delivered_at: datetime = Field(sa_column=timestamp_column())

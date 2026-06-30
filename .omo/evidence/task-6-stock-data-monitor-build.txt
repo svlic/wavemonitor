@@ -1,0 +1,111 @@
+DoneClaim: Todo 6 - Long-only rule engine, alert event persistence, persisted cooldown, and import-order safety
+
+Scope implemented and verifier blockers fixed:
+- Added pure long-only rule evaluation with Decimal exactness in backend/src/wavemonitor_backend/rules.py.
+- Added immutable rule result/state types in backend/src/wavemonitor_backend/rule_types.py.
+- Added SQLModel persistence integration in backend/src/wavemonitor_backend/rule_persistence.py using AlertEvent and LastRuleState.
+- Fixed persisted cooldown blocker: LastRuleState persists per-rule last alert timestamps (near_support_last_alert_at, risk_reward_last_alert_at, breakout_last_alert_at), and rule_state_from_persisted() restores them for persisted cooldown evaluation.
+- Fixed import-order blocker: wavemonitor_backend.rule_persistence is now directly importable before wavemonitor_backend.rules. DEFAULT_COOLDOWN lives in rule_types, and rule_persistence defers importing evaluate_rules until evaluate_and_persist_rules() runs, breaking the rule_persistence <-> rules module import cycle while preserving public re-exports from wavemonitor_backend.rules.
+- Preserved source-scoped state by the existing unique (instrument_id, source_mapping_id) LastRuleState key.
+
+Changed files:
+- backend/src/wavemonitor_backend/models.py
+- backend/src/wavemonitor_backend/rule_persistence.py
+- backend/src/wavemonitor_backend/rules.py
+- backend/src/wavemonitor_backend/rule_types.py
+- backend/tests/test_rules.py
+- backend/tests/test_rule_persistence.py
+- .omo/evidence/task-6-stock-data-monitor-build.txt
+
+Original Todo 6 RED evidence:
+- Command: .venv/bin/pytest backend/tests/test_rules.py -vv
+- Result before initial implementation: collection error because wavemonitor_backend.rules did not exist.
+- Key failure: ModuleNotFoundError: No module named 'wavemonitor_backend.rules'
+
+Persisted cooldown verifier RED evidence:
+- Command: .venv/bin/pytest backend/tests/test_rule_persistence.py -vv
+- Result after adding persisted cooldown boundary test and before fix: 1 failed, 2 passed.
+- Failing test: test_persisted_cooldown_retriggers_active_near_support_at_boundary.
+- Key assertion: second persisted evaluation at OBSERVED_AT + 5 minutes returned [] instead of [AlertKind.NEAR_SUPPORT].
+
+Import-order verifier RED evidence:
+- Command: .venv/bin/python -c "import sys; sys.path.insert(0, 'backend/src'); import wavemonitor_backend.rule_persistence; print('ok')"
+- Result before import-cycle fix: failed with ImportError.
+- Key failure: ImportError: cannot import name 'evaluate_and_persist_rules' from partially initialized module 'wavemonitor_backend.rule_persistence' (most likely due to a circular import), caused by rule_persistence importing rules while rules imported rule_persistence for public re-exports.
+
+Fix implemented:
+- backend/src/wavemonitor_backend/models.py: LastRuleState has nullable timestamp columns:
+  - near_support_last_alert_at
+  - risk_reward_last_alert_at
+  - breakout_last_alert_at
+- backend/src/wavemonitor_backend/rule_persistence.py:
+  - persist_rule_evaluation() writes evaluation.next_state per-rule last-alert timestamps.
+  - rule_state_from_persisted() restores per-rule timestamps into RuleState.
+  - utc_timestamp() normalizes SQLite-loaded naive datetimes back to UTC-aware datetimes before cooldown arithmetic.
+  - evaluate_and_persist_rules() imports evaluate_rules inside the function to avoid module-load circular import.
+- backend/src/wavemonitor_backend/rule_types.py:
+  - DEFAULT_COOLDOWN moved here as shared rule configuration used by rules.py and rule_persistence.py without either module importing the other at import time.
+- backend/src/wavemonitor_backend/rules.py:
+  - Continues to re-export evaluate_and_persist_rules and persist_rule_evaluation for existing public import compatibility.
+
+GREEN evidence:
+- Command: .venv/bin/python -c "import sys; sys.path.insert(0, 'backend/src'); import wavemonitor_backend.rule_persistence; print('ok')"
+- Result: ok
+- Command: .venv/bin/pytest backend/tests/test_rules.py backend/tests/test_rule_persistence.py -vv
+- Result: 12 passed in 0.95s
+- Command: .venv/bin/pytest backend/tests -vv
+- Result: 57 passed, 1 warning in 4.03s
+- Warning observed: StarletteDeprecationWarning from fastapi.testclient importing Starlette TestClient / httpx compatibility. Not introduced by Todo 6.
+
+Rule coverage summary:
+- risk/reward support=90 price=100 resistance=130 => 3
+- near-support true support=98 price=100 threshold=0.02
+- near-support false support=97 price=100 threshold=0.02
+- breakout previous=100 current=111 resistance=110 true
+- first observation false for breakout
+- previous=111 current=112 resistance=110 false
+- repeated near-support suppressed until reset/cooldown
+- price at/below support returns InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT with no alerts
+- source-specific state remains isolated by source_mapping_id
+- persistence integration writes AlertEvent and LastRuleState
+- persisted cooldown at exactly +5 minutes retriggers near_support without reset and records a second AlertEvent
+- direct import of wavemonitor_backend.rule_persistence before wavemonitor_backend.rules succeeds
+
+Manual QA:
+- Command: offline DB Python script from /opt/ocode/wavemonitor using temp SQLite, SQLModel schema, persisted Instrument/SourceMapping, and evaluate_and_persist_rules twice for the same source at OBSERVED_AT and OBSERVED_AT + 5 minutes.
+- Output:
+  {'first_alerts': ['near_support'], 'second_alerts': ['near_support'], 'event_count': 2, 'event_kinds': ['near_support', 'near_support'], 'same_source': True, 'near_support_count': 2}
+- Manual QA proves persisted cooldown at the boundary retriggers and records two AlertEvents for the same source after the import-cycle fix.
+
+Cleanup / ultraqa probes:
+- malformed input: invalid support denominator cases remain tested; full backend suite passed.
+- misleading_success_output: invalid rule states return no AlertDecision; persisted cooldown test and direct import smoke close verifier gaps that ordinary full-suite import order masked.
+- dirty_worktree: git status --short reported 'fatal: not a git repository'; workspace has no git repo, so non-git filesystem scope applies.
+- hung_or_long_commands: required pytest commands, direct import smoke, and manual DB script completed quickly; no hanging commands.
+- flaky_tests: targeted rule suites were rerun after import-cycle fix and stayed green.
+- stale_state: persistence tests use isolated tmp_path SQLite databases; manual QA uses TemporaryDirectory SQLite; LastRuleState remains source scoped by source_mapping_id.
+- cleanup: no Telegram/external provider calls, no scheduler/notifier hooks, no frontend/Docker/plan/ledger edits, no commits.
+
+Post-write review:
+- Pure LOC:
+  - backend/src/wavemonitor_backend/models.py: 155 pure LOC
+  - backend/src/wavemonitor_backend/rules.py: 212 pure LOC
+  - backend/src/wavemonitor_backend/rule_types.py: 34 pure LOC
+  - backend/src/wavemonitor_backend/rule_persistence.py: 112 pure LOC
+  - backend/tests/test_rules.py: 246 pure LOC
+  - backend/tests/test_rule_persistence.py: 129 pure LOC
+- Source grep for Any/type: ignore/except Exception/pass/telegram/scheduler/notifier in rule modules: no matches.
+- Single responsibility:
+  - rules.py owns pure rule calculation.
+  - rule_types.py owns rule value types/shared constants.
+  - rule_persistence.py owns SQLModel persistence integration.
+- Boundary purity: no untyped dict/Any introduced; DB state is parsed back into typed RuleState.
+- Variant discrimination: no new enum/tagged variant branching added.
+- Escape hatches: no Any, type ignores, broad excepts, or casts added.
+- Defensive layer: utc_timestamp() addresses a concrete SQLite timezone persistence boundary, not speculative fallback logic.
+- Tests: reverting the import-cycle fix makes the direct import command fail; reverting timestamp persistence/restore makes test_persisted_cooldown_retriggers_active_near_support_at_boundary fail.
+
+Risks / notes:
+- Existing SQLite schemas created before this change would need migration/recreation to add the three LastRuleState timestamp columns; tests use deterministic create_all on fresh temp DBs. No migration task was requested in Todo 6.
+- SQLite returns stored timezone-aware datetimes as naive values with the current SQLModel/DateTime configuration; rule_persistence.utc_timestamp() normalizes those restored values to UTC before cooldown arithmetic.
+- Todo 7 Telegram files are present in the backend and full suite passes, but this fix did not edit notifier/Telegram implementation files.

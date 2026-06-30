@@ -1,0 +1,313 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+
+from sqlalchemy import create_engine
+from sqlmodel import Session, SQLModel, select
+
+from wavemonitor_backend.models import AlertEvent, AlertKind, Instrument, MarketType, Provider, SourceMapping
+from wavemonitor_backend.rules import RuleState, evaluate_and_persist_rules, evaluate_rules
+from wavemonitor_backend.rule_types import InvalidRuleState
+
+OBSERVED_AT = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+
+
+def test_risk_reward_uses_long_setup_decimal_exactness():
+    # Given: a long setup with support below price and resistance above price.
+    state = RuleState()
+
+    # When: rules are evaluated at price 100 between support 90 and resistance 130.
+    evaluation = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=state,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: risk/reward is exactly (130 - 100) / (100 - 90) = 3 and emits one alert.
+    risk_reward = next(alert for alert in evaluation.alerts if alert.kind == AlertKind.RISK_REWARD)
+    assert risk_reward.metric == Decimal("3")
+    assert risk_reward.threshold == Decimal("3")
+    assert risk_reward.price == Decimal("100")
+    assert evaluation.next_state.risk_reward_active is True
+
+
+def test_near_support_true_and_false_threshold_boundary():
+    # Given: support-distance threshold is 2% of current price.
+    inactive_state = RuleState()
+
+    # When: price is 100 with support 98 and support 97.
+    near_result = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=inactive_state,
+        observed_at=OBSERVED_AT,
+    )
+    far_result = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("97"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=inactive_state,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: 2% distance alerts and 3% distance does not.
+    assert [alert.kind for alert in near_result.alerts] == [AlertKind.NEAR_SUPPORT]
+    assert near_result.alerts[0].metric == Decimal("0.02")
+    assert far_result.alerts == ()
+    assert far_result.next_state.near_support_active is False
+
+
+def test_breakout_requires_crossing_from_at_or_below_resistance():
+    # Given: resistance is 110 and prior observations can be absent, below, or already above.
+    first_observation = RuleState()
+    below_previous = RuleState(last_price=Decimal("100"))
+    above_previous = RuleState(last_price=Decimal("111"), above_resistance_active=True)
+
+    # When: observations are evaluated around the resistance crossing.
+    first = evaluate_rules(
+        price=Decimal("111"),
+        support=Decimal("90"),
+        resistance=Decimal("110"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=first_observation,
+        observed_at=OBSERVED_AT,
+    )
+    crossing = evaluate_rules(
+        price=Decimal("111"),
+        support=Decimal("90"),
+        resistance=Decimal("110"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=below_previous,
+        observed_at=OBSERVED_AT,
+    )
+    already_above = evaluate_rules(
+        price=Decimal("112"),
+        support=Decimal("90"),
+        resistance=Decimal("110"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=above_previous,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: only the true crossing emits resistance-breakout.
+    assert AlertKind.RESISTANCE_BREAKOUT not in {alert.kind for alert in first.alerts}
+    assert [alert.kind for alert in crossing.alerts] == [AlertKind.RESISTANCE_BREAKOUT]
+    assert crossing.next_state.above_resistance_active is True
+    assert already_above.alerts == ()
+
+
+def test_price_at_or_below_support_returns_invalid_non_alert_without_division():
+    # Given: prices at and below support make the long risk denominator zero or negative.
+    state = RuleState(last_price=Decimal("101"))
+
+    # When: equal-support and below-support prices are evaluated.
+    equal_support = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("100"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=state,
+        observed_at=OBSERVED_AT,
+    )
+    below_support = evaluate_rules(
+        price=Decimal("99"),
+        support=Decimal("100"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=state,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: both are explicit invalid rule states, never alert events or divide-by-zero crashes.
+    assert equal_support.alerts == ()
+    assert equal_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
+    assert equal_support.next_state.near_support_active is False
+    assert below_support.alerts == ()
+    assert below_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
+
+
+def test_resistance_at_or_below_price_resets_long_setup_without_risk_reward_alert():
+    # Given: long risk/reward is only valid when price is below resistance.
+    state = RuleState(last_price=Decimal("100"), risk_reward_active=True)
+
+    # When: price equals resistance without crossing from below.
+    evaluation = evaluate_rules(
+        price=Decimal("110"),
+        support=Decimal("90"),
+        resistance=Decimal("110"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=state,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: no risk/reward alert is produced and the risk state resets.
+    assert AlertKind.RISK_REWARD not in {alert.kind for alert in evaluation.alerts}
+    assert evaluation.next_state.risk_reward_active is False
+
+
+def test_repeated_near_support_suppressed_until_condition_resets():
+    # Given: a first near-support observation has activated that rule.
+    first = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=RuleState(),
+        observed_at=OBSERVED_AT,
+    )
+
+    # When: the same active condition repeats, then resets, then becomes active again.
+    repeated = evaluate_rules(
+        price=Decimal("100.5"),
+        support=Decimal("98.5"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=first.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=30),
+    )
+    reset = evaluate_rules(
+        price=Decimal("105"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=repeated.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=60),
+    )
+    retriggered = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=reset.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=90),
+    )
+
+    # Then: repeated active near-support is deduped until inactive reset occurs.
+    assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
+    assert repeated.alerts == ()
+    assert reset.next_state.near_support_active is False
+    assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
+
+
+def test_cooldown_allows_repeated_active_near_support_after_elapsed_window():
+    # Given: near-support is already active and last emitted before the cooldown window.
+    previous_state = RuleState(
+        last_price=Decimal("100"),
+        near_support_active=True,
+        near_support_last_alert_at=OBSERVED_AT,
+    )
+
+    # When: the active condition repeats before and after a 5 minute cooldown.
+    before_cooldown = evaluate_rules(
+        price=Decimal("100"), support=Decimal("98"), resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"), risk_reward_threshold=Decimal("20"),
+        previous_state=previous_state, observed_at=OBSERVED_AT + timedelta(minutes=4, seconds=59),
+        cooldown=timedelta(minutes=5),
+    )
+    after_cooldown = evaluate_rules(
+        price=Decimal("100"), support=Decimal("98"), resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"), risk_reward_threshold=Decimal("20"),
+        previous_state=previous_state, observed_at=OBSERVED_AT + timedelta(minutes=5), cooldown=timedelta(minutes=5),
+    )
+
+    # Then: cooldown suppresses before the window and permits a repeated active alert at the boundary.
+    assert before_cooldown.alerts == ()
+    assert [alert.kind for alert in after_cooldown.alerts] == [AlertKind.NEAR_SUPPORT]
+
+
+def test_rule_state_is_source_specific():
+    # Given: one source has an active near-support state and another source is inactive.
+    active_source_state = RuleState(last_price=Decimal("100"), near_support_active=True)
+    other_source_state = RuleState()
+
+    # When: the same near-support price is evaluated for both source states.
+    active_source = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=active_source_state,
+        observed_at=OBSERVED_AT,
+    )
+    other_source = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=other_source_state,
+        observed_at=OBSERVED_AT,
+    )
+
+    # Then: dedupe is scoped to the provided source state, not the instrument globally.
+    assert active_source.alerts == ()
+    assert [alert.kind for alert in other_source.alerts] == [AlertKind.NEAR_SUPPORT]
+
+
+def test_persistence_integration_records_alert_and_suppresses_duplicate(tmp_path: Path):
+    # Given: a persisted instrument/source with no previous LastRuleState.
+    engine = create_engine(f"sqlite:///{tmp_path / 'rules.sqlite3'}", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin",
+            support="98",
+            resistance="130",
+            near_support_threshold="0.02",
+            risk_reward_threshold="20",
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        # When: the same near-support observation is evaluated twice through persistence.
+        first = evaluate_and_persist_rules(
+            session=session, instrument=instrument, source_mapping=source, price=Decimal("100"), observed_at=OBSERVED_AT
+        )
+        repeated = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT + timedelta(seconds=30),
+        )
+        stored_events = session.exec(select(AlertEvent)).all()
+
+        # Then: AlertEvent is durable and LastRuleState suppresses the duplicate source alert.
+        assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
+        assert repeated.alerts == ()
+        assert len(stored_events) == 1
+        assert stored_events[0].price == Decimal("100.0000000000")

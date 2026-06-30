@@ -1,0 +1,41 @@
+Task 10: Implement frontend instrument/rule configuration UI with mocked API TDD
+
+1. Added API client methods for CRUD operations on instruments.
+2. Created `InstrumentList` component to display instruments and handle deletion.
+3. Created `InstrumentForm` component to handle creation and editing of instruments, including source mappings.
+4. Created `InstrumentCreate` and `InstrumentEdit` wrapper components.
+5. Updated `App.tsx` to include routing using `wouter` and a sidebar layout.
+6. Added CSS styles for the new components, adhering to the design system tokens.
+7. Wrote tests for `InstrumentList` and `InstrumentForm` using mocked API calls, covering listing, creation, validation (e.g., resistance <= support), and deletion.
+8. Verified that `npm run typecheck`, `npm run test -- --run`, and `npm run build` all pass successfully.
+9. Ensured no Telegram secrets or raw env values are exposed.
+10. Kept touched source/test files under 250 pure LOC.
+
+Test Output:
+> wavemonitor-frontend@0.1.0 test
+> vitest run --run
+
+ RUN  v4.1.9 /opt/ocode/wavemonitor/frontend
+
+ Test Files  4 passed (4)
+      Tests  20 passed (20)
+   Start at  17:11:03
+   Duration  3.03s (transform 241ms, setup 315ms, import 665ms, tests 878ms, environment 3.36s)
+
+Typecheck Output:
+> wavemonitor-frontend@0.1.0 typecheck
+> tsc --noEmit
+
+Build Output:
+> wavemonitor-frontend@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.1.0 building client environment for production...
+transforming...✓ 109 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.40 kB │ gzip:  0.27 kB
+dist/assets/index-DAl1P0Q4.css    4.05 kB │ gzip:  1.26 kB
+dist/assets/index-_p7ILqAW.js   267.06 kB │ gzip: 81.21 kB
+
+✓ built in 209ms

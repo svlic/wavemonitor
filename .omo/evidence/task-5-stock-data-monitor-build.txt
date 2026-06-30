@@ -1,0 +1,118 @@
+DoneClaim: Todo 5 implemented only — mocked price adapter interface and concrete yfinance/Binance/Hyperliquid adapters with TDD.
+
+Changed files:
+- backend/src/wavemonitor_backend/adapter_types.py
+  - Added common adapter contract dataclasses/protocols: PriceResult, AdapterError, AdapterErrorKind, PriceIdentity, PricePayload, YFinanceTicker, BinanceFuturesClient, HyperliquidInfoClient.
+- backend/src/wavemonitor_backend/adapters.py
+  - Added YFinanceAdapter semantics: fast_info.last_price first, then history(period="1d", interval="1m") latest Close fallback.
+  - Added BinanceFuturesAdapter semantics: selectable USD-M vs COIN-M injected clients; mark_price markPrice preferred; ticker_price price fallback.
+  - Added HyperliquidAdapter semantics: Info-like all_mids lookup by coin and Decimal parsing from returned strings.
+  - All adapters return PriceResult or typed AdapterError instead of crashing on provider exceptions or malformed data.
+  - Re-exported public contract types from adapters.py for the expected caller/import surface.
+- backend/tests/test_adapters.py
+  - Added mocked/offline adapter tests covering normal responses, missing symbols, malformed prices, timeout/provider error mapping, HTTP 429/rate-limit mapping, USD-M vs COIN-M route selection, Hyperliquid all_mids lookup, Decimal string parsing, and no default live network use in mocked tests.
+- .omo/evidence/task-5-stock-data-monitor-build.txt
+  - This evidence record.
+
+Plan references used:
+- Read Todo 5 acceptance lines 147-153 from /opt/ocode/wavemonitor/.omo/plans/stock-data-monitor-build.md.
+- Read provider semantics from /opt/ocode/wavemonitor/.omo/drafts/stock-data-monitor.md lines 18-20 and 29-33.
+- Read build definitions/scope from /opt/ocode/wavemonitor/.omo/drafts/stock-data-monitor-build.md lines 31-44 and 57-63.
+
+RED evidence:
+- Command: .venv/bin/pytest backend/tests/test_adapters.py -vv
+- Result: expected failure before implementation.
+- Output excerpt:
+  - collected 0 items / 1 error
+  - ModuleNotFoundError: No module named 'wavemonitor_backend.adapters'
+
+GREEN evidence:
+- Command: .venv/bin/pytest backend/tests/test_adapters.py -vv
+- Initial green result before final split refactor: 14 passed in 0.31s.
+- Final green result after final split refactor: 14 passed in 0.43s.
+- Covered tests:
+  - yfinance fast_info.last_price AAPL normal path.
+  - yfinance 1d/1m history Close fallback.
+  - yfinance missing symbol typed error.
+  - yfinance malformed price typed error.
+  - yfinance timeout typed error.
+  - Binance USD-M BTCUSDT mark-price preference and route selection.
+  - Binance COIN-M BTCUSD_PERP route selection.
+  - Binance latest ticker fallback when markPrice absent.
+  - Binance HTTP 429/rate-limit typed error.
+  - Binance malformed Decimal string typed error.
+  - Hyperliquid BTC all_mids lookup with Decimal string parsing.
+  - Hyperliquid missing symbol typed error.
+  - Hyperliquid provider exception typed error.
+  - Mocked tests do not instantiate live/default network clients.
+
+Automated QA:
+- Command: .venv/bin/pytest backend/tests/test_adapters.py -vv
+- Result: 14 passed in 0.43s.
+- Repeat stability command before final split: .venv/bin/pytest backend/tests/test_adapters.py -vv
+- Repeat result: 14 passed in 0.31s.
+- Command: .venv/bin/pytest backend/tests -vv
+- Result: 37 passed, 1 warning in 2.20s.
+- Warning: existing StarletteDeprecationWarning from fastapi.testclient/httpx; not caused by adapter code.
+- Command: .venv/bin/python -m py_compile backend/src/wavemonitor_backend/adapters.py backend/src/wavemonitor_backend/adapter_types.py backend/tests/test_adapters.py
+- Result: passed with no output.
+- Command attempted: .venv/bin/python -m ruff check backend/src/wavemonitor_backend/adapters.py backend/tests/test_adapters.py
+- Result: unavailable because ruff is not installed in the venv: No module named ruff.
+
+Manual QA:
+- Command:
+  .venv/bin/python - <<'PY'
+  from wavemonitor_backend.adapters import AdapterError, AdapterErrorKind, HyperliquidAdapter
+
+  class OfflineInfo:
+      def all_mids(self):
+          return {"BTC": "not-a-decimal"}
+
+  result = HyperliquidAdapter(info_client=OfflineInfo()).get_latest_price("BTC")
+  print(type(result).__name__)
+  print(result.kind if isinstance(result, AdapterError) else "not-error")
+  print(result.raw_metadata if isinstance(result, AdapterError) else {})
+  print("network_used=False")
+  assert isinstance(result, AdapterError)
+  assert result.kind == AdapterErrorKind.MALFORMED_PRICE
+  PY
+- Output:
+  AdapterError
+  malformed_price
+  {'path': 'all_mids.BTC', 'raw_price': 'not-a-decimal'}
+  network_used=False
+- Result: malformed price returns a typed AdapterError and uses only an injected offline fake client.
+
+UltraQA probes:
+- malformed input: covered by yfinance, Binance, Hyperliquid malformed-price tests and manual QA.
+- misleading_success_output: tests assert exact PriceResult/AdapterError fields, not only non-null success.
+- dirty_worktree: git status --short returned fatal: not a git repository (expected for this non-git workspace); changed files intentionally limited to adapter implementation/types/tests plus this evidence file.
+- hung_or_long_commands: pytest commands completed quickly (adapter file ~0.31-0.43s, backend suite ~2.20-2.21s) with explicit 120s timeouts.
+- flaky_tests: adapter suite rerun passed 14/14 before the final split, and passed 14/14 again after final split.
+- stale_state: tests use injected fakes and no external state; removed __pycache__ after compile/QA cleanup.
+
+Post-write review:
+- backend/src/wavemonitor_backend/adapters.py measured 186 pure LOC: healthy.
+- backend/src/wavemonitor_backend/adapter_types.py measured 57 pure LOC: healthy.
+- backend/tests/test_adapters.py measured 199 pure LOC: healthy.
+- Single responsibility: adapter_types.py owns contracts/protocols; adapters.py owns market-data adapter normalization; test_adapters.py owns adapter behavior tests.
+- Boundary purity: provider payload prices are parsed to Decimal at adapter boundary; malformed/NaN/non-finite data returns typed AdapterError.
+- Variant discrimination: no tagged union if/elif chains added; provider/market enum selection is minimal route selection.
+- Escape hatches: no Any, no type ignores, no broad empty except; provider boundary catches convert exceptions to typed errors.
+- Defensive layer: no live network in default tests; injected clients are used for yfinance/Binance/Hyperliquid test paths.
+- Helpers for one-off: shared parser/error helpers serve all adapters.
+- Tests: behavior is locked by failing-first adapter tests and full backend suite.
+- Parameter bloat: no public function with more than 3 parameters; internal helpers were refactored to PriceIdentity/PricePayload to avoid argument smuggling and keep semantics typed.
+- Redundant verification: none.
+- Negative naming: none introduced.
+
+Cleanup:
+- Removed __pycache__ directories created during py_compile/manual QA.
+- Did not edit .omo plan, ledger, or checkboxes.
+- Did not edit app.py, API tests, rule engine, Telegram sender, scheduler, Docker, frontend, or live smoke scripts.
+- Did not commit.
+
+Risks / notes:
+- ruff is declared in pyproject lint config but not installed in the current .venv, so lint could not be executed without changing dependencies.
+- yfinance default factory imports yfinance lazily only when no injected ticker_factory is supplied; the package is not required for mocked unit tests.
+- Binance/Hyperliquid adapters require injected clients today, which keeps unit tests offline and avoids adding provider SDK dependencies in this todo.

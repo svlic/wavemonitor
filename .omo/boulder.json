@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "active_work_id": "stock-data-monitor-build",
+  "works": {
+    "stock-data-monitor-build": {
+      "work_id": "stock-data-monitor-build",
+      "active_plan": ".omo/plans/stock-data-monitor-build.md",
+      "plan_name": "stock-data-monitor-build",
+      "session_ids": ["codex:current"],
+      "status": "completed",
+      "worktree_path": null
+    }
+  }
+}
