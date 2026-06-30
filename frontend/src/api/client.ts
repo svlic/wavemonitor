@@ -4,7 +4,7 @@ const isoDateTime = z.union([z.string(), z.number()]).transform((v) =>
   typeof v === "number" ? new Date(v).toISOString() : v,
 );
 
-export const RuntimeResponseSchema = z.object({
+const RuntimeResponseSchema = z.object({
   scheduler_ready: z.boolean(),
   providers_ready: z.boolean(),
   telegram_ready: z.boolean(),
@@ -20,7 +20,7 @@ export const RuntimeResponseSchema = z.object({
 
 export type RuntimeResponse = z.infer<typeof RuntimeResponseSchema>;
 
-export const TelegramTestResponseSchema = z.object({
+const TelegramTestResponseSchema = z.object({
   sent: z.boolean(),
   telegram_ready: z.boolean(),
   detail: z.string(),
@@ -29,7 +29,7 @@ export const TelegramTestResponseSchema = z.object({
 
 export type TelegramTestResponse = z.infer<typeof TelegramTestResponseSchema>;
 
-export const LatestPriceSchema = z.object({
+const LatestPriceSchema = z.object({
   instrument_id: z.number(),
   instrument_name: z.string(),
   source_mapping_id: z.number(),
@@ -43,7 +43,7 @@ export const LatestPriceSchema = z.object({
 
 export type LatestPrice = z.infer<typeof LatestPriceSchema>;
 
-export const RecentAlertSchema = z.object({
+const RecentAlertSchema = z.object({
   id: z.number(),
   instrument_id: z.number(),
   source_mapping_id: z.number(),
@@ -55,7 +55,7 @@ export const RecentAlertSchema = z.object({
 
 export type RecentAlert = z.infer<typeof RecentAlertSchema>;
 
-export const SourceErrorSchema = z.object({
+const SourceErrorSchema = z.object({
   instrument_id: z.number(),
   instrument_name: z.string(),
   source_mapping_id: z.number(),
@@ -68,7 +68,7 @@ export const SourceErrorSchema = z.object({
 
 export type SourceError = z.infer<typeof SourceErrorSchema>;
 
-export const SourceMappingSchema = z.object({
+const SourceMappingSchema = z.object({
   id: z.number(),
   provider: z.string(),
   market_type: z.string(),
@@ -76,9 +76,9 @@ export const SourceMappingSchema = z.object({
   enabled: z.boolean(),
 });
 
-export type SourceMapping = z.infer<typeof SourceMappingSchema>;
+type SourceMapping = z.infer<typeof SourceMappingSchema>;
 
-export const InstrumentSchema = z.object({
+const InstrumentSchema = z.object({
   id: z.number(),
   name: z.string(),
   enabled: z.boolean(),
@@ -88,15 +88,15 @@ export const InstrumentSchema = z.object({
   risk_reward_threshold: z.string(),
 });
 
-export type Instrument = z.infer<typeof InstrumentSchema>;
+type Instrument = z.infer<typeof InstrumentSchema>;
 
-export const InstrumentWithMappingsSchema = InstrumentSchema.extend({
+const InstrumentWithMappingsSchema = InstrumentSchema.extend({
   source_mappings: z.array(SourceMappingSchema),
 });
 
 export type InstrumentWithMappings = z.infer<typeof InstrumentWithMappingsSchema>;
 
-export const CreateInstrumentRequestSchema = z.object({
+const CreateInstrumentRequestSchema = z.object({
   name: z.string(),
   enabled: z.boolean(),
   support: z.string(),
@@ -114,8 +114,6 @@ export const CreateInstrumentRequestSchema = z.object({
 });
 
 export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
-
-export type UpdateInstrumentRequest = CreateInstrumentRequest;
 
 export class ApiError extends Error {
   constructor(
@@ -228,7 +226,7 @@ export class ApiClient {
 
   async updateInstrument(
     id: number | string,
-    data: UpdateInstrumentRequest,
+    data: CreateInstrumentRequest,
     signal?: AbortSignal,
   ): Promise<InstrumentWithMappings> {
     const pathId = typeof id === "string" ? id : String(id);

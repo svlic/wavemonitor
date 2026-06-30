@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { apiClient, ApiError } from "../../api/client";
+import { apiClient } from "../../api/client";
 import type { InstrumentWithMappings } from "../../api/client";
 
 export function InstrumentList() {

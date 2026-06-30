@@ -49,7 +49,7 @@ export function Dashboard() {
       }
     }
 
-    void loadData();
+    loadData();
 
     return () => {
       controller.abort();
@@ -151,7 +151,7 @@ export function Dashboard() {
               <div className="test-actions">
                 <button 
                   className="button primary" 
-                  onClick={() => void handleTestTelegram()}
+                  onClick={() => handleTestTelegram()}
                   disabled={testStatus === "sending"}
                 >
                   {testStatus === "sending" ? "Sending..." : "Send Test Alert"}
