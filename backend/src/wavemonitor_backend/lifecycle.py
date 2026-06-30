@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ import anyio
 from sqlmodel import Session
 
 from wavemonitor_backend.monitoring import RuntimeMetrics
+
+LOGGER = logging.getLogger("wavemonitor_backend.lifecycle")
 
 
 class TickRunner(Protocol):
@@ -38,6 +41,9 @@ class MonitoringLifecycle:
 
     async def run(self) -> None:
         while True:
-            with self._session_factory() as session:
-                self._runner.run_tick(session)
+            try:
+                with self._session_factory() as session:
+                    self._runner.run_tick(session)
+            except Exception:
+                LOGGER.exception("monitoring scheduler tick failed; continuing after interval")
             await self._ticker.wait()

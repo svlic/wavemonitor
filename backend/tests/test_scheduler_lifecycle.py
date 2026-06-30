@@ -59,6 +59,40 @@ class BlockingTicker:
         await anyio.sleep_forever()
 
 
+@dataclass(slots=True)
+class FailingThenPassingTickRunner:
+    ticks: int = 0
+
+    def run_tick(self, session: Session) -> RuntimeMetrics:
+        self.ticks += 1
+        if self.ticks == 1:
+            raise RuntimeError("transient scheduler failure")
+        return RuntimeMetrics(
+            scheduler_ready=True,
+            providers_ready=True,
+            enabled_sources=0,
+            polled_sources=0,
+            observations_written=0,
+            source_errors=0,
+            alert_events_created=0,
+            telegram_deliveries_attempted=0,
+            last_tick_started_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
+            last_tick_finished_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
+        )
+
+
+class CountingTicker:
+    def __init__(self) -> None:
+        self.waits = 0
+        self.second_wait_started = anyio.Event()
+
+    async def wait(self) -> None:
+        self.waits += 1
+        if self.waits == 2:
+            self.second_wait_started.set()
+        await anyio.sleep(0)
+
+
 def test_app_lifespan_starts_and_stops_injected_monitoring_lifecycle(tmp_path: Path):
     # Given: the backend app receives an injected monitoring lifecycle with observable start/stop signals.
     lifecycle = FakeAppLifecycle()
@@ -109,5 +143,36 @@ def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path:
 
         # Then: the loop exits cleanly and no second tick runs after cancellation.
         assert runner.ticks == 1
+
+    anyio.run(scenario)
+
+
+def test_monitoring_lifecycle_continues_after_tick_exception(tmp_path: Path):
+    # Given: the first scheduler tick raises, then the same runner can produce metrics on the next tick.
+    async def scenario() -> None:
+        engine = create_database_engine(f"sqlite:///{tmp_path / 'recover.sqlite3'}")
+        create_schema(engine)
+        runner = FailingThenPassingTickRunner()
+        ticker = CountingTicker()
+
+        @contextmanager
+        def session_factory():
+            with session_scope(engine) as db_session:
+                yield db_session
+
+        lifecycle = MonitoringLifecycle(
+            runner=runner,
+            session_factory=session_factory,
+            ticker=ticker,
+        )
+
+        # When: the lifecycle observes a tick exception.
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(lifecycle.run)
+            await ticker.second_wait_started.wait()
+            task_group.cancel_scope.cancel()
+
+        # Then: the lifecycle logs and continues instead of letting polling die permanently.
+        assert runner.ticks == 2
 
     anyio.run(scenario)
