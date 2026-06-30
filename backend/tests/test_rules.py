@@ -237,8 +237,12 @@ def test_cooldown_allows_repeated_active_near_support_after_elapsed_window():
 
 
 def test_rule_state_is_source_specific():
-    # Given: one source has an active near-support state and another source is inactive.
-    active_source_state = RuleState(last_price=Decimal("100"), near_support_active=True)
+    # Given: one source has an active near-support state with a prior alert time; another is inactive.
+    active_source_state = RuleState(
+        last_price=Decimal("100"),
+        near_support_active=True,
+        near_support_last_alert_at=OBSERVED_AT,
+    )
     other_source_state = RuleState()
 
     # When: the same near-support price is evaluated for both source states.
