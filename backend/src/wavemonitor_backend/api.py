@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from wavemonitor_backend.models import (
     AlertEvent,
-    DeliveryStatus,
     Instrument,
     LastRuleState,
     MarketType,
     PriceObservation,
     Provider,
     SourceMapping,
-    TelegramDelivery,
 )
-from wavemonitor_backend.notifier import TelegramHttpFailure, TelegramSendResult, TelegramSendSuccess, sanitize_telegram_failure
+from wavemonitor_backend.notifier import TelegramHttpFailure, TelegramSendSuccess, sanitize_telegram_failure
 from wavemonitor_backend.schemas import (
     AlertResponse,
     InstrumentRequest,
@@ -29,8 +27,7 @@ from wavemonitor_backend.schemas import (
     SourceMappingResponse,
     SourceStatusResponse,
 )
-
-TELEGRAM_LOGGER = logging.getLogger("wavemonitor_backend.telegram")
+from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
 def list_instruments(session: Session) -> list[InstrumentResponse]:
@@ -50,11 +47,18 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
         created_at=now,
         updated_at=now,
     )
-    session.add(instrument)
-    session.commit()
-    session.refresh(instrument)
-    instrument_id = require_id(instrument.id)
-    add_source_mappings(session, instrument_id, payload)
+    try:
+        session.add(instrument)
+        session.flush()
+        instrument_id = require_id(instrument.id)
+        add_source_mappings(session, instrument_id, payload)
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Source mapping already exists",
+        ) from exc
     session.refresh(instrument)
     return instrument_response(session, instrument)
 
@@ -97,43 +101,6 @@ def get_instrument_status(session: Session, instrument_id: int) -> InstrumentSta
 def list_recent_alerts(session: Session) -> list[AlertResponse]:
     statement = select(AlertEvent).order_by(desc(AlertEvent.triggered_at)).limit(50)
     return [alert_response(alert) for alert in session.exec(statement).all()]
-
-
-def record_telegram_delivery(
-    session: Session,
-    *,
-    message_kind: str,
-    message_text: str,
-    result: TelegramSendResult,
-) -> TelegramDelivery:
-    match result:
-        case TelegramSendSuccess(message_id=message_id):
-            delivery = TelegramDelivery(
-                status=DeliveryStatus.SENT,
-                message_kind=message_kind,
-                message_text=message_text,
-                telegram_message_id=message_id,
-                delivered_at=datetime.now(UTC),
-            )
-        case TelegramHttpFailure() as failure:
-            delivery = TelegramDelivery(
-                status=DeliveryStatus.FAILED,
-                message_kind=message_kind,
-                message_text=message_text,
-                safe_error=sanitize_telegram_failure(failure),
-                delivered_at=datetime.now(UTC),
-            )
-    session.add(delivery)
-    session.commit()
-    session.refresh(delivery)
-    TELEGRAM_LOGGER.info(
-        "telegram_delivery_result status=%s message_kind=%s delivery_id=%s safe_error=%s",
-        delivery.status.value,
-        delivery.message_kind,
-        require_id(delivery.id),
-        delivery.safe_error or "none",
-    )
-    return delivery
 
 
 def instrument_response(session: Session, instrument: Instrument) -> InstrumentResponse:
@@ -223,7 +190,6 @@ def add_source_mappings(session: Session, instrument_id: int, payload: Instrumen
                 enabled=source.enabled,
             )
         )
-    session.commit()
 
 
 def sync_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:

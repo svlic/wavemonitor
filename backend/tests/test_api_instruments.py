@@ -270,3 +270,32 @@ def test_create_without_source_mapping_fails(client: TestClient):
     # Then: Todo 4 requires a 400/422 failure rather than a disabled monitor shell.
     assert response.status_code in {400, 422}
     assert response.json()["detail"]
+
+
+def test_create_duplicate_source_mapping_rolls_back_instrument(client: TestClient):
+    # Given: one create request contains two source mappings with the same database identity.
+    payload = VALID_PAYLOAD | {
+        "source_mappings": [
+            {
+                "provider": "binance",
+                "market_type": "usd_m_futures",
+                "symbol": "BTCUSDT",
+                "enabled": True,
+            },
+            {
+                "provider": "binance",
+                "market_type": "usd_m_futures",
+                "symbol": "btcusdt",
+                "enabled": False,
+            },
+        ]
+    }
+
+    # When: create is attempted and the source mapping uniqueness constraint rejects it.
+    response = client.post("/api/instruments", json=payload)
+    list_response = client.get("/api/instruments")
+
+    # Then: the API reports a create conflict and leaves no empty instrument shell behind.
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Source mapping already exists"
+    assert list_response.json() == []
