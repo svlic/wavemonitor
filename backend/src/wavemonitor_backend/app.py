@@ -43,6 +43,7 @@ from wavemonitor_backend.schemas import (
     LatestPriceResponse,
     SourceErrorResponse,
 )
+from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
 from wavemonitor_backend.settings import Settings
 
 
@@ -121,11 +122,25 @@ class AppRuntime:
 
 
 def create_app(runtime: AppRuntime | None = None) -> FastAPI:
-    app_runtime = runtime or AppRuntime(settings=Settings.from_env(), database_url=database_url_from_env())
+    base_runtime = runtime or AppRuntime(settings=Settings.from_env(), database_url=database_url_from_env())
+    engine = create_database_engine(base_runtime.database_url)
+    monitoring_lifecycle = base_runtime.monitoring_lifecycle
+    if monitoring_lifecycle is None and runtime is None:
+        monitoring_lifecycle = default_monitoring_lifecycle(
+            engine=engine,
+            settings=base_runtime.settings,
+            metrics_store=base_runtime.metrics_store,
+        )
+    app_runtime = AppRuntime(
+        settings=base_runtime.settings,
+        database_url=base_runtime.database_url,
+        telegram_transport=base_runtime.telegram_transport,
+        metrics_store=base_runtime.metrics_store,
+        monitoring_lifecycle=monitoring_lifecycle,
+    )
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
     telegram_notifier = TelegramNotifier(runtime_settings, app_runtime.telegram_transport)
-    engine = create_database_engine(app_runtime.database_url)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
