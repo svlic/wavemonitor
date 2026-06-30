@@ -1,15 +1,42 @@
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .venv/
-.env
-*.pyc
-node_modules/
+venv/
+*.egg-info/
 dist/
+build/
+.coverage
+htmlcov/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+frontend/dist/
 coverage/
-.DS_Store
+*.tsbuildinfo
+
+# Data & OS
 *.sqlite3
+*.sqlite3-journal
+.DS_Store
+Thumbs.db
+
+# IDE / tooling
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-specific
 .codegraph/
 .omo/tmp/
 .omo/run-continuation/

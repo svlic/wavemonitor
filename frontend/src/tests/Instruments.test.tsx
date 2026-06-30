@@ -22,7 +22,7 @@ vi.mock("../api/client", async () => {
 
 const mockInstruments: readonly InstrumentWithMappings[] = [
   {
-    id: "1",
+    id: 1,
     name: "BTC/USD",
     enabled: true,
     support: "60000",
@@ -31,8 +31,7 @@ const mockInstruments: readonly InstrumentWithMappings[] = [
     risk_reward_threshold: "2.0",
     source_mappings: [
       {
-        id: "m1",
-        instrument_id: "1",
+        id: 1,
         provider: "binance",
         market_type: "usd_m_futures",
         symbol: "BTCUSDT",
@@ -88,7 +87,7 @@ describe("InstrumentList", () => {
     fireEvent.click(deleteButton);
 
     await waitFor(() => {
-      expect(apiClient.deleteInstrument).toHaveBeenCalledWith("1");
+      expect(apiClient.deleteInstrument).toHaveBeenCalledWith(1);
     });
   });
 });

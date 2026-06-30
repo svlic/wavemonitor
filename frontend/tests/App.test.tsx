@@ -49,6 +49,14 @@ describe("App shell", () => {
       scheduler_ready: true,
       providers_ready: true,
       telegram_ready: false,
+      enabled_sources: 0,
+      polled_sources: 0,
+      observations_written: 0,
+      source_errors: 0,
+      alert_events_created: 0,
+      telegram_deliveries_attempted: 0,
+      last_tick_started_at: null,
+      last_tick_finished_at: null,
     };
     vi.mocked(apiClient.getRuntime).mockResolvedValue(mockData);
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);

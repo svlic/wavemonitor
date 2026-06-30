@@ -28,18 +28,27 @@ export function InstrumentList() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     if (!window.confirm("Are you sure you want to delete this instrument?")) return;
-    
+
     try {
       await apiClient.deleteInstrument(id);
-      setInstruments(instruments.filter(i => i.id !== id));
+      setInstruments(instruments.filter((i) => i.id !== id));
     } catch (err) {
       alert("Failed to delete instrument.");
     }
   }
 
-  if (loading) return <div className="panel">Loading instruments...</div>;
+  if (loading) {
+    return (
+      <div className="panel loading-panel" role="status" aria-live="polite">
+        <h2>Instruments</h2>
+        <p className="muted-text">Loading instruments...</p>
+        <div className="skeleton skeleton-line skeleton-line--short" aria-hidden="true" />
+        <div className="skeleton skeleton-block" aria-hidden="true" />
+      </div>
+    );
+  }
   if (error) return <div className="panel error-text">{error}</div>;
 
   return (

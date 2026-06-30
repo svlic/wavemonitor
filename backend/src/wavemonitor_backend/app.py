@@ -10,7 +10,6 @@ import anyio
 from fastapi import Depends, FastAPI, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Engine
 from sqlmodel import Session
 
 from wavemonitor_backend.api import (

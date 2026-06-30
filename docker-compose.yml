@@ -25,7 +25,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "5173:8080"
+      - "54002:8080"
 
 volumes:
   wavemonitor-sqlite:

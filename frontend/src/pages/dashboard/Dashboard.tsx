@@ -80,9 +80,14 @@ export function Dashboard() {
 
   if (state === "loading") {
     return (
-      <section className="panel" aria-labelledby="dashboard-title">
+      <section className="panel loading-panel" aria-labelledby="dashboard-title">
         <h1 id="dashboard-title">Dashboard</h1>
-        <div role="status" aria-live="polite">Loading dashboard data...</div>
+        <div role="status" aria-live="polite" className="muted-text">
+          Loading dashboard data...
+        </div>
+        <div className="skeleton skeleton-line skeleton-line--medium" aria-hidden="true" />
+        <div className="skeleton skeleton-line" aria-hidden="true" />
+        <div className="skeleton skeleton-block" aria-hidden="true" />
       </section>
     );
   }
@@ -98,16 +103,12 @@ export function Dashboard() {
     );
   }
 
-  const getInstrumentName = (id: string) => {
-    return instruments.find(i => i.id === id)?.name ?? id;
+  const getInstrumentName = (id: number) => {
+    return instruments.find((i) => i.id === id)?.name ?? String(id);
   };
 
-  const getSourceName = (instrumentId: string, sourceId: string) => {
-    const instrument = instruments.find(i => i.id === instrumentId);
-    if (!instrument) return sourceId;
-    const source = instrument.source_mappings?.find(m => m.id === sourceId);
-    if (!source) return sourceId;
-    return `${source.provider} (${source.market_type} ${source.symbol})`;
+  const formatSourceLabel = (provider: string, marketType: string, symbol: string) => {
+    return `${provider} (${marketType} ${symbol})`;
   };
 
   return (
@@ -178,12 +179,12 @@ export function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {prices.map((price, i) => (
-                    <tr key={i}>
-                      <td>{getInstrumentName(price.instrument_id)}</td>
-                      <td>{getSourceName(price.instrument_id, price.source_id)}</td>
-                      <td className="price-cell">{price.price}</td>
-                      <td>{new Date(price.timestamp).toLocaleTimeString()}</td>
+                  {prices.map((price) => (
+                    <tr key={price.source_mapping_id}>
+                      <td>{price.instrument_name}</td>
+                      <td>{formatSourceLabel(price.provider, price.market_type, price.symbol)}</td>
+                      <td className="price-cell">{price.last_price}</td>
+                      <td>{new Date(price.last_observed_at).toLocaleTimeString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -210,9 +211,9 @@ export function Dashboard() {
                 <tbody>
                   {alerts.map((alert) => (
                     <tr key={alert.id}>
-                      <td>{new Date(alert.created_at).toLocaleTimeString()}</td>
+                      <td>{new Date(alert.triggered_at).toLocaleTimeString()}</td>
                       <td>{getInstrumentName(alert.instrument_id)}</td>
-                      <td>{alert.rule_type}</td>
+                      <td>{alert.alert_kind}</td>
                       <td className="price-cell">{alert.price}</td>
                     </tr>
                   ))}
@@ -232,16 +233,18 @@ export function Dashboard() {
                 <thead>
                   <tr>
                     <th>Time</th>
-                    <th>Source ID</th>
+                    <th>Instrument</th>
+                    <th>Source</th>
                     <th>Error</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {errors.map((error, i) => (
-                    <tr key={i}>
-                      <td>{new Date(error.timestamp).toLocaleTimeString()}</td>
-                      <td>{error.source_id}</td>
-                      <td className="error-cell">{error.message}</td>
+                  {errors.map((error) => (
+                    <tr key={error.source_mapping_id}>
+                      <td>{new Date(error.last_observed_at).toLocaleTimeString()}</td>
+                      <td>{error.instrument_name}</td>
+                      <td>{formatSourceLabel(error.provider, error.market_type, error.symbol)}</td>
+                      <td className="error-cell">{error.last_error}</td>
                     </tr>
                   ))}
                 </tbody>

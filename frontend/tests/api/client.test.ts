@@ -29,6 +29,14 @@ describe("ApiClient", () => {
       scheduler_ready: true,
       providers_ready: true,
       telegram_ready: false,
+      enabled_sources: 2,
+      polled_sources: 2,
+      observations_written: 1,
+      source_errors: 0,
+      alert_events_created: 0,
+      telegram_deliveries_attempted: 0,
+      last_tick_started_at: "2026-06-30T12:00:00",
+      last_tick_finished_at: "2026-06-30T12:00:01",
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -37,5 +45,30 @@ describe("ApiClient", () => {
 
     const result = await client.getRuntime();
     expect(result).toEqual(mockData);
+  });
+
+  it("getInstrument resolves from list response", async () => {
+    const list = [
+      {
+        id: 1,
+        name: "Bitcoin",
+        enabled: true,
+        support: "1",
+        resistance: "2",
+        near_support_threshold: "0.01",
+        risk_reward_threshold: "1",
+        source_mappings: [],
+      },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(list), { status: 200 }),
+    );
+
+    const result = await client.getInstrument(1);
+    expect(result.name).toBe("Bitcoin");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: "/api/instruments" }),
+      expect.any(Object),
+    );
   });
 });

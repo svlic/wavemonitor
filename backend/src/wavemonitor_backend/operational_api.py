@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc
 from sqlmodel import Session, select
 
-from wavemonitor_backend.api import decimal_to_api_string, require_id, source_mappings_for
+from wavemonitor_backend.api import (
+    decimal_to_api_string,
+    latest_observation_for,
+    require_id,
+    source_mappings_for,
+)
 from wavemonitor_backend.models import Instrument, PriceObservation, SourceMapping
 from wavemonitor_backend.schemas import LatestPriceResponse, SourceErrorResponse
 
@@ -27,16 +31,6 @@ def list_source_errors(session: Session) -> list[SourceErrorResponse]:
             if observation is not None and observation.error is not None:
                 errors.append(source_error_response(instrument, source, observation))
     return errors
-
-
-def latest_observation_for(session: Session, source: SourceMapping) -> PriceObservation | None:
-    statement = (
-        select(PriceObservation)
-        .where(PriceObservation.source_mapping_id == require_id(source.id))
-        .order_by(desc(PriceObservation.observed_at))
-        .limit(1)
-    )
-    return session.exec(statement).first()
 
 
 def latest_price_response(
