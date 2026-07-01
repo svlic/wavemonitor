@@ -42,7 +42,7 @@ describe("App shell", () => {
 
     // Then: the user sees the app shell and a recoverable error state.
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "仪表盘" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "仪表盘" })).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("发生未知错误。");
@@ -76,7 +76,7 @@ describe("App shell", () => {
 
     // Then: the user sees the app shell and the runtime status.
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "仪表盘" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "仪表盘" })).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(screen.getByText("系统状态")).toBeInTheDocument();

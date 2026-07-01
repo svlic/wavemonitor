@@ -7,10 +7,13 @@ export function InstrumentList() {
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    loadInstruments(controller.signal);
+    void loadInstruments(controller.signal);
     return () => controller.abort();
   }, []);
 
@@ -28,38 +31,73 @@ export function InstrumentList() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!window.confirm("确定要删除这个标的吗？")) return;
-
+  async function confirmDelete(id: number) {
+    setDeletingId(id);
+    setDeleteError(null);
     try {
       await apiClient.deleteInstrument(id);
-      setInstruments(instruments.filter((i) => i.id !== id));
-    } catch (err) {
-      alert("删除标的失败。");
+      setInstruments((current) => current.filter((i) => i.id !== id));
+      setPendingDeleteId(null);
+    } catch {
+      setDeleteError("删除标的失败，请稍后重试。");
+    } finally {
+      setDeletingId(null);
     }
   }
 
   if (loading) {
     return (
       <div className="panel loading-panel" role="status" aria-live="polite">
-        <h2>标的管理</h2>
         <p className="muted-text">正在加载标的...</p>
         <div className="skeleton skeleton-line skeleton-line--short" aria-hidden="true" />
         <div className="skeleton skeleton-block" aria-hidden="true" />
       </div>
     );
   }
-  if (error) return <div className="panel error-text">{error}</div>;
+
+  if (error) {
+    return (
+      <section className="panel">
+        <div className="error-banner" role="alert">
+          <p className="error-text">{error}</p>
+        </div>
+        <button type="button" className="button primary" onClick={() => void loadInstruments()}>
+          重新加载
+        </button>
+      </section>
+    );
+  }
 
   return (
     <div className="panel">
       <div className="header-row">
-        <h2>标的管理</h2>
-        <Link href="/instruments/new" className="button primary">新增标的</Link>
+        <div>
+          <p className="eyebrow">配置</p>
+          <h2 className="section-title">已配置标的</h2>
+          <p className="summary">
+            {instruments.length === 0
+              ? "创建第一个标的以开始轮询与告警。"
+              : `共 ${instruments.length} 个标的，${instruments.filter((i) => i.enabled).length} 个已启用。`}
+          </p>
+        </div>
+        <Link href="/instruments/new" className="button primary">
+          新增标的
+        </Link>
       </div>
-      
+
+      {deleteError && (
+        <div className="error-banner" role="alert">
+          <p className="error-text">{deleteError}</p>
+        </div>
+      )}
+
       {instruments.length === 0 ? (
-        <p className="summary">尚未配置标的。</p>
+        <div className="empty-state empty-state--action">
+          <p>尚未配置标的。</p>
+          <Link href="/instruments/new" className="button primary">
+            创建第一个标的
+          </Link>
+        </div>
       ) : (
         <div className="table-container">
           <table className="data-table">
@@ -76,18 +114,58 @@ export function InstrumentList() {
               </tr>
             </thead>
             <tbody>
-              {instruments.map(inst => (
+              {instruments.map((inst) => (
                 <tr key={inst.id}>
                   <td>{inst.name}</td>
-                  <td>{inst.enabled ? "启用" : "停用"}</td>
-                  <td>{inst.support}</td>
-                  <td>{inst.resistance}</td>
+                  <td>
+                    <span className={`status-pill ${inst.enabled ? "status-pill--ready" : "status-pill--idle"}`}>
+                      {inst.enabled ? "启用" : "停用"}
+                    </span>
+                  </td>
+                  <td className="price-cell">{inst.support}</td>
+                  <td className="price-cell">{inst.resistance}</td>
                   <td>{inst.near_support_threshold}</td>
                   <td>{inst.risk_reward_threshold}</td>
                   <td>{inst.source_mappings.length}</td>
                   <td className="actions">
-                    <Link href={`/instruments/${inst.id}/edit`} className="button small">编辑</Link>
-                    <button onClick={() => handleDelete(inst.id)} className="button small danger">删除</button>
+                    <Link href={`/instruments/${inst.id}/edit`} className="button small">
+                      编辑
+                    </Link>
+                    {pendingDeleteId === inst.id ? (
+                      <div className="inline-confirm">
+                        <span className="inline-confirm__label">确认删除？</span>
+                        <button
+                          type="button"
+                          className="button small danger"
+                          disabled={deletingId === inst.id}
+                          onClick={() => void confirmDelete(inst.id)}
+                        >
+                          {deletingId === inst.id ? "删除中..." : "确认"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button small"
+                          disabled={deletingId === inst.id}
+                          onClick={() => {
+                            setPendingDeleteId(null);
+                            setDeleteError(null);
+                          }}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingDeleteId(inst.id);
+                          setDeleteError(null);
+                        }}
+                        className="button small danger"
+                      >
+                        删除
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

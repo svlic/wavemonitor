@@ -46,7 +46,6 @@ const mockInstruments: readonly InstrumentWithMappings[] = [
 describe("InstrumentList", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, 'confirm').mockImplementation(() => true);
   });
 
   it("renders loading state initially", () => {
@@ -85,8 +84,8 @@ describe("InstrumentList", () => {
       expect(screen.getByText("BTC/USD")).toBeInTheDocument();
     });
 
-    const deleteButton = screen.getByRole("button", { name: "删除" });
-    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
 
     await waitFor(() => {
       expect(apiClient.deleteInstrument).toHaveBeenCalledWith(1);

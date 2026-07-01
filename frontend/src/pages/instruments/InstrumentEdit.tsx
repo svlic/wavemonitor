@@ -16,7 +16,7 @@ export function InstrumentEdit({ id }: Props) {
 
   useEffect(() => {
     const controller = new AbortController();
-    
+
     async function load() {
       try {
         const data = await apiClient.getInstrument(id, controller.signal);
@@ -28,8 +28,8 @@ export function InstrumentEdit({ id }: Props) {
         setLoading(false);
       }
     }
-    
-    load();
+
+    void load();
     return () => controller.abort();
   }, [id]);
 
@@ -38,8 +38,28 @@ export function InstrumentEdit({ id }: Props) {
     setLocation("/instruments");
   };
 
-  if (loading) return <div className="panel">正在加载标的...</div>;
-  if (error || !instrument) return <div className="panel error-text">{error || "未找到标的"}</div>;
+  if (loading) {
+    return (
+      <div className="panel loading-panel" role="status" aria-live="polite">
+        <p className="muted-text">正在加载标的...</p>
+        <div className="skeleton skeleton-line skeleton-line--medium" aria-hidden="true" />
+        <div className="skeleton skeleton-block" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (error || !instrument) {
+    return (
+      <section className="panel">
+        <div className="error-banner" role="alert">
+          <p className="error-text">{error ?? "未找到标的"}</p>
+        </div>
+        <button type="button" className="button" onClick={() => setLocation("/instruments")}>
+          返回列表
+        </button>
+      </section>
+    );
+  }
 
   return (
     <InstrumentForm

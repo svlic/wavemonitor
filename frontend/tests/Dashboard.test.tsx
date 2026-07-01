@@ -146,9 +146,9 @@ describe("Dashboard", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("Bitcoin").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("binance (usd_m_futures BTCUSDT)").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Binance · USD-M 合约 · BTCUSDT").length).toBeGreaterThan(0);
       expect(screen.getByText("95000.50")).toBeInTheDocument();
-      expect(screen.getByText("near_support")).toBeInTheDocument();
+      expect(screen.getByText("接近支撑")).toBeInTheDocument();
       expect(screen.getByText("90500.00")).toBeInTheDocument();
       expect(screen.getByText("Connection timed out")).toBeInTheDocument();
     });

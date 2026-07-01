@@ -10,7 +10,51 @@ import "./styles.css";
 
 type AuthState = "checking" | "authenticated" | "password-required";
 
-function NavLink({ href, children }: { href: string; children: ReactNode }) {
+type PageMeta = {
+  title: string;
+  description: string;
+};
+
+function getPageMeta(path: string): PageMeta {
+  if (path === "/") {
+    return {
+      title: "仪表盘",
+      description: "查看调度状态、最新价格、近期告警与数据源健康情况。",
+    };
+  }
+  if (path === "/instruments") {
+    return {
+      title: "标的管理",
+      description: "配置监控标的、支撑/阻力与多数据源映射。",
+    };
+  }
+  if (path === "/instruments/new") {
+    return {
+      title: "新增标的",
+      description: "创建标的并绑定至少一个行情数据源。",
+    };
+  }
+  if (/^\/instruments\/\d+\/edit$/.test(path)) {
+    return {
+      title: "编辑标的",
+      description: "更新规则阈值与数据源映射。",
+    };
+  }
+  return {
+    title: "WaveMonitor",
+    description: "价格与告警监控后台。",
+  };
+}
+
+function NavLink({
+  href,
+  children,
+  onNavigate,
+}: {
+  href: string;
+  children: ReactNode;
+  onNavigate?: () => void;
+}) {
   const [location] = useLocation();
   const isActive =
     href === "/"
@@ -18,7 +62,11 @@ function NavLink({ href, children }: { href: string; children: ReactNode }) {
       : location === href || location.startsWith(`${href}/`);
 
   return (
-    <Link href={href} className={isActive ? "nav-link nav-link--active" : "nav-link"}>
+    <Link
+      href={href}
+      className={isActive ? "nav-link nav-link--active" : "nav-link"}
+      onClick={onNavigate}
+    >
       {children}
     </Link>
   );
@@ -72,50 +120,104 @@ function LoginGate({ onAuthenticated }: { onAuthenticated: () => void }) {
   );
 }
 
-function AppShell() {
+type AppShellProps = {
+  authEnabled: boolean;
+  onLogout: () => void;
+  logoutPending: boolean;
+};
+
+function AppShell({ authEnabled, onLogout, logoutPending }: AppShellProps) {
+  const [location] = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const page = getPageMeta(location);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location]);
+
   return (
-    <div className="app-layout">
+    <div className={`app-layout${mobileNavOpen ? " app-layout--nav-open" : ""}`}>
       <nav className="sidebar" aria-label="主导航">
-        <div className="sidebar-header">
-          <span className="brand-mark" aria-hidden="true" />
-          <h2 className="brand-title">WaveMonitor</h2>
-          <p className="brand-tagline">价格与告警监控</p>
+        <div className="sidebar-top">
+          <div className="sidebar-header">
+            <span className="brand-mark" aria-hidden="true" />
+            <div className="brand-copy">
+              <h2 className="brand-title">WaveMonitor</h2>
+              <p className="brand-tagline">价格与告警监控</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="nav-toggle button small"
+            aria-expanded={mobileNavOpen}
+            aria-controls="primary-nav"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            {mobileNavOpen ? "收起菜单" : "打开菜单"}
+          </button>
         </div>
-        <ul className="nav-links">
+        <ul id="primary-nav" className="nav-links">
           <li>
-            <NavLink href="/">仪表盘</NavLink>
+            <NavLink href="/" onNavigate={() => setMobileNavOpen(false)}>
+              仪表盘
+            </NavLink>
           </li>
           <li>
-            <NavLink href="/instruments">标的管理</NavLink>
+            <NavLink href="/instruments" onNavigate={() => setMobileNavOpen(false)}>
+              标的管理
+            </NavLink>
           </li>
         </ul>
+        {authEnabled && (
+          <div className="sidebar-footer">
+            <button
+              type="button"
+              className="button small sidebar-logout"
+              onClick={onLogout}
+              disabled={logoutPending}
+            >
+              {logoutPending ? "退出中..." : "退出登录"}
+            </button>
+          </div>
+        )}
       </nav>
-      <main className="main-content">
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/instruments" component={InstrumentList} />
-          <Route path="/instruments/new" component={InstrumentCreate} />
-          <Route path="/instruments/:id/edit">
-            {params => <InstrumentEdit id={params.id} />}
-          </Route>
-          <Route>
-            <div className="panel panel--centered">
-              <p className="eyebrow">404</p>
-              <h1>页面未找到</h1>
-              <p className="summary">你访问的页面不存在。</p>
-              <Link href="/" className="button primary">
-                返回仪表盘
-              </Link>
-            </div>
-          </Route>
-        </Switch>
-      </main>
+      <div className="main-column">
+        <header className="page-header">
+          <div className="page-header__copy">
+            <p className="eyebrow">监控后台</p>
+            <h1 className="page-title">{page.title}</h1>
+            <p className="page-description">{page.description}</p>
+          </div>
+        </header>
+        <main className="main-content">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/instruments" component={InstrumentList} />
+            <Route path="/instruments/new" component={InstrumentCreate} />
+            <Route path="/instruments/:id/edit">
+              {(params) => <InstrumentEdit id={params.id} />}
+            </Route>
+            <Route>
+              <div className="panel panel--centered">
+                <p className="eyebrow">404</p>
+                <h1>页面未找到</h1>
+                <p className="summary">你访问的页面不存在。</p>
+                <Link href="/" className="button primary">
+                  返回仪表盘
+                </Link>
+              </div>
+            </Route>
+          </Switch>
+        </main>
+      </div>
     </div>
   );
 }
 
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("checking");
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,11 +225,13 @@ export function App() {
     async function loadSession() {
       try {
         const status = await apiClient.getAuthSession(controller.signal);
+        setAuthEnabled(status.auth_enabled);
         setAuthState(status.auth_enabled && !status.authenticated ? "password-required" : "authenticated");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
+        setAuthEnabled(true);
         setAuthState("password-required");
       }
     }
@@ -135,6 +239,18 @@ export function App() {
     loadSession();
     return () => controller.abort();
   }, []);
+
+  const handleLogout = async () => {
+    setLogoutPending(true);
+    try {
+      await apiClient.logout();
+    } catch {
+      // Still clear local session UX if network fails.
+    } finally {
+      setLogoutPending(false);
+      setAuthState("password-required");
+    }
+  };
 
   if (authState === "checking") {
     return (
@@ -150,5 +266,7 @@ export function App() {
     return <LoginGate onAuthenticated={() => setAuthState("authenticated")} />;
   }
 
-  return <AppShell />;
+  return (
+    <AppShell authEnabled={authEnabled} onLogout={handleLogout} logoutPending={logoutPending} />
+  );
 }
