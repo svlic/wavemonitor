@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -55,13 +56,27 @@ def _parse_price(raw_price: object, path: str) -> PricePayload | None:
         return None
     if isinstance(raw_price, Decimal):
         price = raw_price
-    elif isinstance(raw_price, str | int):
+    elif isinstance(raw_price, bool):
+        raise MalformedProviderPriceError(path, raw_price)
+    elif isinstance(raw_price, int):
+        price = Decimal(raw_price)
+    elif isinstance(raw_price, float):
+        if not math.isfinite(raw_price):
+            raise MalformedProviderPriceError(path, raw_price)
+        price = Decimal(str(raw_price))
+    elif isinstance(raw_price, str):
         try:
             price = Decimal(raw_price)
         except InvalidOperation as exc:
             raise MalformedProviderPriceError(path, raw_price) from exc
     else:
-        raise MalformedProviderPriceError(path, raw_price)
+        try:
+            as_float = float(raw_price)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise MalformedProviderPriceError(path, raw_price) from None
+        if not math.isfinite(as_float):
+            raise MalformedProviderPriceError(path, raw_price)
+        price = Decimal(str(as_float))
     if not price.is_finite():
         raise MalformedProviderPriceError(path, raw_price)
     return PricePayload(path=path, raw_price=raw_price, price=price)
@@ -116,7 +131,8 @@ class YFinanceAdapter:
         self._ticker_factory = ticker_factory or self._default_ticker_factory
         self._clock = clock
 
-    def get_latest_price(self, symbol: str) -> PriceAdapterResult:
+    def get_latest_price(self, symbol: str, market_type: MarketType) -> PriceAdapterResult:
+        _ = market_type
         identity = PriceIdentity(Provider.YFINANCE, MarketType.EQUITY, _normalize_symbol(symbol))
         try:
             ticker = self._ticker_factory(identity.symbol)
@@ -155,7 +171,15 @@ class YFinanceAdapter:
         if bool(getattr(history, "empty", True)):
             return None
         row = history.iloc[-1]
-        raw_price = row.get("Close") if isinstance(row, dict) else None
+        if isinstance(row, dict):
+            raw_price = row.get("Close")
+        else:
+            raw_price = getattr(row, "get", lambda _key, default=None: default)("Close")
+            if raw_price is None and hasattr(row, "__getitem__"):
+                try:
+                    raw_price = row["Close"]
+                except (KeyError, TypeError, IndexError):
+                    raw_price = None
         payload = _parse_price(raw_price, "history.close")
         return None if payload is None else _price_result(
             identity,
@@ -252,7 +276,8 @@ class HyperliquidAdapter:
         self._info_client = info_client
         self._clock = clock
 
-    def get_latest_price(self, symbol: str) -> PriceAdapterResult:
+    def get_latest_price(self, symbol: str, market_type: MarketType) -> PriceAdapterResult:
+        _ = market_type
         identity = PriceIdentity(
             Provider.HYPERLIQUID,
             MarketType.PERPETUAL,

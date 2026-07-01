@@ -100,6 +100,22 @@ def _fail_network_call(symbol: str) -> NoReturn:
     raise AssertionError(f"unexpected live network factory call for {symbol}")
 
 
+def test_yfinance_adapter_returns_fast_info_last_price_when_float():
+    observed_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+    ticker = FakeYFinanceTicker(fast_info={"last_price": 62.22990036010742})
+    adapter = YFinanceAdapter(ticker_factory=lambda symbol: ticker, clock=lambda: observed_at)
+
+    result = adapter.get_latest_price("CRCL", MarketType.EQUITY)
+
+    assert isinstance(result, PriceResult)
+    assert result.symbol == "CRCL"
+    assert result.price == Decimal("62.22990036010742")
+    assert result.raw_metadata == {
+        "path": "fast_info.last_price",
+        "raw_price": 62.22990036010742,
+    }
+
+
 def test_yfinance_adapter_returns_fast_info_last_price_when_present():
     # Given: a yfinance ticker with fast_info.last_price available for AAPL.
     observed_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
@@ -107,7 +123,7 @@ def test_yfinance_adapter_returns_fast_info_last_price_when_present():
     adapter = YFinanceAdapter(ticker_factory=lambda symbol: ticker, clock=lambda: observed_at)
 
     # When: the latest price is requested.
-    result = adapter.get_latest_price("AAPL")
+    result = adapter.get_latest_price("AAPL", MarketType.EQUITY)
 
     # Then: the normalized contract carries source identity, price, timestamp, and metadata.
     assert isinstance(result, PriceResult)
@@ -120,13 +136,51 @@ def test_yfinance_adapter_returns_fast_info_last_price_when_present():
     assert ticker.history_calls == []
 
 
+def test_yfinance_adapter_falls_back_to_history_close_from_pandas_like_row():
+    observed_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+
+    class FakeSeries:
+        def __getitem__(self, key: str) -> object:
+            if key == "Close":
+                return 62.24800109863281
+            raise KeyError(key)
+
+    class FakeHistoryFrameWithSeries:
+        empty = False
+
+        class _ILoc:
+            @staticmethod
+            def __getitem__(_index: int) -> FakeSeries:
+                return FakeSeries()
+
+        iloc = _ILoc()
+
+    class FakeHistoryWithSeries:
+        fast_info: object = {}
+
+        def history(self, *, period: str, interval: str) -> FakeHistoryFrameWithSeries:
+            return FakeHistoryFrameWithSeries()
+
+    ticker = FakeHistoryWithSeries()
+    adapter = YFinanceAdapter(
+        ticker_factory=lambda symbol: ticker,
+        clock=lambda: observed_at,
+    )
+
+    result = adapter.get_latest_price("CRCL", MarketType.EQUITY)
+
+    assert isinstance(result, PriceResult)
+    assert result.price == Decimal("62.24800109863281")
+    assert result.raw_metadata == {"path": "history.close", "raw_price": 62.24800109863281}
+
+
 def test_yfinance_adapter_falls_back_to_latest_one_minute_history_close():
     # Given: fast_info lacks a usable last_price but 1m history has a latest close.
     ticker = FakeYFinanceTicker(fast_info={}, history_rows=[{"Close": "213.11"}])
     adapter = YFinanceAdapter(ticker_factory=lambda symbol: ticker)
 
     # When: the latest price is requested.
-    result = adapter.get_latest_price("AAPL")
+    result = adapter.get_latest_price("AAPL", MarketType.EQUITY)
 
     # Then: the adapter uses the planned 1d/1m close fallback without live network access.
     assert result.price == Decimal("213.11")
@@ -140,7 +194,7 @@ def test_yfinance_adapter_returns_missing_symbol_error_when_no_quote_exists():
     adapter = YFinanceAdapter(ticker_factory=lambda symbol: ticker)
 
     # When: the latest price is requested.
-    result = adapter.get_latest_price("AAPL")
+    result = adapter.get_latest_price("AAPL", MarketType.EQUITY)
 
     # Then: callers receive a typed missing-symbol error instead of an exception.
     assert result == AdapterError(
@@ -159,7 +213,7 @@ def test_yfinance_adapter_returns_malformed_price_error_for_bad_decimal_string()
     adapter = YFinanceAdapter(ticker_factory=lambda symbol: ticker)
 
     # When: the latest price is requested.
-    result = adapter.get_latest_price("AAPL")
+    result = adapter.get_latest_price("AAPL", MarketType.EQUITY)
 
     # Then: malformed input is captured as a typed adapter error without crashing.
     assert isinstance(result, AdapterError)
@@ -174,7 +228,7 @@ def test_yfinance_adapter_maps_provider_timeout_to_typed_error():
     )
 
     # When: the latest price is requested.
-    result = adapter.get_latest_price("AAPL")
+    result = adapter.get_latest_price("AAPL", MarketType.EQUITY)
 
     # Then: timeout/error mapping is typed for scheduler-safe handling.
     assert isinstance(result, AdapterError)
@@ -275,7 +329,7 @@ def test_hyperliquid_adapter_looks_up_all_mids_coin_and_parses_decimal_string():
     adapter = HyperliquidAdapter(info_client=info)
 
     # When: BTC latest price is requested.
-    result = adapter.get_latest_price("BTC")
+    result = adapter.get_latest_price("BTC", MarketType.PERPETUAL)
 
     # Then: all_mids lookup returns a Decimal-safe perpetual price.
     assert isinstance(result, PriceResult)
@@ -296,7 +350,7 @@ def test_hyperliquid_adapter_looks_up_dex_prefixed_hip3_symbols():
     adapter = HyperliquidAdapter(info_client=info)
 
     # When: the dex-prefixed latest price is requested.
-    result = adapter.get_latest_price("xyz:CRCL")
+    result = adapter.get_latest_price("xyz:CRCL", MarketType.PERPETUAL)
 
     # Then: the adapter routes to that DEX and preserves the lowercase dex prefix.
     assert isinstance(result, PriceResult)
@@ -312,7 +366,7 @@ def test_hyperliquid_adapter_returns_missing_symbol_for_absent_coin():
     adapter = HyperliquidAdapter(info_client=FakeHyperliquidInfo({"BTC": "60324.125"}))
 
     # When: DOGE latest price is requested.
-    result = adapter.get_latest_price("DOGE")
+    result = adapter.get_latest_price("DOGE", MarketType.PERPETUAL)
 
     # Then: missing symbol is typed rather than raising KeyError.
     assert isinstance(result, AdapterError)
@@ -325,7 +379,7 @@ def test_hyperliquid_adapter_maps_provider_errors_to_typed_error():
     adapter = HyperliquidAdapter(info_client=FakeHyperliquidInfo(RuntimeError("sdk unavailable")))
 
     # When: BTC latest price is requested.
-    result = adapter.get_latest_price("BTC")
+    result = adapter.get_latest_price("BTC", MarketType.PERPETUAL)
 
     # Then: future scheduler callers receive a typed provider error.
     assert isinstance(result, AdapterError)
@@ -344,9 +398,9 @@ def test_adapters_do_not_create_default_clients_during_mocked_tests():
 
     # When: injected clients are used for non-yfinance adapters.
     binance_result = binance_adapter.get_latest_price("BTCUSDT", MarketType.USD_M_FUTURES)
-    hyperliquid_result = hyperliquid_adapter.get_latest_price("BTC")
+    hyperliquid_result = hyperliquid_adapter.get_latest_price("BTC", MarketType.PERPETUAL)
 
     # Then: tests stay offline and yfinance network factories are not invoked implicitly.
     assert isinstance(binance_result, PriceResult)
     assert isinstance(hyperliquid_result, PriceResult)
-    assert yfinance_adapter.get_latest_price("AAPL").kind == AdapterErrorKind.PROVIDER_ERROR
+    assert yfinance_adapter.get_latest_price("AAPL", MarketType.EQUITY).kind == AdapterErrorKind.PROVIDER_ERROR
