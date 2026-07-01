@@ -27,6 +27,7 @@ coverage/
 # Data & OS
 *.sqlite3
 *.sqlite3-journal
+session_secret
 .DS_Store
 Thumbs.db
 

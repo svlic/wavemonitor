@@ -7,6 +7,7 @@
 - **标的管理**：配置名称、支撑/阻力、阈值及多数据源映射（交易所、品种、是否启用）
 - **仪表盘**：系统运行状态、最新价格、近期告警、数据源错误
 - **Telegram**：配置 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_CHAT_ID` 后可发送测试消息与告警
+- **访问验证**：可通过 `WAVEMONITOR_WEB_PASSWORD` 启用首次访问密码验证（无需账号）
 
 ## 技术栈
 
@@ -71,6 +72,12 @@ TELEGRAM_BOT_TOKEN=123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # 接收告警的 Chat ID（可为个人、群组或频道；频道常用 -100 开头）
 TELEGRAM_CHAT_ID=-1001234567890
 
+# ---------- 可选：Web 访问验证（不填则关闭密码验证）----------
+# 首次访问前端和受保护 /api 时使用的共享密码，无需账号
+WAVEMONITOR_WEB_PASSWORD=change-me
+# 可选：Cookie 签名密钥；不填则在首次启动时自动生成并保存在 SQLite 同目录（Docker 为 /data/session_secret）
+# WAVEMONITOR_SESSION_SECRET=
+
 # ---------- 本地开发常用（Docker Compose 默认不读取下列变量，见下文说明）----------
 # 后端监听（本地 uvicorn 时使用）
 BACKEND_HOST=0.0.0.0
@@ -93,6 +100,8 @@ VITE_API_BASE_URL=http://localhost:8000
 | `DATABASE_URL` | `sqlite:////data/wavemonitor.sqlite3` | 固定写在 compose 中，覆盖 `.env` 里同名项对**容器**无效 |
 | `TELEGRAM_BOT_TOKEN` | 从宿主机 `.env` 或环境传入 | 空则 Telegram 未就绪 |
 | `TELEGRAM_CHAT_ID` | 从宿主机 `.env` 或环境传入 | 须与 Token 同时配置 |
+| `WAVEMONITOR_WEB_PASSWORD` | 从宿主机 `.env` 或环境传入 | 空则关闭访问验证；设置后首次访问需输入共享密码 |
+| `WAVEMONITOR_SESSION_SECRET` | 可选；未设置时自动生成并写入数据卷 `/data/session_secret` | 覆盖自动生成的 Cookie 签名密钥（多实例部署时需显式配置同一密钥） |
 
 Compose **不会**自动把 `WAVEMONITOR_POLL_INTERVAL_SECONDS`、`WAVEMONITOR_MONITORING_DISABLED` 传入容器。若要在 Docker 中调整轮询间隔或关闭调度，在 `docker-compose.yml` 的 `backend.environment` 中增加，例如：
 
@@ -130,9 +139,10 @@ curl -s http://localhost:8000/api/runtime | python3 -m json.tool
 
 在 Web 界面中：
 
-1. 打开 **Instruments**，新建标的并配置支撑/阻力、阈值及数据源（YFinance / Binance / Hyperliquid 等）。
-2. 在 **Dashboard** 查看 `scheduler_ready`、`polled_sources`、最新价格与告警。
-3. 若已配置 Telegram，使用界面中的 Telegram 测试（或 `POST /api/telegram/test`）确认推送。
+1. 若设置了 `WAVEMONITOR_WEB_PASSWORD`，先在中文访问验证页输入共享密码；会话通过 7 天有效的 `HttpOnly` Cookie 保持。
+2. 打开 **标的管理**，新建标的并配置支撑/阻力、阈值及数据源（YFinance / Binance / Hyperliquid 等）；Symbol 输入框会通过实时查询接口给出候选项，也支持手动输入。
+3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources`、最新价格与告警。
+4. 若已配置 Telegram，使用界面中的 Telegram 测试（或 `POST /api/telegram/test`）确认推送。
 
 ### 5. 日常运维
 
@@ -190,6 +200,8 @@ docker compose up --build -d
 | `DATABASE_URL` | 本地：`sqlite:///./wavemonitor.sqlite3` | SQLAlchemy 连接串；Docker 后端使用卷内绝对路径 |
 | `TELEGRAM_BOT_TOKEN` | 无 | Telegram Bot Token（可选） |
 | `TELEGRAM_CHAT_ID` | 无 | 告警接收方 Chat ID（可选） |
+| `WAVEMONITOR_WEB_PASSWORD` | 无，访问验证关闭 | 设置后，前端首次访问显示密码验证页，且 `/api/*` 需要会话 Cookie（`/api/auth/*` 与 `/health` 除外） |
+| `WAVEMONITOR_SESSION_SECRET` | 无（启用密码时自动生成并持久化） | 可选覆盖；未设置时在数据库文件旁写入 `session_secret` |
 | `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `60` | 行情轮询周期（秒），须 > 0 |
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
 | `RUN_LIVE_SMOKE` | 未设置 | 设为 `1` 时执行 `backend/scripts/live_smoke.py` 实网探测 |

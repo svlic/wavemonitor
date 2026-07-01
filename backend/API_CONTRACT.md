@@ -5,6 +5,10 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Returns `{ status: "ok", telegram_ready: boolean }` without requiring optional Telegram env. |
+| GET | `/api/auth/session` | Returns `{ authenticated, auth_enabled }`; auth endpoints stay public so the frontend can decide whether to show the password gate. |
+| POST | `/api/auth/login` | Accepts `{ password }`, compares it to `WAVEMONITOR_WEB_PASSWORD`, and issues a 7-day `HttpOnly` `wavemonitor_session` cookie when valid. |
+| POST | `/api/auth/logout` | Clears the `wavemonitor_session` cookie. |
+| GET | `/api/symbols/query` | Query params: `provider`, `market_type`, `q`. Returns realtime symbol options as `{ options: [{ symbol, label, provider, market_type }] }`. |
 | GET | `/api/instruments` | Lists configured instruments with source mappings. |
 | POST | `/api/instruments` | Creates an instrument and source mappings. |
 | PUT | `/api/instruments/{instrument_id}` | Replaces instrument fields and source mappings. |
@@ -16,6 +20,12 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | GET | `/api/runtime` | Returns scheduler/provider/Telegram readiness, polling counters, alert/delivery counters, and last tick timestamps. |
 | GET | `/api/telegram/readiness` | Returns Telegram readiness only; secrets are never exposed. |
 | POST | `/api/telegram/test` | Sends a Telegram test only when credentials are configured; response/logs redact secrets. |
+
+## Authentication
+
+When `WAVEMONITOR_WEB_PASSWORD` is unset, `/api/*` remains public for local/development compatibility. When it is set, every `/api/*` route requires the signed `wavemonitor_session` cookie except `/api/auth/session`, `/api/auth/login`, and `/api/auth/logout`. `/health` is always public.
+
+The cookie is signed with `WAVEMONITOR_SESSION_SECRET` when set; otherwise the backend generates a random secret on first start and persists it beside the SQLite database file (`session_secret` next to the DB path, or `/data/session_secret` in the default Docker layout).
 
 ## Live smoke guard
 
