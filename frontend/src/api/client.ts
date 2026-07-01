@@ -20,6 +20,13 @@ const RuntimeResponseSchema = z.object({
 
 export type RuntimeResponse = z.infer<typeof RuntimeResponseSchema>;
 
+const AuthStatusResponseSchema = z.object({
+  authenticated: z.boolean(),
+  auth_enabled: z.boolean(),
+});
+
+export type AuthStatusResponse = z.infer<typeof AuthStatusResponseSchema>;
+
 const TelegramTestResponseSchema = z.object({
   sent: z.boolean(),
   telegram_ready: z.boolean(),
@@ -119,6 +126,19 @@ const CreateInstrumentRequestSchema = z.object({
 
 export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
 
+const SymbolOptionSchema = z.object({
+  symbol: z.string(),
+  label: z.string(),
+  provider: z.string(),
+  market_type: z.string(),
+});
+
+export type SymbolOption = z.infer<typeof SymbolOptionSchema>;
+
+const SymbolQueryResponseSchema = z.object({
+  options: z.array(SymbolOptionSchema),
+});
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -133,10 +153,11 @@ export class ApiClient {
   constructor(private readonly baseUrl: string) {}
 
   private requestInit(signal?: AbortSignal, init: RequestInit = {}): RequestInit {
-    if (signal === undefined) {
-      return init;
-    }
-    return { ...init, signal };
+    return signal === undefined ? init : { ...init, signal };
+  }
+
+  private buildUrl(path: string): string | URL {
+    return this.baseUrl === "" ? path : new URL(path, this.baseUrl);
   }
 
   private async fetch<T>(
@@ -144,9 +165,9 @@ export class ApiClient {
     schema: z.ZodType<T>,
     options?: RequestInit,
   ): Promise<T> {
-    const url = this.baseUrl === "" ? path : new URL(path, this.baseUrl);
-    const response = await fetch(url, {
+    const response = await fetch(this.buildUrl(path), {
       ...options,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
@@ -177,7 +198,7 @@ export class ApiClient {
       return result.data;
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
     const result = schema.safeParse(data);
 
     if (!result.success) {
@@ -185,6 +206,22 @@ export class ApiClient {
     }
 
     return result.data;
+  }
+
+  async getAuthSession(signal?: AbortSignal): Promise<AuthStatusResponse> {
+    return this.fetch("/api/auth/session", AuthStatusResponseSchema, this.requestInit(signal));
+  }
+
+  async login(password: string, signal?: AbortSignal): Promise<AuthStatusResponse> {
+    return this.fetch(
+      "/api/auth/login",
+      AuthStatusResponseSchema,
+      this.requestInit(signal, { method: "POST", body: JSON.stringify({ password }) }),
+    );
+  }
+
+  async logout(signal?: AbortSignal): Promise<AuthStatusResponse> {
+    return this.fetch("/api/auth/logout", AuthStatusResponseSchema, this.requestInit(signal, { method: "POST" }));
   }
 
   async getRuntime(signal?: AbortSignal): Promise<RuntimeResponse> {
@@ -209,6 +246,21 @@ export class ApiClient {
       TelegramTestResponseSchema,
       this.requestInit(signal, { method: "POST" }),
     );
+  }
+
+  async querySymbols(
+    provider: string,
+    marketType: string,
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<readonly SymbolOption[]> {
+    const params = new URLSearchParams({ provider, market_type: marketType, q: query });
+    const response = await this.fetch(
+      `/api/symbols/query?${params.toString()}`,
+      SymbolQueryResponseSchema,
+      this.requestInit(signal),
+    );
+    return response.options;
   }
 
   async getInstruments(signal?: AbortSignal): Promise<readonly InstrumentWithMappings[]> {
