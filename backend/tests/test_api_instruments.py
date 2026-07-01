@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from wavemonitor_backend.app import AppRuntime, create_app
+from wavemonitor_backend.db import create_database_engine, session_scope
+from wavemonitor_backend.models import LastRuleState
+from wavemonitor_backend.rule_types import RuleEvaluation
+from wavemonitor_backend.rules import RuleState, persist_rule_evaluation
 from wavemonitor_backend.notifier import TelegramSendSuccess
 from wavemonitor_backend.settings import Settings
 
@@ -238,6 +245,15 @@ def test_health_runtime_recent_alerts_and_telegram_test_redact_secrets(tmp_path:
         ),
         (
             VALID_PAYLOAD
+            | {
+                "source_mappings": [
+                    {"provider": "yfinance", "market_type": "usd_m_futures", "symbol": "AAPL"}
+                ]
+            },
+            "not supported",
+        ),
+        (
+            VALID_PAYLOAD
             | {"source_mappings": [{"provider": "yfinance", "market_type": "equity", "symbol": " "}]},
             "symbol",
         ),
@@ -352,3 +368,79 @@ def test_update_duplicate_source_mapping_returns_409_without_partial_commit(clie
     assert row["name"] == "Bitcoin"
     assert len(row["source_mappings"]) == 1
     assert row["source_mappings"][0]["provider"] == "hyperliquid"
+
+
+def test_update_rule_fields_clears_last_rule_state(client: TestClient, tmp_path: Path):
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    instrument_id = created["id"]
+    source_mapping_id = created["source_mappings"][0]["id"]
+
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    observed_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    with session_scope(engine) as session:
+        persist_rule_evaluation(
+            session=session,
+            instrument_id=instrument_id,
+            source_mapping_id=source_mapping_id,
+            evaluation=RuleEvaluation(
+                alerts=(),
+                next_state=RuleState(
+                    last_price=Decimal("95000"),
+                    near_support_active=True,
+                ),
+                invalid_state=None,
+            ),
+            observed_at=observed_at,
+        )
+        session.commit()
+        assert session.exec(select(LastRuleState)).all()
+
+    update_response = client.put(
+        f"/api/instruments/{instrument_id}",
+        json={**VALID_PAYLOAD, "support": "89000.00"},
+    )
+    assert update_response.status_code == 200
+
+    with session_scope(engine) as session:
+        states = session.exec(
+            select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
+        ).all()
+        assert states == []
+
+
+def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path: Path):
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    instrument_id = created["id"]
+    source_mapping_id = created["source_mappings"][0]["id"]
+
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    observed_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    with session_scope(engine) as session:
+        persist_rule_evaluation(
+            session=session,
+            instrument_id=instrument_id,
+            source_mapping_id=source_mapping_id,
+            evaluation=RuleEvaluation(
+                alerts=(),
+                next_state=RuleState(last_price=Decimal("95000"), near_support_active=True),
+                invalid_state=None,
+            ),
+            observed_at=observed_at,
+        )
+        session.commit()
+
+    update_response = client.put(
+        f"/api/instruments/{instrument_id}",
+        json={**VALID_PAYLOAD, "name": "Bitcoin renamed"},
+    )
+    assert update_response.status_code == 200
+
+    with session_scope(engine) as session:
+        state = session.exec(
+            select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
+        ).one()
+        assert state.near_support_active is True

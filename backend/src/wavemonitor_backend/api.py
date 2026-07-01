@@ -65,6 +65,7 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
 
 def update_instrument(session: Session, instrument_id: int, payload: InstrumentRequest) -> InstrumentResponse:
     instrument = get_instrument(session, instrument_id)
+    rule_fields_changed = instrument_rule_fields_changed(instrument, payload)
     instrument.name = payload.name
     instrument.enabled = payload.enabled
     instrument.support = payload.support
@@ -74,6 +75,8 @@ def update_instrument(session: Session, instrument_id: int, payload: InstrumentR
     instrument.updated_at = datetime.now(UTC)
     try:
         sync_source_mappings(session, instrument_id, payload)
+        if rule_fields_changed:
+            clear_last_rule_states_for_instrument(session, instrument_id)
         session.add(instrument)
         session.commit()
     except IntegrityError as exc:
@@ -184,6 +187,22 @@ def recent_alerts_for(session: Session, instrument_id: int) -> list[AlertEvent]:
         .limit(10)
     )
     return list(session.exec(statement).all())
+
+
+def instrument_rule_fields_changed(instrument: Instrument, payload: InstrumentRequest) -> bool:
+    return (
+        instrument.support != payload.support
+        or instrument.resistance != payload.resistance
+        or instrument.near_support_threshold != payload.near_support_threshold
+        or instrument.risk_reward_threshold != payload.risk_reward_threshold
+    )
+
+
+def clear_last_rule_states_for_instrument(session: Session, instrument_id: int) -> None:
+    for state in session.exec(
+        select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
+    ).all():
+        session.delete(state)
 
 
 def add_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:
