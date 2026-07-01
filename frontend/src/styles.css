@@ -313,6 +313,7 @@ label {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="number"],
 select {
   width: 100%;
@@ -349,7 +350,7 @@ select:focus {
 
 .mapping-row {
   display: grid;
-  grid-template-columns: 2fr 2fr auto auto;
+  grid-template-columns: 1.2fr 1.2fr minmax(12rem, 2fr) auto auto;
   gap: 1rem;
   align-items: end;
   padding: 1rem;
@@ -365,6 +366,65 @@ select:focus {
 
 .mapping-enabled {
   padding-bottom: 0.5rem;
+}
+
+.auth-layout {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.auth-panel {
+  width: min(100%, 26rem);
+}
+
+.symbol-combobox {
+  position: relative;
+}
+
+.field-hint {
+  margin: 0.45rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.field-hint--error {
+  color: var(--color-danger);
+}
+
+.symbol-options {
+  position: absolute;
+  z-index: 5;
+  width: 100%;
+  max-height: 12rem;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0.35rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-panel);
+}
+
+.symbol-option {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.symbol-option:hover,
+.symbol-option:focus-visible {
+  outline: none;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
 }
 
 .form-actions {
