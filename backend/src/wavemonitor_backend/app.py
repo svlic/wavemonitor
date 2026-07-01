@@ -1,6 +1,7 @@
 import base64
 import hmac
 from collections.abc import AsyncIterator, Iterator
+from functools import lru_cache
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -184,11 +185,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
             settings=base_runtime.settings,
             metrics_store=base_runtime.metrics_store,
         )
-    symbol_catalog = (
-        base_runtime.symbol_catalog
-        if base_runtime.symbol_catalog is not None
-        else build_symbol_catalog()
-    )
+    symbol_catalog: SymbolCatalog | None = base_runtime.symbol_catalog
     app_runtime = AppRuntime(
         settings=base_runtime.settings,
         database_url=base_runtime.database_url,
@@ -197,6 +194,11 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         monitoring_lifecycle=monitoring_lifecycle,
         symbol_catalog=symbol_catalog,
     )
+
+    def resolved_symbol_catalog() -> SymbolCatalog | None:
+        if app_runtime.symbol_catalog is not None:
+            return app_runtime.symbol_catalog
+        return build_symbol_catalog()
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
     telegram_notifier = TelegramNotifier(runtime_settings, app_runtime.telegram_transport)
@@ -290,9 +292,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="q must not be blank"
             )
-        catalog = app_runtime.symbol_catalog
-        if catalog is None:
-            return SymbolQueryResponse(options=())
+        catalog = resolved_symbol_catalog()
         options = catalog.search(provider, market_type, query)
         return SymbolQueryResponse(
             options=tuple(
@@ -454,4 +454,19 @@ def api_timestamp(value: datetime | None) -> str | None:
     return value.isoformat().replace("+00:00", "Z")
 
 
-app = create_app()
+@lru_cache
+def get_application() -> FastAPI:
+    return create_app()
+
+
+class _LazyASGIApp:
+    def __init__(self) -> None:
+        self._delegate: FastAPI | None = None
+
+    def __call__(self, scope: dict[str, object], receive: object, send: object) -> object:
+        if self._delegate is None:
+            self._delegate = get_application()
+        return self._delegate(scope, receive, send)  # type: ignore[arg-type]
+
+
+app = _LazyASGIApp()
