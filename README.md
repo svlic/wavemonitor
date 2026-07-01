@@ -229,7 +229,7 @@ export DATABASE_URL=sqlite:///./wavemonitor.sqlite3
 export TELEGRAM_BOT_TOKEN=...
 export TELEGRAM_CHAT_ID=...
 
-uvicorn wavemonitor_backend.app:app --reload --app-dir backend/src --host 0.0.0.0 --port 8000
+uvicorn wavemonitor_backend.app:get_application --factory --reload --app-dir backend/src --host 0.0.0.0 --port 8000
 ```
 
 运行测试：
