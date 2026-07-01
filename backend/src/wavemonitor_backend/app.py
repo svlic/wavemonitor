@@ -1,16 +1,18 @@
-from collections.abc import Iterator
+import base64
+import hmac
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Protocol
+from typing import Final, Protocol
 
 import anyio
-
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session
+from starlette.middleware.base import RequestResponseEndpoint
 
 from wavemonitor_backend.api import (
     create_instrument,
@@ -21,10 +23,16 @@ from wavemonitor_backend.api import (
     record_telegram_delivery,
     update_instrument,
 )
-from wavemonitor_backend.db import DEFAULT_DATABASE_URL, create_database_engine, create_schema, database_url_from_env, session_scope
-from wavemonitor_backend.models import AlertKind
+from wavemonitor_backend.db import (
+    DEFAULT_DATABASE_URL,
+    create_database_engine,
+    create_schema,
+    database_url_from_env,
+    session_scope,
+)
+from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
-from wavemonitor_backend.operational_api import list_latest_prices, list_source_errors
+from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
@@ -35,6 +43,7 @@ from wavemonitor_backend.notifier import (
     message_for_kind,
     sanitize_telegram_failure,
 )
+from wavemonitor_backend.operational_api import list_latest_prices, list_source_errors
 from wavemonitor_backend.schemas import (
     AlertResponse,
     InstrumentRequest,
@@ -43,7 +52,6 @@ from wavemonitor_backend.schemas import (
     LatestPriceResponse,
     SourceErrorResponse,
 )
-from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
 from wavemonitor_backend.settings import Settings
 
 
@@ -95,7 +103,9 @@ class TelegramTestRequest(BaseModel):
             try:
                 return Decimal(value)
             except InvalidOperation as exc:
-                raise ValueError("Decimal values must be provided as strings, Decimal, or integers") from exc
+                raise ValueError(
+                    "Decimal values must be provided as strings, Decimal, or integers"
+                ) from exc
         raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
 
 
@@ -106,6 +116,39 @@ class TelegramTestResponse(BaseModel):
     telegram_ready: bool
     detail: str
     delivery_id: int | None
+
+
+class AuthRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    password: str = Field(min_length=1)
+
+
+class AuthStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    authenticated: bool
+    auth_enabled: bool
+
+
+class SymbolOptionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    label: str
+    provider: Provider
+    market_type: MarketType
+
+
+class SymbolQueryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    options: tuple[SymbolOptionResponse, ...]
+
+
+SESSION_COOKIE: Final[str] = "wavemonitor_session"
+SESSION_MAX_AGE_SECONDS: Final[int] = 60 * 60 * 24 * 7
+SESSION_VALUE: Final[str] = "authenticated"
 
 
 class AppLifecycle(Protocol):
@@ -122,7 +165,14 @@ class AppRuntime:
 
 
 def create_app(runtime: AppRuntime | None = None) -> FastAPI:
-    base_runtime = runtime or AppRuntime(settings=Settings.from_env(), database_url=database_url_from_env())
+    if runtime is None:
+        database_url = database_url_from_env()
+        base_runtime = AppRuntime(
+            settings=Settings.from_env(database_url=database_url),
+            database_url=database_url,
+        )
+    else:
+        base_runtime = runtime
     engine = create_database_engine(base_runtime.database_url)
     monitoring_lifecycle = base_runtime.monitoring_lifecycle
     if monitoring_lifecycle is None and runtime is None:
@@ -143,7 +193,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     telegram_notifier = TelegramNotifier(runtime_settings, app_runtime.telegram_transport)
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         create_schema(engine)
         lifecycle = app_runtime.monitoring_lifecycle
         if lifecycle is None:
@@ -156,6 +206,35 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
 
     app = FastAPI(title=runtime_settings.app_name, version="0.1.0", lifespan=lifespan)
 
+    def session_cookie_value() -> str:
+        secret = runtime_settings.session_secret
+        if not secret:
+            raise RuntimeError("Session signing secret is missing while web auth is enabled.")
+        signature = hmac.digest(secret.encode(), SESSION_VALUE.encode(), "sha256")
+        encoded_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+        return f"{SESSION_VALUE}.{encoded_signature}"
+
+    def is_authenticated(request: Request) -> bool:
+        if not runtime_settings.auth_enabled:
+            return True
+        return request.cookies.get(SESSION_COOKIE) == session_cookie_value()
+
+    @app.middleware("http")
+    async def require_api_auth(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        path = request.url.path
+        api_auth_path = path.startswith("/api/auth/")
+        if (
+            runtime_settings.auth_enabled
+            and path.startswith("/api/")
+            and not api_auth_path
+            and not is_authenticated(request)
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Authentication required"},
+            )
+        return await call_next(request)
+
     def get_session() -> Iterator[Session]:
         with session_scope(engine) as session:
             yield session
@@ -164,11 +243,67 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     def health() -> HealthResponse:
         return HealthResponse(status="ok", telegram_ready=runtime_settings.telegram_ready)
 
+    @app.get("/api/auth/session", response_model=AuthStatusResponse)
+    def auth_session(request: Request) -> AuthStatusResponse:
+        return AuthStatusResponse(
+            authenticated=is_authenticated(request) if runtime_settings.auth_enabled else False,
+            auth_enabled=runtime_settings.auth_enabled,
+        )
+
+    @app.post("/api/auth/login", response_model=AuthStatusResponse)
+    def login(payload: AuthRequest, response: Response) -> AuthStatusResponse:
+        if not runtime_settings.auth_enabled:
+            return AuthStatusResponse(authenticated=False, auth_enabled=False)
+        if not hmac.compare_digest(payload.password, runtime_settings.web_password or ""):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+        response.set_cookie(
+            SESSION_COOKIE,
+            session_cookie_value(),
+            max_age=SESSION_MAX_AGE_SECONDS,
+            httponly=True,
+            samesite="lax",
+        )
+        return AuthStatusResponse(authenticated=True, auth_enabled=True)
+
+    @app.post("/api/auth/logout", response_model=AuthStatusResponse)
+    def logout(response: Response) -> AuthStatusResponse:
+        response.delete_cookie(SESSION_COOKIE, samesite="lax")
+        return AuthStatusResponse(authenticated=False, auth_enabled=runtime_settings.auth_enabled)
+
+    @app.get("/api/symbols/query", response_model=SymbolQueryResponse)
+    def query_symbols(
+        provider: Provider,
+        market_type: MarketType,
+        q: str = Query(min_length=1),
+    ) -> SymbolQueryResponse:
+        query = q.strip().upper()
+        if not query:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="q must not be blank"
+            )
+        suffix = (
+            "USDT"
+            if provider is Provider.BINANCE and market_type is MarketType.USD_M_FUTURES
+            else ""
+        )
+        symbol = query if query.endswith(suffix) else f"{query}{suffix}"
+        return SymbolQueryResponse(
+            options=(
+                SymbolOptionResponse(
+                    symbol=symbol, label=symbol, provider=provider, market_type=market_type
+                ),
+            )
+        )
+
     @app.get("/api/instruments", response_model=list[InstrumentResponse])
-    def list_instruments_endpoint(session: Session = Depends(get_session)) -> list[InstrumentResponse]:
+    def list_instruments_endpoint(
+        session: Session = Depends(get_session),
+    ) -> list[InstrumentResponse]:
         return list_instruments(session)
 
-    @app.post("/api/instruments", response_model=InstrumentResponse, status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/api/instruments", response_model=InstrumentResponse, status_code=status.HTTP_201_CREATED
+    )
     def create_instrument_endpoint(
         payload: InstrumentRequest,
         session: Session = Depends(get_session),
@@ -184,7 +319,9 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         return update_instrument(session, instrument_id, payload)
 
     @app.delete("/api/instruments/{instrument_id}", status_code=status.HTTP_204_NO_CONTENT)
-    def delete_instrument_endpoint(instrument_id: int, session: Session = Depends(get_session)) -> Response:
+    def delete_instrument_endpoint(
+        instrument_id: int, session: Session = Depends(get_session)
+    ) -> Response:
         delete_instrument(session, instrument_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -200,11 +337,15 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         return list_recent_alerts(session)
 
     @app.get("/api/prices/latest", response_model=list[LatestPriceResponse])
-    def list_latest_prices_endpoint(session: Session = Depends(get_session)) -> list[LatestPriceResponse]:
+    def list_latest_prices_endpoint(
+        session: Session = Depends(get_session),
+    ) -> list[LatestPriceResponse]:
         return list_latest_prices(session)
 
     @app.get("/api/source-errors", response_model=list[SourceErrorResponse])
-    def list_source_errors_endpoint(session: Session = Depends(get_session)) -> list[SourceErrorResponse]:
+    def list_source_errors_endpoint(
+        session: Session = Depends(get_session),
+    ) -> list[SourceErrorResponse]:
         return list_source_errors(session)
 
     @app.get("/api/runtime", response_model=RuntimeResponse)
@@ -245,13 +386,17 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
                 content=body.model_dump(),
             )
         message_kind = MessageKind.TEST if payload is None else MessageKind.ALERT
-        alert = None if payload is None else TelegramAlert(
-            instrument=payload.instrument,
-            source=payload.source,
-            rule=payload.rule,
-            price=payload.price,
-            support=payload.support,
-            resistance=payload.resistance,
+        alert = (
+            None
+            if payload is None
+            else TelegramAlert(
+                instrument=payload.instrument,
+                source=payload.source,
+                rule=payload.rule,
+                price=payload.price,
+                support=payload.support,
+                resistance=payload.resistance,
+            )
         )
         message = message_for_kind(message_kind, alert)
         result = telegram_notifier.send_text(message)
