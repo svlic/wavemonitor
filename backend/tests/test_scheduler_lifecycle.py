@@ -13,7 +13,7 @@ from sqlmodel import Session
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
 from wavemonitor_backend.lifecycle import MonitoringLifecycle
-from wavemonitor_backend.monitoring import RuntimeMetrics
+from wavemonitor_backend.monitoring import MonitoringScheduler, RuntimeMetrics, RuntimeMetricsStore
 from wavemonitor_backend.settings import Settings
 
 
@@ -176,3 +176,39 @@ def test_monitoring_lifecycle_continues_after_tick_exception(tmp_path: Path):
         assert runner.ticks == 2
 
     anyio.run(scenario)
+
+
+def test_monitoring_scheduler_record_tick_failure_clears_readiness_flags():
+    store = RuntimeMetricsStore()
+    store.update(
+        RuntimeMetrics(
+            scheduler_ready=True,
+            providers_ready=True,
+            enabled_sources=2,
+            polled_sources=2,
+            observations_written=2,
+            source_errors=0,
+            alert_events_created=0,
+            telegram_deliveries_attempted=0,
+            last_tick_started_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
+            last_tick_finished_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
+        )
+    )
+
+    class Clock:
+        def __call__(self) -> datetime:
+            return datetime(2026, 6, 30, 12, 1, tzinfo=UTC)
+
+    scheduler = MonitoringScheduler(
+        poller=object(),  # type: ignore[arg-type]
+        notifier=object(),  # type: ignore[arg-type]
+        clock=Clock(),
+        metrics_store=store,
+    )
+    scheduler.record_tick_failure()
+
+    metrics = store.metrics
+    assert metrics.scheduler_ready is False
+    assert metrics.providers_ready is False
+    assert metrics.enabled_sources == 2
+    assert metrics.last_tick_finished_at == datetime(2026, 6, 30, 12, 1, tzinfo=UTC)

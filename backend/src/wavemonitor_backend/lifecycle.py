@@ -46,4 +46,7 @@ class MonitoringLifecycle:
                     self._runner.run_tick(session)
             except Exception:
                 LOGGER.exception("monitoring scheduler tick failed; continuing after interval")
+                record_failure = getattr(self._runner, "record_tick_failure", None)
+                if callable(record_failure):
+                    record_failure()
             await self._ticker.wait()

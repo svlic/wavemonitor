@@ -132,6 +132,24 @@ class MonitoringScheduler:
         self._metrics_store.update(metrics)
         return metrics
 
+    def record_tick_failure(self) -> None:
+        previous = self._metrics_store.metrics
+        failed_at = self._clock()
+        self._metrics_store.update(
+            RuntimeMetrics(
+                scheduler_ready=False,
+                providers_ready=False,
+                enabled_sources=previous.enabled_sources,
+                polled_sources=previous.polled_sources,
+                observations_written=previous.observations_written,
+                source_errors=previous.source_errors,
+                alert_events_created=previous.alert_events_created,
+                telegram_deliveries_attempted=previous.telegram_deliveries_attempted,
+                last_tick_started_at=previous.last_tick_started_at,
+                last_tick_finished_at=failed_at,
+            )
+        )
+
     def _poll_source(
         self,
         session: Session,
@@ -208,8 +226,10 @@ class TickCounts:
 
     @property
     def providers_ready(self) -> bool:
-        if self.polled_sources == 0:
+        if self.enabled_sources == 0:
             return True
+        if self.polled_sources != self.enabled_sources:
+            return False
         return self.source_errors == 0
 
     def with_success(self, alerts: int, deliveries: int) -> TickCounts:
