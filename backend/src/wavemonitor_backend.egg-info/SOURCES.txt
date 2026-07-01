@@ -1,8 +1,0 @@
-pyproject.toml
-backend/src/wavemonitor_backend/__init__.py
-backend/src/wavemonitor_backend/app.py
-backend/src/wavemonitor_backend.egg-info/PKG-INFO
-backend/src/wavemonitor_backend.egg-info/SOURCES.txt
-backend/src/wavemonitor_backend.egg-info/dependency_links.txt
-backend/src/wavemonitor_backend.egg-info/requires.txt
-backend/src/wavemonitor_backend.egg-info/top_level.txt
