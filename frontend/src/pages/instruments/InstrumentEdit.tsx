@@ -23,7 +23,7 @@ export function InstrumentEdit({ id }: Props) {
         setInstrument(data);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Failed to load instrument.");
+        setError("标的加载失败。");
       } finally {
         setLoading(false);
       }
@@ -38,8 +38,8 @@ export function InstrumentEdit({ id }: Props) {
     setLocation("/instruments");
   };
 
-  if (loading) return <div className="panel">Loading instrument...</div>;
-  if (error || !instrument) return <div className="panel error-text">{error || "Instrument not found"}</div>;
+  if (loading) return <div className="panel">正在加载标的...</div>;
+  if (error || !instrument) return <div className="panel error-text">{error || "未找到标的"}</div>;
 
   return (
     <InstrumentForm

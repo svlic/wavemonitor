@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CreateInstrumentRequest, InstrumentWithMappings } from "../../api/client";
 import { validateSupportResistance, validateThreshold, validateRiskRewardThreshold } from "../../utils/validation";
+import { SymbolInput } from "./SymbolInput";
 
 type Props = {
   initialData?: InstrumentWithMappings;
@@ -39,7 +40,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
     setError(null);
 
     if (!name.trim()) {
-      setError("Name is required");
+      setError("名称不能为空");
       return;
     }
 
@@ -49,7 +50,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       return;
     }
 
-    const nstError = validateThreshold(nearSupportThreshold, "Near support threshold");
+    const nstError = validateThreshold(nearSupportThreshold, "接近支撑阈值");
     if (nstError) {
       setError(nstError);
       return;
@@ -62,13 +63,13 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
     }
 
     if (mappings.length === 0) {
-      setError("At least one source mapping is required");
+      setError("至少需要一个数据源映射");
       return;
     }
 
     for (const m of mappings) {
       if (!m.symbol.trim()) {
-        setError("All source mappings must have a symbol");
+        setError("所有数据源映射都必须填写 Symbol");
         return;
       }
     }
@@ -85,7 +86,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
         source_mappings: mappings,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save instrument");
+      setError(err instanceof Error ? err.message : "保存标的失败");
     } finally {
       setIsSubmitting(false);
     }
@@ -119,24 +120,24 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="panel form-panel">
-      <h2>{initialData ? "Edit Instrument" : "New Instrument"}</h2>
+      <h2>{initialData ? "编辑标的" : "新增标的"}</h2>
       
       {error && <div className="error-banner" role="alert">{error}</div>}
 
       <div className="form-group">
-        <label htmlFor="name">Name</label>
+        <label htmlFor="name">名称</label>
         <input
           id="name"
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="e.g. BTC/USD"
+          placeholder="例如 BTC/USD"
         />
       </div>
 
       <div className="form-row">
         <div className="form-group">
-          <label htmlFor="support">Support Level</label>
+          <label htmlFor="support">支撑位</label>
           <input
             id="support"
             type="number"
@@ -146,7 +147,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="resistance">Resistance Level</label>
+          <label htmlFor="resistance">阻力位</label>
           <input
             id="resistance"
             type="number"
@@ -159,7 +160,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       
       <div className="form-row">
         <div className="form-group">
-          <label htmlFor="near_support_threshold">Near Support Threshold (0-1)</label>
+          <label htmlFor="near_support_threshold">接近支撑阈值 (0-1)</label>
           <input
             id="near_support_threshold"
             type="number"
@@ -171,7 +172,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="risk_reward_threshold">Risk Reward Threshold (&gt;0)</label>
+          <label htmlFor="risk_reward_threshold">风险回报阈值 (&gt;0)</label>
           <input
             id="risk_reward_threshold"
             type="number"
@@ -190,22 +191,22 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
             checked={enabled}
             onChange={e => setEnabled(e.target.checked)}
           />
-          Enable monitoring
+          启用监控
         </label>
       </div>
 
       <div className="mappings-section">
         <div className="header-row">
-          <h3>Source Mappings</h3>
-          <button type="button" onClick={addMapping} className="button small">Add Source</button>
+          <h3>数据源映射</h3>
+          <button type="button" onClick={addMapping} className="button small">添加来源</button>
         </div>
         
-        {mappings.length === 0 && <p className="summary">Add at least one source to monitor this instrument.</p>}
+        {mappings.length === 0 && <p className="summary">至少添加一个数据源来监控此标的。</p>}
         
         {mappings.map((m, i) => (
           <div key={i} className="mapping-row">
             <div className="form-group">
-              <label htmlFor={`provider-${i}`}>Provider</label>
+              <label htmlFor={`provider-${i}`}>数据源</label>
               <select
                 id={`provider-${i}`}
                 value={m.provider}
@@ -217,26 +218,26 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
               </select>
             </div>
             <div className="form-group">
-              <label htmlFor={`market_type-${i}`}>Market Type</label>
+              <label htmlFor={`market_type-${i}`}>市场类型</label>
               <select
                 id={`market_type-${i}`}
                 value={m.market_type}
                 onChange={e => updateMapping(i, "market_type", e.target.value)}
               >
-                <option value="equity">Equity</option>
-                <option value="usd_m_futures">USD-M Futures</option>
-                <option value="coin_m_futures">COIN-M Futures</option>
-                <option value="perpetual">Perpetual</option>
+                <option value="equity">股票</option>
+                <option value="usd_m_futures">USD-M 合约</option>
+                <option value="coin_m_futures">COIN-M 合约</option>
+                <option value="perpetual">永续合约</option>
               </select>
             </div>
             <div className="form-group">
               <label htmlFor={`symbol-${i}`}>Symbol</label>
-              <input
+              <SymbolInput
                 id={`symbol-${i}`}
-                type="text"
+                provider={m.provider}
+                marketType={m.market_type}
                 value={m.symbol}
-                onChange={e => updateMapping(i, "symbol", e.target.value)}
-                placeholder="e.g. BTCUSDT"
+                onChange={(value) => updateMapping(i, "symbol", value)}
               />
             </div>
             <div className="form-group checkbox-group mapping-enabled">
@@ -246,18 +247,18 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
                   checked={m.enabled}
                   onChange={e => updateMapping(i, "enabled", e.target.checked)}
                 />
-                Active
+                启用
               </label>
             </div>
-            <button type="button" onClick={() => removeMapping(i)} className="button small danger">Remove</button>
+            <button type="button" onClick={() => removeMapping(i)} className="button small danger">移除</button>
           </div>
         ))}
       </div>
 
       <div className="form-actions">
-        <button type="button" onClick={onCancel} className="button" disabled={isSubmitting}>Cancel</button>
+        <button type="button" onClick={onCancel} className="button" disabled={isSubmitting}>取消</button>
         <button type="submit" className="button primary" disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : "Save Instrument"}
+          {isSubmitting ? "保存中..." : "保存标的"}
         </button>
       </div>
     </form>

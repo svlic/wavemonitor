@@ -1,3 +1,4 @@
+import { act } from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InstrumentList } from "../pages/instruments/InstrumentList";
@@ -16,6 +17,7 @@ vi.mock("../api/client", async () => {
       createInstrument: vi.fn(),
       updateInstrument: vi.fn(),
       deleteInstrument: vi.fn(),
+      querySymbols: vi.fn(),
     },
   };
 });
@@ -50,7 +52,7 @@ describe("InstrumentList", () => {
   it("renders loading state initially", () => {
     vi.mocked(apiClient.getInstruments).mockReturnValue(new Promise(() => {}));
     render(<InstrumentList />);
-    expect(screen.getByText("Loading instruments...")).toBeInTheDocument();
+    expect(screen.getByText("正在加载标的...")).toBeInTheDocument();
   });
 
   it("renders list of instruments", async () => {
@@ -69,7 +71,7 @@ describe("InstrumentList", () => {
     render(<InstrumentList />);
     
     await waitFor(() => {
-      expect(screen.getByText("Failed to load instruments. Please try again.")).toBeInTheDocument();
+      expect(screen.getByText("标的列表加载失败，请重试。")).toBeInTheDocument();
     });
   });
 
@@ -83,7 +85,7 @@ describe("InstrumentList", () => {
       expect(screen.getByText("BTC/USD")).toBeInTheDocument();
     });
 
-    const deleteButton = screen.getByRole("button", { name: /delete/i });
+    const deleteButton = screen.getByRole("button", { name: "删除" });
     fireEvent.click(deleteButton);
 
     await waitFor(() => {
@@ -95,16 +97,17 @@ describe("InstrumentList", () => {
 describe("InstrumentForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(apiClient.querySymbols).mockResolvedValue([]);
   });
 
   it("validates support and resistance", async () => {
     render(<InstrumentForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
     
-    const nameInput = screen.getByLabelText(/^name/i);
-    const supportInput = screen.getByLabelText(/^support level/i);
-    const resistanceInput = screen.getByLabelText(/^resistance level/i);
-    const nearSupportThresholdInput = screen.getByLabelText(/^near support threshold/i);
-    const riskRewardThresholdInput = screen.getByLabelText(/^risk reward threshold/i);
+    const nameInput = screen.getByLabelText("名称");
+    const supportInput = screen.getByLabelText("支撑位");
+    const resistanceInput = screen.getByLabelText("阻力位");
+    const nearSupportThresholdInput = screen.getByLabelText(/^接近支撑阈值/);
+    const riskRewardThresholdInput = screen.getByLabelText(/^风险回报阈值/);
     
     fireEvent.change(nameInput, { target: { value: "Test" } });
     fireEvent.change(supportInput, { target: { value: "100" } });
@@ -112,11 +115,37 @@ describe("InstrumentForm", () => {
     fireEvent.change(nearSupportThresholdInput, { target: { value: "0.05" } });
     fireEvent.change(riskRewardThresholdInput, { target: { value: "2.0" } });
     
-    const submitButton = screen.getByRole("button", { name: /save/i });
+    const submitButton = screen.getByRole("button", { name: "保存标的" });
     fireEvent.click(submitButton);
     
     await waitFor(() => {
-      expect(screen.getByText("Support must be strictly less than resistance")).toBeInTheDocument();
+      expect(screen.getByText("支撑位必须严格小于阻力位")).toBeInTheDocument();
+    });
+  });
+
+  it("queries realtime symbol options and applies the selected option", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(apiClient.querySymbols)
+      .mockResolvedValueOnce([
+        { symbol: "BTCUSDT", label: "BTCUSDT", provider: "binance", market_type: "usd_m_futures" },
+      ])
+      .mockResolvedValue([]);
+    render(<InstrumentForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
+    fireEvent.change(screen.getByLabelText("数据源"), { target: { value: "binance" } });
+    fireEvent.change(screen.getByLabelText("Symbol"), { target: { value: "btc" } });
+
+    await waitFor(() => {
+      expect(apiClient.querySymbols).toHaveBeenCalledWith("binance", "usd_m_futures", "btc", expect.any(AbortSignal));
+    });
+    const option = await screen.findByRole("option", { name: "BTCUSDT" });
+    await act(async () => {
+      fireEvent.click(option);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Symbol")).toHaveValue("BTCUSDT");
     });
   });
 
@@ -124,16 +153,16 @@ describe("InstrumentForm", () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<InstrumentForm onSubmit={onSubmit} onCancel={vi.fn()} />);
     
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: "Test" } });
-    fireEvent.change(screen.getByLabelText(/^support level/i), { target: { value: "50" } });
-    fireEvent.change(screen.getByLabelText(/^resistance level/i), { target: { value: "100" } });
-    fireEvent.change(screen.getByLabelText(/^near support threshold/i), { target: { value: "0.05" } });
-    fireEvent.change(screen.getByLabelText(/^risk reward threshold/i), { target: { value: "2.0" } });
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Test" } });
+    fireEvent.change(screen.getByLabelText("支撑位"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("阻力位"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText(/^接近支撑阈值/), { target: { value: "0.05" } });
+    fireEvent.change(screen.getByLabelText(/^风险回报阈值/), { target: { value: "2.0" } });
     
     // Add mapping
-    fireEvent.click(screen.getByRole("button", { name: /add source/i }));
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
     
-    const providerSelects = screen.getAllByLabelText(/^provider/i);
+    const providerSelects = screen.getAllByLabelText("数据源");
     if (providerSelects[0]) {
       fireEvent.change(providerSelects[0], { target: { value: "yfinance" } });
     }
@@ -143,7 +172,7 @@ describe("InstrumentForm", () => {
       fireEvent.change(symbolInputs[0], { target: { value: "TEST" } });
     }
     
-    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    fireEvent.click(screen.getByRole("button", { name: "保存标的" }));
     
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
