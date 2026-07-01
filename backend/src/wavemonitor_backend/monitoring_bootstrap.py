@@ -8,6 +8,7 @@ from typing import Final
 from sqlalchemy import Engine
 
 from wavemonitor_backend.adapters import BinanceFuturesAdapter, HyperliquidAdapter, YFinanceAdapter
+from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
 from wavemonitor_backend.db import session_scope
 from wavemonitor_backend.lifecycle import FixedIntervalTicker, MonitoringLifecycle
 from wavemonitor_backend.models import MarketType, Provider
@@ -36,23 +37,30 @@ def monitoring_disabled_from_env() -> bool:
 
 
 def build_adapter_registry() -> AdapterRegistry:
+    from binance.cm_futures import CMFutures
     from binance.um_futures import UMFutures
     from hyperliquid.info import Info
 
+    usd_m = UMFutures()
+    coin_m = CMFutures()
     return AdapterRegistry(
         adapters={
             (Provider.YFINANCE, MarketType.EQUITY): YFinanceAdapter(),
             (
                 Provider.BINANCE,
                 MarketType.USD_M_FUTURES,
-            ): BinanceFuturesAdapter(usd_m_client=UMFutures(), coin_m_client=UMFutures()),
+            ): BinanceFuturesAdapter(usd_m_client=usd_m, coin_m_client=coin_m),
             (
                 Provider.BINANCE,
                 MarketType.COIN_M_FUTURES,
-            ): BinanceFuturesAdapter(usd_m_client=UMFutures(), coin_m_client=UMFutures()),
+            ): BinanceFuturesAdapter(usd_m_client=usd_m, coin_m_client=coin_m),
             (Provider.HYPERLIQUID, MarketType.PERPETUAL): HyperliquidAdapter(info_client=Info()),
         }
     )
+
+
+def build_symbol_catalog() -> SymbolCatalog:
+    return default_symbol_catalog()
 
 
 def build_monitoring_lifecycle(

@@ -53,6 +53,8 @@ from wavemonitor_backend.schemas import (
     SourceErrorResponse,
 )
 from wavemonitor_backend.settings import Settings
+from wavemonitor_backend.symbol_catalog import SymbolCatalog
+from wavemonitor_backend.monitoring_bootstrap import build_symbol_catalog
 
 
 class HealthResponse(BaseModel):
@@ -162,6 +164,7 @@ class AppRuntime:
     telegram_transport: TelegramTransport | None = None
     metrics_store: RuntimeMetricsStore = field(default_factory=RuntimeMetricsStore)
     monitoring_lifecycle: AppLifecycle | None = None
+    symbol_catalog: SymbolCatalog | None = None
 
 
 def create_app(runtime: AppRuntime | None = None) -> FastAPI:
@@ -181,12 +184,18 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
             settings=base_runtime.settings,
             metrics_store=base_runtime.metrics_store,
         )
+    symbol_catalog = (
+        base_runtime.symbol_catalog
+        if base_runtime.symbol_catalog is not None
+        else build_symbol_catalog()
+    )
     app_runtime = AppRuntime(
         settings=base_runtime.settings,
         database_url=base_runtime.database_url,
         telegram_transport=base_runtime.telegram_transport,
         metrics_store=base_runtime.metrics_store,
         monitoring_lifecycle=monitoring_lifecycle,
+        symbol_catalog=symbol_catalog,
     )
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
@@ -276,22 +285,24 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         market_type: MarketType,
         q: str = Query(min_length=1),
     ) -> SymbolQueryResponse:
-        query = q.strip().upper()
+        query = q.strip()
         if not query:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="q must not be blank"
             )
-        suffix = (
-            "USDT"
-            if provider is Provider.BINANCE and market_type is MarketType.USD_M_FUTURES
-            else ""
-        )
-        symbol = query if query.endswith(suffix) else f"{query}{suffix}"
+        catalog = app_runtime.symbol_catalog
+        if catalog is None:
+            return SymbolQueryResponse(options=())
+        options = catalog.search(provider, market_type, query)
         return SymbolQueryResponse(
-            options=(
+            options=tuple(
                 SymbolOptionResponse(
-                    symbol=symbol, label=symbol, provider=provider, market_type=market_type
-                ),
+                    symbol=option.symbol,
+                    label=option.label,
+                    provider=option.provider,
+                    market_type=option.market_type,
+                )
+                for option in options
             )
         )
 

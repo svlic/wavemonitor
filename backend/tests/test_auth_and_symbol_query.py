@@ -9,9 +9,24 @@ from fastapi.testclient import TestClient
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.settings import Settings
+from wavemonitor_backend.symbol_catalog import SymbolCatalog
 
 AUTH_PASSWORD: Final[str] = "open-sesame"
 AUTH_SECRET: Final[str] = "test-session-secret"
+
+
+class FakeBinanceExchange:
+    def exchange_info(self) -> dict[str, object]:
+        return {
+            "symbols": [
+                {"symbol": "BTCUSDT", "status": "TRADING"},
+                {"symbol": "ETHUSDT", "status": "TRADING"},
+            ]
+        }
+
+
+def fake_symbol_catalog() -> SymbolCatalog:
+    return SymbolCatalog(usd_m_client=FakeBinanceExchange(), coin_m_client=FakeBinanceExchange())
 
 
 @pytest.fixture
@@ -118,10 +133,16 @@ def test_symbol_query_requires_auth_when_auth_is_enabled(protected_client: TestC
 
 
 def test_symbol_query_returns_provider_specific_realtime_options(tmp_path: Path):
-    # Given: auth is disabled and a supported provider/market/query is requested.
+    # Given: auth is disabled and Binance exchange_info is backed by a test catalog.
     database_url = f"sqlite:///{tmp_path / 'symbols.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(),
+                database_url=database_url,
+                symbol_catalog=fake_symbol_catalog(),
+            )
+        )
     ) as client:
         # When: the realtime symbol query endpoint is called.
         response = client.get(
@@ -129,7 +150,7 @@ def test_symbol_query_returns_provider_specific_realtime_options(tmp_path: Path)
             params={"provider": "binance", "market_type": "usd_m_futures", "q": "btc"},
         )
 
-    # Then: typed symbol options are returned for the dropdown.
+    # Then: matching TRADING symbols from the provider are returned for the dropdown.
     assert response.status_code == 200
     assert response.json() == {
         "options": [
