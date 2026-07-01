@@ -47,7 +47,7 @@ describe("Dashboard", () => {
 
     render(<Dashboard />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Loading dashboard data...");
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载仪表盘数据...");
   });
 
   it("shows error state when API fails", async () => {
@@ -60,7 +60,7 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("An unexpected error occurred.");
+      expect(screen.getByRole("alert")).toHaveTextContent("发生未知错误。");
     });
   });
 
@@ -74,9 +74,9 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("No price data available.")).toBeInTheDocument();
-      expect(screen.getByText("No recent alerts.")).toBeInTheDocument();
-      expect(screen.getByText("No recent source errors.")).toBeInTheDocument();
+      expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
+      expect(screen.getByText("暂无最近告警。")).toBeInTheDocument();
+      expect(screen.getByText("暂无数据源错误。")).toBeInTheDocument();
     });
   });
 
@@ -164,8 +164,8 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Telegram is not configured/)).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Send Test Alert" })).not.toBeInTheDocument();
+      expect(screen.getByText(/Telegram 尚未配置/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "发送测试告警" })).not.toBeInTheDocument();
     });
   });
 
@@ -187,13 +187,13 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send Test Alert" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "发送测试告警" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Send Test Alert" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送测试告警" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("Test message sent successfully.");
+      expect(screen.getByRole("status")).toHaveTextContent("测试消息已发送。");
     });
   });
 
@@ -215,10 +215,10 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send Test Alert" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "发送测试告警" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Send Test Alert" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送测试告警" }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Invalid chat ID");

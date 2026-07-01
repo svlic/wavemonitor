@@ -44,7 +44,7 @@ export function Dashboard() {
         if (error instanceof ApiError) {
           setErrorMessage(error.message);
         } else {
-          setErrorMessage("An unexpected error occurred.");
+          setErrorMessage("发生未知错误。");
         }
       }
     }
@@ -63,17 +63,19 @@ export function Dashboard() {
       const response = await apiClient.testTelegram();
       if (response.sent) {
         setTestStatus("success");
-        setTestMessage("Test message sent successfully.");
-      } else {
-        setTestStatus("error");
-        setTestMessage(response.detail || "Failed to send test message.");
+          setTestMessage("测试消息已发送。");
+        } else {
+          setTestStatus("error");
+          setTestMessage(response.detail || "测试消息发送失败。");
+
       }
     } catch (error) {
       setTestStatus("error");
       if (error instanceof ApiError) {
         setTestMessage(error.message);
       } else {
-        setTestMessage("An unexpected error occurred.");
+          setTestMessage("发生未知错误。");
+
       }
     }
   };
@@ -81,9 +83,9 @@ export function Dashboard() {
   if (state === "loading") {
     return (
       <section className="panel loading-panel" aria-labelledby="dashboard-title">
-        <h1 id="dashboard-title">Dashboard</h1>
+        <h1 id="dashboard-title">仪表盘</h1>
         <div role="status" aria-live="polite" className="muted-text">
-          Loading dashboard data...
+          正在加载仪表盘数据...
         </div>
         <div className="skeleton skeleton-line skeleton-line--medium" aria-hidden="true" />
         <div className="skeleton skeleton-line" aria-hidden="true" />
@@ -95,9 +97,9 @@ export function Dashboard() {
   if (state === "error") {
     return (
       <section className="panel" aria-labelledby="dashboard-title">
-        <h1 id="dashboard-title">Dashboard</h1>
+        <h1 id="dashboard-title">仪表盘</h1>
         <div className="error-banner" role="alert">
-          <p className="error-text">{errorMessage ?? "Failed to load dashboard."}</p>
+          <p className="error-text">{errorMessage ?? "仪表盘加载失败。"}</p>
         </div>
       </section>
     );
@@ -114,38 +116,38 @@ export function Dashboard() {
   return (
     <div className="dashboard-layout">
       <div className="dashboard-header">
-        <h1 id="dashboard-title">Dashboard</h1>
+        <h1 id="dashboard-title">仪表盘</h1>
       </div>
 
       <div className="dashboard-grid">
         <section className="panel" aria-labelledby="status-title">
-          <h2 id="status-title" className="panel-title">System Status</h2>
+          <h2 id="status-title" className="panel-title">系统状态</h2>
           <ul className="status-list">
             <li>
-              <span className="status-label">Scheduler:</span>
+              <span className="status-label">调度器：</span>
               <span className={`status-value ${runtime?.scheduler_ready ? 'ready' : 'not-ready'}`}>
-                {runtime?.scheduler_ready ? "Ready" : "Not Ready"}
+                {runtime?.scheduler_ready ? "就绪" : "未就绪"}
               </span>
             </li>
             <li>
-              <span className="status-label">Providers:</span>
+              <span className="status-label">数据源：</span>
               <span className={`status-value ${runtime?.providers_ready ? 'ready' : 'not-ready'}`}>
-                {runtime?.providers_ready ? "Ready" : "Not Ready"}
+                {runtime?.providers_ready ? "就绪" : "未就绪"}
               </span>
             </li>
             <li>
-              <span className="status-label">Telegram:</span>
+              <span className="status-label">Telegram：</span>
               <span className={`status-value ${runtime?.telegram_ready ? 'ready' : 'not-ready'}`}>
-                {runtime?.telegram_ready ? "Ready" : "Not Configured"}
+                {runtime?.telegram_ready ? "就绪" : "未配置"}
               </span>
             </li>
           </ul>
 
           <div className="telegram-test-section">
-            <h3>Telegram Test</h3>
+            <h3>Telegram 测试</h3>
             {!runtime?.telegram_ready ? (
               <p className="muted-text">
-                Telegram is not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables to enable alerts.
+                Telegram 尚未配置。设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量后即可启用告警通知。
               </p>
             ) : (
               <div className="test-actions">
@@ -154,7 +156,7 @@ export function Dashboard() {
                   onClick={() => handleTestTelegram()}
                   disabled={testStatus === "sending"}
                 >
-                  {testStatus === "sending" ? "Sending..." : "Send Test Alert"}
+                  {testStatus === "sending" ? "发送中..." : "发送测试告警"}
                 </button>
                 {testStatus === "success" && <p className="success-text" role="status">{testMessage}</p>}
                 {testStatus === "error" && <p className="error-text" role="alert">{testMessage}</p>}
@@ -164,18 +166,18 @@ export function Dashboard() {
         </section>
 
         <section className="panel" aria-labelledby="prices-title">
-          <h2 id="prices-title" className="panel-title">Latest Prices</h2>
+          <h2 id="prices-title" className="panel-title">最新价格</h2>
           {prices.length === 0 ? (
-            <p className="empty-state">No price data available.</p>
+            <p className="empty-state">暂无价格数据。</p>
           ) : (
             <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Instrument</th>
-                    <th>Source</th>
-                    <th>Price</th>
-                    <th>Time</th>
+                    <th>标的</th>
+                    <th>来源</th>
+                    <th>价格</th>
+                    <th>时间</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -194,18 +196,18 @@ export function Dashboard() {
         </section>
 
         <section className="panel" aria-labelledby="alerts-title">
-          <h2 id="alerts-title" className="panel-title">Recent Alerts</h2>
+          <h2 id="alerts-title" className="panel-title">最近告警</h2>
           {alerts.length === 0 ? (
-            <p className="empty-state">No recent alerts.</p>
+            <p className="empty-state">暂无最近告警。</p>
           ) : (
             <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Instrument</th>
-                    <th>Rule</th>
-                    <th>Price</th>
+                    <th>时间</th>
+                    <th>标的</th>
+                    <th>规则</th>
+                    <th>价格</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -224,18 +226,18 @@ export function Dashboard() {
         </section>
 
         <section className="panel" aria-labelledby="errors-title">
-          <h2 id="errors-title" className="panel-title">Source Errors</h2>
+          <h2 id="errors-title" className="panel-title">数据源错误</h2>
           {errors.length === 0 ? (
-            <p className="empty-state">No recent source errors.</p>
+            <p className="empty-state">暂无数据源错误。</p>
           ) : (
             <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Instrument</th>
-                    <th>Source</th>
-                    <th>Error</th>
+                    <th>时间</th>
+                    <th>标的</th>
+                    <th>来源</th>
+                    <th>错误</th>
                   </tr>
                 </thead>
                 <tbody>
