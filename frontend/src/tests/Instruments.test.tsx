@@ -178,6 +178,23 @@ describe("InstrumentForm", () => {
     });
   });
 
+  it("limits market type options to the selected provider", async () => {
+    render(<InstrumentForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
+
+    expect(screen.getByLabelText("市场类型")).toHaveValue("equity");
+    expect(screen.getByRole("option", { name: "股票" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "USD-M 合约" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("数据源"), { target: { value: "binance" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("市场类型")).toHaveValue("usd_m_futures");
+    });
+    expect(screen.getByRole("option", { name: "USD-M 合约" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "COIN-M 合约" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "股票" })).not.toBeInTheDocument();
+  });
+
   it("submits valid form", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<InstrumentForm onSubmit={onSubmit} onCancel={vi.fn()} />);

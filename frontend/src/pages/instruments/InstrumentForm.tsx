@@ -1,5 +1,10 @@
 import { useState } from "react";
 import type { CreateInstrumentRequest, InstrumentWithMappings } from "../../api/client";
+import {
+  defaultMarketTypeForProvider,
+  marketTypeLabel,
+  marketTypesForProvider,
+} from "../../utils/marketTypes";
 import { validateSupportResistance, validateThreshold, validateRiskRewardThreshold } from "../../utils/validation";
 import { SymbolInput } from "./SymbolInput";
 
@@ -109,9 +114,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
     
     // Auto-set market_type based on provider if needed
     if (field === "provider") {
-      if (value === "yfinance") updatedMapping.market_type = "equity";
-      else if (value === "hyperliquid") updatedMapping.market_type = "perpetual";
-      else if (value === "binance") updatedMapping.market_type = "usd_m_futures";
+      updatedMapping.market_type = defaultMarketTypeForProvider(String(value));
     }
     
     newMappings[index] = updatedMapping;
@@ -224,10 +227,11 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
                 value={m.market_type}
                 onChange={e => updateMapping(i, "market_type", e.target.value)}
               >
-                <option value="equity">股票</option>
-                <option value="usd_m_futures">USD-M 合约</option>
-                <option value="coin_m_futures">COIN-M 合约</option>
-                <option value="perpetual">永续合约</option>
+                {marketTypesForProvider(m.provider).map(mt => (
+                  <option key={mt} value={mt}>
+                    {marketTypeLabel(mt)}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="form-group">
