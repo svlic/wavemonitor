@@ -256,7 +256,9 @@ class TickCounts:
 
 
 def enabled_sources(session: Session) -> list[tuple[Instrument, SourceMapping]]:
-    instruments = session.exec(select(Instrument).order_by(Instrument.id)).all()
+    instruments = session.exec(
+        select(Instrument).where(Instrument.enabled).order_by(Instrument.id)
+    ).all()
     pairs: list[tuple[Instrument, SourceMapping]] = []
     for instrument in instruments:
         instrument_id = require_id(instrument.id)

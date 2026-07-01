@@ -10,8 +10,8 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | POST | `/api/auth/logout` | Clears the `wavemonitor_session` cookie. |
 | GET | `/api/symbols/query` | Query params: `provider`, `market_type`, `q`. Returns realtime symbol options as `{ options: [{ symbol, label, provider, market_type }] }`. |
 | GET | `/api/instruments` | Lists configured instruments with source mappings. |
-| POST | `/api/instruments` | Creates an instrument and source mappings. |
-| PUT | `/api/instruments/{instrument_id}` | Replaces instrument fields and source mappings. |
+| POST | `/api/instruments` | Creates an instrument and source mappings. Returns **409** with `detail: "Source mapping already exists"` when the request contains duplicate source identities for the same instrument (same `provider`, `market_type`, and normalized `symbol`) or when the DB unique constraint is violated; the transaction rolls back (no partial instrument). |
+| PUT | `/api/instruments/{instrument_id}` | Replaces instrument fields and source mappings atomically. Same **409** semantics as create on duplicate per-instrument source identity; failed updates do not partially apply field changes. |
 | DELETE | `/api/instruments/{instrument_id}` | Deletes an instrument and its source mappings. |
 | GET | `/api/instruments/{instrument_id}/status` | Returns the instrument enabled flag, per-source latest price/error/`last_invalid_state` (rule invalid reason when price is not above support), and recent alerts for that instrument. |
 | GET | `/api/prices/latest` | Returns collection-level latest successful price observations by source mapping. Empty when no instruments or prices exist. |
@@ -20,6 +20,12 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | GET | `/api/runtime` | Returns scheduler/provider/Telegram readiness, polling counters, alert/delivery counters, and last tick timestamps. |
 | GET | `/api/telegram/readiness` | Returns Telegram readiness only; secrets are never exposed. |
 | POST | `/api/telegram/test` | Sends a Telegram test only when credentials are configured; response/logs redact secrets. |
+
+## Source mapping identity
+
+- Uniqueness is **per instrument**: `(instrument_id, provider, market_type, symbol)` where `symbol` is normalized to uppercase on input.
+- Different instruments may share the same global source triple (e.g. two strategies both monitoring Binance `BTCUSDT`).
+- Within one create/update payload, two mappings that normalize to the same triple are rejected with **409** on create (via DB) and should not be sent on update; the scheduler only polls sources whose **instrument** and **source mapping** are both `enabled`.
 
 ## Authentication
 

@@ -112,7 +112,13 @@ class Instrument(RuleDecimalMixin, table=True):
 
 class SourceMapping(SQLModel, table=True):
     __table_args__ = (
-        UniqueConstraint("provider", "market_type", "symbol", name="uq_source_mapping_identity"),
+        UniqueConstraint(
+            "instrument_id",
+            "provider",
+            "market_type",
+            "symbol",
+            name="uq_source_mapping_per_instrument",
+        ),
     )
     model_config = ConfigDict(validate_assignment=True)
 

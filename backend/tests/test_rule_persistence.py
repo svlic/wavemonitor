@@ -77,6 +77,7 @@ def test_persistence_creates_alert_event_and_updates_last_rule_state(tmp_path: P
             instrument_id=instrument.id,
             source_mapping_id=source.id,
             evaluation=evaluation,
+            observed_at=OBSERVED_AT,
         )
         stored_events = session.exec(select(AlertEvent)).all()
         stored_state = session.exec(select(LastRuleState)).one()
@@ -110,9 +111,11 @@ def test_persist_invalid_state_without_alerts(tmp_path: Path):
             instrument_id=instrument.id,
             source_mapping_id=source.id,
             evaluation=evaluation,
+            observed_at=OBSERVED_AT,
         )
         stored_state = session.exec(select(LastRuleState)).one()
         assert stored_state.last_invalid_state == "price_not_above_support"
+        assert stored_state.updated_at == OBSERVED_AT.replace(tzinfo=None)
         assert session.exec(select(AlertEvent)).all() == []
 
 
@@ -176,3 +179,26 @@ def test_persisted_cooldown_retriggers_active_near_support_at_boundary(tmp_path:
         assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
         assert [alert.kind for alert in second.alerts] == [AlertKind.NEAR_SUPPORT]
         assert len(stored_events) == 2
+
+
+def test_no_alert_evaluation_updates_last_rule_state_timestamp(tmp_path: Path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'tick.sqlite3'}", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument, source = persisted_instrument_and_source(session)
+        tick_at = OBSERVED_AT + timedelta(minutes=1)
+        evaluation = RuleEvaluation(
+            alerts=(),
+            next_state=RuleState(last_price=Decimal("120")),
+            invalid_state=None,
+        )
+        persist_rule_evaluation(
+            session=session,
+            instrument_id=instrument.id,
+            source_mapping_id=source.id,
+            evaluation=evaluation,
+            observed_at=tick_at,
+        )
+        stored_state = session.exec(select(LastRuleState)).one()
+        assert stored_state.last_price == Decimal("120.0000000000")
+        assert stored_state.updated_at == tick_at.replace(tzinfo=None)

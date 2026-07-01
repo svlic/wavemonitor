@@ -265,8 +265,8 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     assert len(notifier.messages) == 2
 
 
-def test_poll_tick_skips_rules_and_telegram_for_disabled_instrument(session: Session):
-    instrument, sources = seed_instrument(session)
+def test_poll_tick_does_not_poll_disabled_instrument(session: Session):
+    instrument, _sources = seed_instrument(session)
     instrument.enabled = False
     session.add(instrument)
     session.commit()
@@ -289,12 +289,12 @@ def test_poll_tick_skips_rules_and_telegram_for_disabled_instrument(session: Ses
 
     metrics = scheduler.run_tick(session)
 
-    observations = session.exec(select(PriceObservation).order_by(PriceObservation.source_mapping_id)).all()
-    assert len(observations) == 3
-    assert all(obs.price == Decimal("100.0000000000") for obs in observations)
+    assert session.exec(select(PriceObservation)).all() == []
     assert session.exec(select(AlertEvent)).all() == []
     assert session.exec(select(LastRuleState)).all() == []
     assert notifier.messages == []
+    assert metrics.enabled_sources == 0
+    assert metrics.polled_sources == 0
+    assert metrics.observations_written == 0
     assert metrics.alert_events_created == 0
     assert metrics.telegram_deliveries_attempted == 0
-    assert metrics.observations_written == 3

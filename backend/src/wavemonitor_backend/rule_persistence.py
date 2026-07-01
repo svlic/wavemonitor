@@ -43,6 +43,7 @@ def evaluate_and_persist_rules(
         instrument_id=instrument_id,
         source_mapping_id=source_mapping_id,
         evaluation=evaluation,
+        observed_at=observed_at,
     )
     return evaluation
 
@@ -53,6 +54,7 @@ def persist_rule_evaluation(
     instrument_id: int,
     source_mapping_id: int,
     evaluation: RuleEvaluation,
+    observed_at: datetime,
 ) -> list[AlertEvent]:
     events = [
         AlertEvent(
@@ -81,9 +83,11 @@ def persist_rule_evaluation(
     state.last_invalid_state = (
         None if evaluation.invalid_state is None else evaluation.invalid_state.value
     )
-    state.updated_at = max((alert.triggered_at for alert in evaluation.alerts), default=state.updated_at)
-    if not events and evaluation.invalid_state is not None:
-        state.updated_at = datetime.now(UTC)
+    observed_stamp = observed_at if observed_at.tzinfo is not None else observed_at.replace(tzinfo=UTC)
+    state.updated_at = max(
+        (alert.triggered_at for alert in evaluation.alerts),
+        default=observed_stamp,
+    )
     session.add(state)
     session.commit()
     for event in events:

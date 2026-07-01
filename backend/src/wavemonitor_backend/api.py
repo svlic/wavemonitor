@@ -72,9 +72,16 @@ def update_instrument(session: Session, instrument_id: int, payload: InstrumentR
     instrument.near_support_threshold = payload.near_support_threshold
     instrument.risk_reward_threshold = payload.risk_reward_threshold
     instrument.updated_at = datetime.now(UTC)
-    sync_source_mappings(session, instrument_id, payload)
-    session.add(instrument)
-    session.commit()
+    try:
+        sync_source_mappings(session, instrument_id, payload)
+        session.add(instrument)
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Source mapping already exists",
+        ) from exc
     session.refresh(instrument)
     return instrument_response(session, instrument)
 
@@ -214,7 +221,6 @@ def sync_source_mappings(session: Session, instrument_id: int, payload: Instrume
         else:
             row.enabled = source.enabled
             session.add(row)
-    session.commit()
 
 
 def mapping_identity_key(source: SourceMapping) -> tuple[Provider, MarketType, str]:

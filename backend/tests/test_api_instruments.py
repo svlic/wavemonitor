@@ -299,3 +299,56 @@ def test_create_duplicate_source_mapping_rolls_back_instrument(client: TestClien
     assert response.status_code == 409
     assert response.json()["detail"] == "Source mapping already exists"
     assert list_response.json() == []
+
+
+def test_two_instruments_may_share_same_source_identity(client: TestClient):
+    first = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert first.status_code == 201
+    second_payload = VALID_PAYLOAD | {"name": "Bitcoin alt strategy"}
+    second = client.post("/api/instruments", json=second_payload)
+    assert second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
+    listed = client.get("/api/instruments").json()
+    assert len(listed) == 2
+    assert {row["name"] for row in listed} == {"Bitcoin", "Bitcoin alt strategy"}
+
+
+def test_update_duplicate_source_mapping_returns_409_without_partial_commit(client: TestClient):
+    create_payload = VALID_PAYLOAD | {
+        "source_mappings": [
+            {
+                "provider": "hyperliquid",
+                "market_type": "perpetual",
+                "symbol": "BTC",
+                "enabled": True,
+            }
+        ]
+    }
+    create_response = client.post("/api/instruments", json=create_payload)
+    instrument_id = create_response.json()["id"]
+    update_payload = create_payload | {
+        "name": "Should not persist",
+        "source_mappings": [
+            {
+                "provider": "binance",
+                "market_type": "usd_m_futures",
+                "symbol": "BTCUSDT",
+                "enabled": True,
+            },
+            {
+                "provider": "binance",
+                "market_type": "usd_m_futures",
+                "symbol": "btcusdt",
+                "enabled": False,
+            },
+        ],
+    }
+    update_response = client.put(f"/api/instruments/{instrument_id}", json=update_payload)
+    listed = client.get("/api/instruments").json()
+    row = next(item for item in listed if item["id"] == instrument_id)
+
+    assert update_response.status_code == 409
+    assert update_response.json()["detail"] == "Source mapping already exists"
+    assert row["name"] == "Bitcoin"
+    assert len(row["source_mappings"]) == 1
+    assert row["source_mappings"][0]["provider"] == "hyperliquid"
