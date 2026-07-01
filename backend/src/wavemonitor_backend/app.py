@@ -459,14 +459,7 @@ def get_application() -> FastAPI:
     return create_app()
 
 
-class _LazyASGIApp:
-    def __init__(self) -> None:
-        self._delegate: FastAPI | None = None
-
-    def __call__(self, scope: dict[str, object], receive: object, send: object) -> object:
-        if self._delegate is None:
-            self._delegate = get_application()
-        return self._delegate(scope, receive, send)  # type: ignore[arg-type]
-
-
-app = _LazyASGIApp()
+def __getattr__(name: str) -> object:
+    if name == "app":
+        return get_application()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

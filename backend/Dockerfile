@@ -14,4 +14,4 @@ RUN mkdir -p /data
 
 EXPOSE 8000
 
-CMD ["uvicorn", "wavemonitor_backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "wavemonitor_backend.app:get_application", "--factory", "--host", "0.0.0.0", "--port", "8000"]
