@@ -1,7 +1,11 @@
+import pytest
+
 from wavemonitor_backend.settings import Settings
 
 
-def test_settings_report_telegram_not_ready_when_env_absent(monkeypatch):
+def test_settings_report_telegram_not_ready_when_env_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Given: optional Telegram credentials are absent from the environment.
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
@@ -15,7 +19,9 @@ def test_settings_report_telegram_not_ready_when_env_absent(monkeypatch):
     assert settings.telegram_chat_id is None
 
 
-def test_settings_report_telegram_ready_only_when_both_env_values_exist(monkeypatch):
+def test_settings_report_telegram_ready_only_when_both_env_values_exist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Given: Telegram credentials are provided by environment variables only.
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:secret-token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100987654321")
@@ -29,7 +35,9 @@ def test_settings_report_telegram_ready_only_when_both_env_values_exist(monkeypa
     assert settings.telegram_chat_id == "-100987654321"
 
 
-def test_settings_schema_excludes_raw_telegram_secrets_from_safe_dump(monkeypatch):
+def test_settings_schema_excludes_raw_telegram_secrets_from_safe_dump(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Given: runtime settings contain Telegram credentials from env.
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:secret-token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100987654321")
@@ -42,3 +50,32 @@ def test_settings_schema_excludes_raw_telegram_secrets_from_safe_dump(monkeypatc
     assert public_dump == {"telegram_ready": True}
     assert "123456:secret-token" not in str(public_dump)
     assert "-100987654321" not in str(public_dump)
+
+
+def test_settings_load_web_auth_values_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Given: the shared web password settings are provided by environment variables.
+    monkeypatch.setenv("WAVEMONITOR_WEB_PASSWORD", "open-sesame")
+    monkeypatch.setenv("WAVEMONITOR_SESSION_SECRET", "session-secret")
+
+    # When: settings are loaded from environment.
+    settings = Settings.from_env()
+
+    # Then: auth is enabled without exposing the raw values in public status.
+    assert settings.auth_enabled is True
+    assert settings.web_password == "open-sesame"
+    assert settings.session_secret == "session-secret"
+    assert settings.public_status() == {"telegram_ready": False, "auth_enabled": True}
+
+
+def test_settings_auth_disabled_when_password_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Given: only a session secret is configured.
+    monkeypatch.delenv("WAVEMONITOR_WEB_PASSWORD", raising=False)
+    monkeypatch.setenv("WAVEMONITOR_SESSION_SECRET", "session-secret")
+
+    # When: settings are loaded from environment.
+    settings = Settings.from_env()
+
+    # Then: auth remains disabled until the password exists.
+    assert settings.auth_enabled is False
+    assert settings.web_password is None
+    assert settings.session_secret == "session-secret"
