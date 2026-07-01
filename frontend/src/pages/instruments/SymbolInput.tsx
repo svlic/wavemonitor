@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { FocusEvent, SyntheticEvent } from "react";
 import { apiClient, ApiError } from "../../api/client";
 import type { SymbolOption } from "../../api/client";
 
@@ -11,13 +12,17 @@ type Props = {
 };
 
 export function SymbolInput({ id, provider, marketType, value, onChange }: Props) {
+  const listboxId = useId();
+  const suppressListRef = useRef(false);
   const [options, setOptions] = useState<readonly SymbolOption[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const trimmedValue = value.trim();
+  const listVisible = options.length > 0;
 
   useEffect(() => {
-    if (trimmedValue.length === 0) {
+    if (trimmedValue.length === 0 || trimmedValue === selectedSymbol) {
       setOptions([]);
       setState("idle");
       setMessage(null);
@@ -31,7 +36,12 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
     async function query() {
       try {
         const result = await apiClient.querySymbols(provider, marketType, trimmedValue, controller.signal);
-        setOptions(result);
+        if (suppressListRef.current) {
+          suppressListRef.current = false;
+          setOptions([]);
+        } else {
+          setOptions(result);
+        }
         setState("ready");
         setMessage(result.length === 0 ? "没有匹配的 Symbol，可继续手动输入。" : null);
       } catch (error) {
@@ -46,31 +56,63 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
 
     query();
     return () => controller.abort();
-  }, [marketType, provider, trimmedValue]);
+  }, [marketType, provider, selectedSymbol, trimmedValue]);
+
+  function selectOption(symbol: string) {
+    suppressListRef.current = true;
+    setSelectedSymbol(symbol.trim());
+    onChange(symbol);
+    setOptions([]);
+  }
+
+  function handleOptionInteraction(event: SyntheticEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectOption(event.currentTarget.dataset.symbol ?? event.currentTarget.textContent ?? "");
+  }
+
+  function handleBlur(event: FocusEvent<HTMLDivElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setOptions([]);
+    }
+  }
 
   return (
-    <div className="symbol-combobox">
+    <div
+      className={`symbol-combobox${listVisible ? " symbol-combobox--open" : ""}`}
+      onBlur={handleBlur}
+    >
       <input
         id={id}
         type="text"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          suppressListRef.current = false;
+          setSelectedSymbol(null);
+          onChange(event.target.value);
+        }}
         placeholder="例如 BTCUSDT"
         autoComplete="off"
-        aria-controls={`${id}-options`}
-        aria-expanded={options.length > 0}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-expanded={listVisible}
       />
       {state === "loading" && <p className="field-hint" role="status">正在查询 Symbol...</p>}
       {message && <p className={state === "error" ? "field-hint field-hint--error" : "field-hint"}>{message}</p>}
-      {options.length > 0 && (
-        <ul id={`${id}-options`} className="symbol-options" role="listbox" aria-label="Symbol 候选项">
+      {listVisible && (
+        <ul id={listboxId} className="symbol-options" role="listbox" aria-label="Symbol 候选项">
           {options.map((option) => (
-            <li key={`${option.provider}-${option.market_type}-${option.symbol}`}>
+            <li key={`${option.provider}-${option.market_type}-${option.symbol}`} role="presentation">
               <button
                 type="button"
                 role="option"
                 className="symbol-option"
-                onClick={() => onChange(option.symbol)}
+                data-symbol={option.symbol}
+                onMouseDown={handleOptionInteraction}
+                onPointerDown={handleOptionInteraction}
+                onTouchStart={handleOptionInteraction}
+                onClick={handleOptionInteraction}
               >
                 {option.label}
               </button>

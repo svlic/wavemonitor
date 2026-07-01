@@ -37,7 +37,16 @@ def _normalize_symbol(symbol: str) -> str:
     return symbol.strip().upper()
 
 
+def _normalize_hyperliquid_symbol(symbol: str) -> str:
+    normalized = symbol.strip()
+    if ":" not in normalized:
+        return normalized.upper()
+    dex, coin = normalized.split(":", maxsplit=1)
+    return f"{dex.lower()}:{coin.upper()}"
+
+
 def _metadata(payload: PricePayload) -> dict[str, object]:
+
     return {"path": payload.path, "raw_price": payload.raw_price}
 
 
@@ -98,7 +107,12 @@ def _price_result(identity: PriceIdentity, payload: PricePayload, clock: Clock) 
 
 
 class YFinanceAdapter:
-    def __init__(self, *, ticker_factory: TickerFactory | None = None, clock: Clock = _utc_now) -> None:
+    def __init__(
+        self,
+        *,
+        ticker_factory: TickerFactory | None = None,
+        clock: Clock = _utc_now,
+    ) -> None:
         self._ticker_factory = ticker_factory or self._default_ticker_factory
         self._clock = clock
 
@@ -124,18 +138,30 @@ class YFinanceAdapter:
         )
 
     def _fast_info_result(self, identity: PriceIdentity, fast_info: object) -> PriceResult | None:
-        raw_price = fast_info.get("last_price") if isinstance(fast_info, dict) else getattr(fast_info, "last_price", None)
+        raw_price = (
+            fast_info.get("last_price")
+            if isinstance(fast_info, dict)
+            else getattr(fast_info, "last_price", None)
+        )
         payload = _parse_price(raw_price, "fast_info.last_price")
         return None if payload is None else _price_result(identity, payload, self._clock)
 
-    def _history_result(self, identity: PriceIdentity, ticker: YFinanceTicker) -> PriceResult | None:
+    def _history_result(
+        self,
+        identity: PriceIdentity,
+        ticker: YFinanceTicker,
+    ) -> PriceResult | None:
         history = ticker.history(period="1d", interval="1m")
         if bool(getattr(history, "empty", True)):
             return None
-        row = getattr(history, "iloc")[-1]
+        row = history.iloc[-1]
         raw_price = row.get("Close") if isinstance(row, dict) else None
         payload = _parse_price(raw_price, "history.close")
-        return None if payload is None else _price_result(identity, payload, self._clock)
+        return None if payload is None else _price_result(
+            identity,
+            payload,
+            self._clock,
+        )
 
     def _default_ticker_factory(self, symbol: str) -> YFinanceTicker:
         import yfinance as yf
@@ -159,10 +185,20 @@ class BinanceFuturesAdapter:
         identity = PriceIdentity(Provider.BINANCE, market_type, _normalize_symbol(symbol))
         client = self._client_for_market(market_type)
         try:
-            mark_result = self._payload_result(identity, client.mark_price(identity.symbol), "markPrice", "mark_price.markPrice")
+            mark_result = self._payload_result(
+                identity,
+                client.mark_price(identity.symbol),
+                "markPrice",
+                "mark_price.markPrice",
+            )
             if mark_result is not None:
                 return mark_result
-            ticker_result = self._payload_result(identity, client.ticker_price(identity.symbol), "price", "ticker_price.price")
+            ticker_result = self._payload_result(
+                identity,
+                client.ticker_price(identity.symbol),
+                "price",
+                "ticker_price.price",
+            )
         except Exception as exc:
             return _adapter_error(identity, exc)
         if ticker_result is not None:
@@ -191,19 +227,40 @@ class BinanceFuturesAdapter:
         path: str,
     ) -> PriceResult | None:
         parsed_payload = _parse_price(payload.get(price_key), path)
-        return None if parsed_payload is None else _price_result(identity, parsed_payload, self._clock)
+        return (
+            None
+            if parsed_payload is None
+            else _price_result(identity, parsed_payload, self._clock)
+        )
+
+
+def _hyperliquid_mids_scope(symbol: str) -> tuple[str, str]:
+    if ":" not in symbol:
+        return "", f"all_mids.{symbol}"
+    dex = symbol.split(":", maxsplit=1)[0]
+    return dex, f"all_mids.{dex}.{symbol}"
+
 
 
 class HyperliquidAdapter:
-    def __init__(self, *, info_client: HyperliquidInfoClient, clock: Clock = _utc_now) -> None:
+    def __init__(
+        self,
+        *,
+        info_client: HyperliquidInfoClient,
+        clock: Clock = _utc_now,
+    ) -> None:
         self._info_client = info_client
         self._clock = clock
 
     def get_latest_price(self, symbol: str) -> PriceAdapterResult:
-        identity = PriceIdentity(Provider.HYPERLIQUID, MarketType.PERPETUAL, _normalize_symbol(symbol))
-        path = f"all_mids.{identity.symbol}"
+        identity = PriceIdentity(
+            Provider.HYPERLIQUID,
+            MarketType.PERPETUAL,
+            _normalize_hyperliquid_symbol(symbol),
+        )
+        dex, path = _hyperliquid_mids_scope(identity.symbol)
         try:
-            payload = _parse_price(self._info_client.all_mids().get(identity.symbol), path)
+            payload = _parse_price(self._info_client.all_mids(dex).get(identity.symbol), path)
         except Exception as exc:
             return _adapter_error(identity, exc)
         if payload is None:

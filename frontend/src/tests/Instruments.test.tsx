@@ -141,11 +141,41 @@ describe("InstrumentForm", () => {
     });
     const option = await screen.findByRole("option", { name: "BTCUSDT" });
     await act(async () => {
-      fireEvent.click(option);
+      fireEvent.pointerDown(option);
     });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Symbol")).toHaveValue("BTCUSDT");
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Symbol 候选项" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("applies a yfinance symbol option and closes the dropdown", async () => {
+    vi.mocked(apiClient.querySymbols)
+      .mockResolvedValueOnce([
+        { symbol: "AAPL", label: "AAPL — Apple Inc.", provider: "yfinance", market_type: "equity" },
+      ])
+      .mockResolvedValue([]);
+    render(<InstrumentForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
+    fireEvent.change(screen.getByLabelText("Symbol"), { target: { value: "app" } });
+
+    await waitFor(() => {
+      expect(apiClient.querySymbols).toHaveBeenCalledWith("yfinance", "equity", "app", expect.any(AbortSignal));
+    });
+    const option = await screen.findByRole("option", { name: "AAPL — Apple Inc." });
+    await act(async () => {
+      fireEvent.mouseDown(option);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Symbol")).toHaveValue("AAPL");
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Symbol 候选项" })).not.toBeInTheDocument();
     });
   });
 

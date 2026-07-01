@@ -21,6 +21,16 @@ def timestamp_column(*, nullable: bool = False) -> Column[datetime]:
     return Column(DateTime(timezone=True), nullable=nullable)
 
 
+def normalize_market_symbol(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("symbol must not be blank")
+    if ":" not in normalized:
+        return normalized.upper()
+    prefix, symbol = normalized.split(":", maxsplit=1)
+    return f"{prefix.lower()}:{symbol.upper()}"
+
+
 class Provider(StrEnum):
     YFINANCE = "yfinance"
     BINANCE = "binance"
@@ -91,7 +101,7 @@ class Instrument(RuleDecimalMixin, table=True):
             return self
         if self.support >= self.resistance:
             raise ValueError("support must be less than resistance")
-        if self.near_support_threshold <= Decimal("0") or self.near_support_threshold >= Decimal("1"):
+        if not Decimal("0") < self.near_support_threshold < Decimal("1"):
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
         if self.risk_reward_threshold <= Decimal("0"):
             raise ValueError("risk_reward_threshold must be greater than 0")
@@ -132,10 +142,7 @@ class SourceMapping(SQLModel, table=True):
     @field_validator("symbol")
     @classmethod
     def normalize_symbol(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        if not normalized:
-            raise ValueError("symbol must not be blank")
-        return normalized
+        return normalize_market_symbol(value)
 
     @property
     def identity_key(self) -> str:
@@ -181,9 +188,18 @@ class LastRuleState(RuleDecimalMixin, table=True):
     near_support_active: bool = Field(default=False)
     risk_reward_active: bool = Field(default=False)
     above_resistance_active: bool = Field(default=False)
-    near_support_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
-    risk_reward_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
-    breakout_last_alert_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    near_support_last_alert_at: datetime | None = Field(
+        default=None,
+        sa_column=timestamp_column(nullable=True),
+    )
+    risk_reward_last_alert_at: datetime | None = Field(
+        default=None,
+        sa_column=timestamp_column(nullable=True),
+    )
+    breakout_last_alert_at: datetime | None = Field(
+        default=None,
+        sa_column=timestamp_column(nullable=True),
+    )
     last_invalid_state: str | None = Field(default=None, max_length=80)
     updated_at: datetime = Field(sa_column=timestamp_column())
 

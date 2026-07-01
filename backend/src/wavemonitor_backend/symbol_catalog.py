@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Final, Protocol
+from typing import Final, Protocol
 
 from wavemonitor_backend.adapter_types import HyperliquidInfoClient
 from wavemonitor_backend.models import MarketType, Provider
@@ -38,14 +39,14 @@ def _rank_key(symbol: str, query: str) -> tuple[int, str]:
 
 
 def _filter_symbols(
-    symbols: list[str],
+    symbols: Iterable[str],
     *,
     query: str,
     provider: Provider,
     market_type: MarketType,
     limit: int,
 ) -> list[SymbolOption]:
-    matches = [symbol for symbol in symbols if query in symbol.upper()]
+    matches = list({symbol for symbol in symbols if query in symbol.upper()})
     matches.sort(key=lambda symbol: _rank_key(symbol, query))
     return [
         SymbolOption(symbol=symbol, label=symbol, provider=provider, market_type=market_type)
@@ -141,20 +142,72 @@ class SymbolCatalog:
     ) -> list[SymbolOption]:
         if self._hyperliquid_client is None:
             return []
-        try:
-            mids = self._hyperliquid_client.all_mids()
-        except Exception:
-            return []
+        symbols = self._hyperliquid_symbols()
         return _filter_symbols(
-            list(mids.keys()),
+            symbols,
             query=query,
             provider=provider,
             market_type=market_type,
             limit=SYMBOL_QUERY_MAX_RESULTS,
         )
 
+    def _hyperliquid_symbols(self) -> list[str]:
+        if self._hyperliquid_client is None:
+            return []
+        symbols = list(self._hyperliquid_mids_for_dex("").keys())
+        for dex in self._hyperliquid_dexs():
+            name = _hyperliquid_dex_name(dex)
+            if name is not None:
+                symbols.extend(self._hyperliquid_mids_for_dex(name).keys())
+            symbols.extend(_hyperliquid_dex_assets(dex))
+        return symbols
+
+    def _hyperliquid_dexs(self) -> list[dict[str, object]]:
+        if self._hyperliquid_client is None:
+            return []
+        try:
+            dexs = self._hyperliquid_client.perp_dexs()
+        except Exception:
+            return []
+        return [dex for dex in dexs if isinstance(dex, dict)]
+
+    def _hyperliquid_mids_for_dex(self, dex: str) -> dict[str, str]:
+        if self._hyperliquid_client is None:
+            return {}
+        try:
+            return self._hyperliquid_client.all_mids(dex)
+        except Exception:
+            return {}
+
+
+def _hyperliquid_dex_name(dex: dict[str, object]) -> str | None:
+    name = dex.get("name")
+    return name if isinstance(name, str) and name else None
+
+
+def _hyperliquid_dex_assets(dex: dict[str, object]) -> list[str]:
+    assets: list[str] = []
+    for key in ("assetToStreamingOiCap", "assetToFundingMultiplier", "assetToFundingInterestRate"):
+        entries = dex.get(key)
+        if not isinstance(entries, list):
+            continue
+        assets.extend(_hyperliquid_asset_names(entries))
+    return assets
+
+
+def _hyperliquid_asset_names(entries: list[object]) -> list[str]:
+    names: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, list) or not entry:
+            continue
+        asset = entry[0]
+        if isinstance(asset, str) and asset:
+            names.append(asset)
+    return names
+
 
 def _default_yfinance_search(query: str, limit: int) -> list[SymbolOption]:
+
     import yfinance as yf
 
     try:

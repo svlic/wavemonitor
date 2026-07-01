@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Callable, Protocol, TypeAlias
+from typing import Protocol, TypeAlias
 
 from wavemonitor_backend.models import MarketType, Provider
 
@@ -78,4 +79,6 @@ class BinanceFuturesClient(Protocol):
 
 
 class HyperliquidInfoClient(Protocol):
-    def all_mids(self) -> dict[str, str]: ...
+    def all_mids(self, dex: str = "") -> dict[str, str]: ...
+
+    def perp_dexs(self) -> list[dict[str, object] | None]: ...

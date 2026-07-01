@@ -18,11 +18,23 @@ class FakeBinanceExchange:
 
 
 class FakeHyperliquid:
-    def __init__(self, mids: dict[str, str]) -> None:
+    def __init__(
+        self,
+        mids: dict[str, str],
+        dexs: list[dict[str, object] | None] | None = None,
+        dex_mids: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         self._mids = mids
+        self._dexs = dexs or []
+        self._dex_mids = dex_mids or {}
 
-    def all_mids(self) -> dict[str, str]:
-        return self._mids
+    def all_mids(self, dex: str = "") -> dict[str, str]:
+        if not dex:
+            return self._mids
+        return self._dex_mids.get(dex, {})
+
+    def perp_dexs(self) -> list[dict[str, object] | None]:
+        return self._dexs
 
 
 def test_binance_filters_trading_symbols_and_ranks_prefix_matches() -> None:
@@ -37,7 +49,59 @@ def test_hyperliquid_searches_all_mids() -> None:
     catalog = SymbolCatalog(hyperliquid_client=FakeHyperliquid({"BTC": "1", "ETH": "2"}))
     options = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "bt")
     assert options == [
-        SymbolOption(symbol="BTC", label="BTC", provider=Provider.HYPERLIQUID, market_type=MarketType.PERPETUAL)
+        SymbolOption(
+            symbol="BTC",
+            label="BTC",
+            provider=Provider.HYPERLIQUID,
+            market_type=MarketType.PERPETUAL,
+        )
+    ]
+
+
+def test_hyperliquid_searches_hip3_stock_contract_dexs() -> None:
+    catalog = SymbolCatalog(
+        hyperliquid_client=FakeHyperliquid(
+            {"BTC": "1"},
+            dexs=[{"name": "hip3-stocks"}],
+            dex_mids={"hip3-stocks": {"hip3-stocks:AAPL": "1", "hip3-stocks:TSLA": "2"}},
+        )
+    )
+    options = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "aa")
+    assert options == [
+        SymbolOption(
+            symbol="hip3-stocks:AAPL",
+            label="hip3-stocks:AAPL",
+            provider=Provider.HYPERLIQUID,
+            market_type=MarketType.PERPETUAL,
+        )
+    ]
+
+
+def test_hyperliquid_searches_trade_xyz_assets_from_perp_dex_metadata() -> None:
+    catalog = SymbolCatalog(
+        hyperliquid_client=FakeHyperliquid(
+            {"BTC": "1"},
+            dexs=[
+                None,
+                {
+                    "name": "xyz",
+                    "fullName": "XYZ",
+                    "assetToStreamingOiCap": [
+                        ["xyz:AAPL", "100000000.0"],
+                        ["xyz:CRCL", "100000000.0"],
+                    ],
+                },
+            ],
+        )
+    )
+    options = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "crcl")
+    assert options == [
+        SymbolOption(
+            symbol="xyz:CRCL",
+            label="xyz:CRCL",
+            provider=Provider.HYPERLIQUID,
+            market_type=MarketType.PERPETUAL,
+        )
     ]
 
 

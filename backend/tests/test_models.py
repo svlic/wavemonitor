@@ -98,6 +98,20 @@ def test_source_mapping_identity_is_provider_market_type_and_symbol():
     assert coin_m.identity_key == "binance:coin_m_futures:BTCUSD_PERP"
 
 
+def test_source_mapping_preserves_hyperliquid_dex_prefix_case():
+    # Given: a Hyperliquid HIP-3 symbol uses the SDK-required dex:coin format.
+    mapping = SourceMapping(
+        instrument_id=1,
+        provider=Provider.HYPERLIQUID,
+        market_type=MarketType.PERPETUAL,
+        symbol="XYZ:crcl",
+    )
+
+    # When / Then: only the coin is uppercased; the dex prefix remains lowercase for API routing.
+    assert mapping.symbol == "xyz:CRCL"
+    assert mapping.identity_key == "hyperliquid:perpetual:xyz:CRCL"
+
+
 def test_observation_and_alert_models_keep_rule_amounts_decimal():
     # Given: persisted event-like domain objects with rule amounts.
     observation = PriceObservation(

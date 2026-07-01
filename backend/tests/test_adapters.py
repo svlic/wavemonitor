@@ -16,7 +16,11 @@ from wavemonitor_backend.models import MarketType, Provider
 
 
 class FakeYFinanceTicker:
-    def __init__(self, fast_info: object, history_rows: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        fast_info: object,
+        history_rows: list[dict[str, object]] | None = None,
+    ) -> None:
         self.fast_info = fast_info
         self.history_rows = history_rows or []
         self.history_calls: list[dict[str, str]] = []
@@ -70,14 +74,21 @@ class FakeBinanceClient:
 
 
 class FakeHyperliquidInfo:
-    def __init__(self, mids: dict[str, str] | BaseException) -> None:
+    def __init__(
+        self,
+        mids: dict[str, str] | BaseException,
+        dex_mids: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         self.mids = mids
-        self.calls = 0
+        self.dex_mids = dex_mids or {}
+        self.calls: list[str] = []
 
-    def all_mids(self) -> dict[str, str]:
-        self.calls += 1
+    def all_mids(self, dex: str = "") -> dict[str, str]:
+        self.calls.append(dex)
         if isinstance(self.mids, BaseException):
             raise self.mids
+        if dex:
+            return self.dex_mids.get(dex, {})
         return self.mids
 
 
@@ -98,7 +109,7 @@ def test_yfinance_adapter_returns_fast_info_last_price_when_present():
     # When: the latest price is requested.
     result = adapter.get_latest_price("AAPL")
 
-    # Then: the normalized contract carries source identity, Decimal price, timestamp, and raw metadata.
+    # Then: the normalized contract carries source identity, price, timestamp, and metadata.
     assert isinstance(result, PriceResult)
     assert result.source == Provider.YFINANCE
     assert result.market_type == MarketType.EQUITY
@@ -158,7 +169,9 @@ def test_yfinance_adapter_returns_malformed_price_error_for_bad_decimal_string()
 
 def test_yfinance_adapter_maps_provider_timeout_to_typed_error():
     # Given: constructing the ticker raises a timeout-like provider failure.
-    adapter = YFinanceAdapter(ticker_factory=lambda symbol: (_ for _ in ()).throw(TimeoutError("slow")))
+    adapter = YFinanceAdapter(
+        ticker_factory=lambda symbol: (_ for _ in ()).throw(TimeoutError("slow")),
+    )
 
     # When: the latest price is requested.
     result = adapter.get_latest_price("AAPL")
@@ -171,7 +184,9 @@ def test_yfinance_adapter_maps_provider_timeout_to_typed_error():
 
 def test_binance_usd_m_adapter_prefers_mark_price_and_uses_usd_m_client():
     # Given: separate USD-M and COIN-M fake clients expose different routes.
-    usd_client = FakeBinanceClient(mark_payload={"symbol": "BTCUSDT", "markPrice": "60321.42", "time": 1})
+    usd_client = FakeBinanceClient(
+        mark_payload={"symbol": "BTCUSDT", "markPrice": "60321.42", "time": 1},
+    )
     coin_client = FakeBinanceClient(mark_payload={"symbol": "BTCUSD_PERP", "markPrice": "60320"})
     adapter = BinanceFuturesAdapter(usd_m_client=usd_client, coin_m_client=coin_client)
 
@@ -269,7 +284,27 @@ def test_hyperliquid_adapter_looks_up_all_mids_coin_and_parses_decimal_string():
     assert result.symbol == "BTC"
     assert result.price == Decimal("60324.125")
     assert result.raw_metadata == {"path": "all_mids.BTC", "raw_price": "60324.125"}
-    assert info.calls == 1
+    assert info.calls == [""]
+
+
+def test_hyperliquid_adapter_looks_up_dex_prefixed_hip3_symbols():
+    # Given: a HIP-3 contract deployed under trade.xyz uses a dex-prefixed coin.
+    info = FakeHyperliquidInfo(
+        {"BTC": "60324.125"},
+        dex_mids={"xyz": {"xyz:CRCL": "63.31"}},
+    )
+    adapter = HyperliquidAdapter(info_client=info)
+
+    # When: the dex-prefixed latest price is requested.
+    result = adapter.get_latest_price("xyz:CRCL")
+
+    # Then: the adapter routes to that DEX and preserves the lowercase dex prefix.
+    assert isinstance(result, PriceResult)
+    assert result.symbol == "xyz:CRCL"
+    assert result.price == Decimal("63.31")
+    assert result.raw_metadata == {"path": "all_mids.xyz.xyz:CRCL", "raw_price": "63.31"}
+    assert info.calls == ["xyz"]
+
 
 
 def test_hyperliquid_adapter_returns_missing_symbol_for_absent_coin():

@@ -383,6 +383,15 @@ select:focus {
   position: relative;
 }
 
+.symbol-combobox--open {
+  z-index: 20;
+}
+
+.mapping-row:has(.symbol-combobox--open) {
+  position: relative;
+  z-index: 15;
+}
+
 .field-hint {
   margin: 0.45rem 0 0;
   color: var(--color-muted);
@@ -395,7 +404,7 @@ select:focus {
 
 .symbol-options {
   position: absolute;
-  z-index: 5;
+  z-index: 21;
   width: 100%;
   max-height: 12rem;
   overflow-y: auto;
