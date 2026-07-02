@@ -149,35 +149,48 @@ def test_evaluate_and_persist_uses_last_rule_state_for_dedupe(tmp_path: Path):
         assert len(stored_events) == 1
 
 
-def test_persisted_cooldown_retriggers_active_near_support_at_boundary(tmp_path: Path):
-    # Given: a persisted source whose near-support condition remains active across the cooldown window.
-    engine = create_engine(f"sqlite:///{tmp_path / 'cooldown.sqlite3'}", connect_args={"check_same_thread": False})
+def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: Path):
+    # Given: a persisted source whose near-support condition becomes active, stays active, then resets.
+    engine = create_engine(f"sqlite:///{tmp_path / 'edge.sqlite3'}", connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)
 
-        # When: the same source is evaluated at first alert time and exactly five minutes later.
+        # When: first trigger, repeat while active, move away, then near support again.
         first = evaluate_and_persist_rules(
             session=session,
             instrument=instrument,
             source_mapping=source,
             price=Decimal("100"),
             observed_at=OBSERVED_AT,
-            cooldown=timedelta(minutes=5),
         )
-        second = evaluate_and_persist_rules(
+        repeated = evaluate_and_persist_rules(
             session=session,
             instrument=instrument,
             source_mapping=source,
             price=Decimal("100"),
-            observed_at=OBSERVED_AT + timedelta(minutes=5),
-            cooldown=timedelta(minutes=5),
+            observed_at=OBSERVED_AT + timedelta(hours=1),
+        )
+        reset = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("105"),
+            observed_at=OBSERVED_AT + timedelta(hours=2),
+        )
+        retriggered = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT + timedelta(hours=3),
         )
         stored_events = session.exec(select(AlertEvent).where(AlertEvent.source_mapping_id == source.id)).all()
 
-        # Then: persisted last-alert timestamps allow cooldown retriggering without condition reset.
+        # Then: only edge transitions persist new AlertEvent rows.
         assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
-        assert [alert.kind for alert in second.alerts] == [AlertKind.NEAR_SUPPORT]
+        assert repeated.alerts == ()
+        assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
         assert len(stored_events) == 2
 
 

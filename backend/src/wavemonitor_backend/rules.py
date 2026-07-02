@@ -215,13 +215,10 @@ def should_emit(
     observed_at: datetime,
     cooldown: timedelta,
 ) -> bool:
+    del last_alert_at, observed_at, cooldown
     if not active:
         return False
-    if not was_active:
-        return True
-    if last_alert_at is None:
-        return True
-    return observed_at - last_alert_at >= cooldown
+    return not was_active
 
 
 def next_alert_time(*, alerts: tuple[AlertDecision, ...], kind: AlertKind, previous: datetime | None) -> datetime | None:

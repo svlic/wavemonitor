@@ -210,30 +210,28 @@ def test_repeated_near_support_suppressed_until_condition_resets():
     assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
 
 
-def test_cooldown_allows_repeated_active_near_support_after_elapsed_window():
-    # Given: near-support is already active and last emitted before the cooldown window.
+def test_active_near_support_never_re_alerts_while_condition_stays_true():
+    # Given: near-support is already active and an alert was already emitted.
     previous_state = RuleState(
         last_price=Decimal("100"),
         near_support_active=True,
         near_support_last_alert_at=OBSERVED_AT,
     )
 
-    # When: the active condition repeats before and after a 5 minute cooldown.
-    before_cooldown = evaluate_rules(
-        price=Decimal("100"), support=Decimal("98"), resistance=Decimal("130"),
-        near_support_threshold=Decimal("0.02"), risk_reward_threshold=Decimal("20"),
-        previous_state=previous_state, observed_at=OBSERVED_AT + timedelta(minutes=4, seconds=59),
+    # When: the active condition repeats long after any former cooldown window.
+    still_active = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=previous_state,
+        observed_at=OBSERVED_AT + timedelta(hours=24),
         cooldown=timedelta(minutes=5),
     )
-    after_cooldown = evaluate_rules(
-        price=Decimal("100"), support=Decimal("98"), resistance=Decimal("130"),
-        near_support_threshold=Decimal("0.02"), risk_reward_threshold=Decimal("20"),
-        previous_state=previous_state, observed_at=OBSERVED_AT + timedelta(minutes=5), cooldown=timedelta(minutes=5),
-    )
 
-    # Then: cooldown suppresses before the window and permits a repeated active alert at the boundary.
-    assert before_cooldown.alerts == ()
-    assert [alert.kind for alert in after_cooldown.alerts] == [AlertKind.NEAR_SUPPORT]
+    # Then: no second alert until the condition becomes inactive and triggers again.
+    assert still_active.alerts == ()
 
 
 def test_rule_state_is_source_specific():
