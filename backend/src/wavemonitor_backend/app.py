@@ -396,11 +396,12 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content=body.model_dump(),
             )
-        message_kind = MessageKind.TEST if payload is None else MessageKind.ALERT
-        alert = (
-            None
-            if payload is None
-            else TelegramAlert(
+        if payload is None:
+            message_kind = MessageKind.TEST
+            alert = None
+        else:
+            message_kind = MessageKind.ALERT
+            alert = TelegramAlert(
                 instrument=payload.instrument,
                 source=payload.source,
                 rule=payload.rule,
@@ -408,7 +409,6 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
                 support=payload.support,
                 resistance=payload.resistance,
             )
-        )
         message = message_for_kind(message_kind, alert)
         result = telegram_notifier.send_text(message)
         if result is None:
