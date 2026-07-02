@@ -5,7 +5,8 @@
 ## 功能概览
 
 - **标的管理**：配置名称、支撑/阻力、阈值及多数据源映射（交易所、品种、是否启用）
-- **仪表盘**：系统运行状态、最新价格、近期告警、数据源错误
+- **仪表盘**：系统运行状态、全宽价格监控与近期告警
+- **告警与诊断**：Telegram 测试告警与各数据源最近错误
 - **Telegram**：配置 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_CHAT_ID` 后可发送测试消息与告警
 - **访问验证**：可通过 `WAVEMONITOR_WEB_PASSWORD` 启用首次访问密码验证（无需账号）
 
@@ -141,8 +142,8 @@ curl -s http://localhost:8000/api/runtime | python3 -m json.tool
 
 1. 若设置了 `WAVEMONITOR_WEB_PASSWORD`，先在中文访问验证页输入共享密码；会话通过 7 天有效的 `HttpOnly` Cookie 保持。
 2. 打开 **标的管理**，新建标的并配置支撑/阻力、阈值及数据源（YFinance / Binance / Hyperliquid 等）；Symbol 输入框会通过实时查询接口给出候选项，也支持手动输入。
-3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources`、最新价格与告警。
-4. 若已配置 Telegram，使用界面中的 Telegram 测试（或 `POST /api/telegram/test`）确认推送。
+3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources`、全宽价格监控与近期告警。
+4. 若已配置 Telegram，在 **告警与诊断** 发送测试告警（或 `POST /api/telegram/test`）并查看数据源错误。
 
 ### 5. 日常运维
 
@@ -187,7 +188,7 @@ docker compose up --build -d
    docker compose up -d --force-recreate backend
    ```
 
-5. 确认 `GET /health` 或 Dashboard 中 `telegram_ready` 为 `true`，再发送测试消息。
+5. 确认 `GET /health` 或仪表盘/告警与诊断页中 `telegram_ready` 为 `true`，再发送测试消息。
 
 密钥仅由**后端**进程读取；前端与 Nginx 不接收 Telegram 环境变量。日志与 API 会对敏感信息脱敏。
 
@@ -296,8 +297,8 @@ wavemonitor/
 **Q：`telegram_ready` 一直为 false**  
 确认 `.env` 中两项均已填写且无多余引号/空格，并执行 `docker compose up -d --force-recreate backend`。
 
-**Q：有标的但 Dashboard 无价格**  
-确认标的已启用、数据源映射已启用且 symbol 正确；查看 Dashboard 数据源错误区与 `GET /api/source-errors`。容器需能访问外网。
+**Q：有标的但仪表盘无价格**  
+确认标的已启用、数据源映射已启用且 symbol 正确；在 **告警与诊断** 查看数据源错误表或 `GET /api/source-errors`。容器需能访问外网。
 
 **Q：如何备份数据**  
 从卷中拷贝 SQLite 文件，例如：
