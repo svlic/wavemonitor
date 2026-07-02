@@ -72,21 +72,23 @@ function SourcePriceCard({ price, support, resistance }: SourcePriceCardProps) {
         </time>
       </header>
       <dl className="price-source-card__fields">
-        <div className="price-field">
+        <div className="price-field price-field--hero">
           <dt className="price-field__label">价格</dt>
           <dd className="price-field__value price-field__value--primary">{price.last_price}</dd>
         </div>
-        <div className="price-field">
-          <dt className="price-field__label">距支撑</dt>
-          <dd className="price-field__value">{formatMetricPercent(supportPct)}</dd>
-        </div>
-        <div className="price-field">
-          <dt className="price-field__label">距阻力</dt>
-          <dd className="price-field__value">{formatMetricPercent(resistancePct)}</dd>
-        </div>
-        <div className="price-field">
-          <dt className="price-field__label">盈亏比</dt>
-          <dd className="price-field__value">{formatRiskReward(riskReward)}</dd>
+        <div className="price-source-card__metrics">
+          <div className="price-field">
+            <dt className="price-field__label">距支撑</dt>
+            <dd className="price-field__value">{formatMetricPercent(supportPct)}</dd>
+          </div>
+          <div className="price-field">
+            <dt className="price-field__label">距阻力</dt>
+            <dd className="price-field__value">{formatMetricPercent(resistancePct)}</dd>
+          </div>
+          <div className="price-field">
+            <dt className="price-field__label">盈亏比</dt>
+            <dd className="price-field__value">{formatRiskReward(riskReward)}</dd>
+          </div>
         </div>
       </dl>
     </article>
