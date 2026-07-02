@@ -33,14 +33,19 @@ export function formatAlertKindLabel(kind: string): string {
   return ALERT_KIND_LABELS[kind] ?? kind;
 }
 
+export const DISPLAY_TIME_ZONE = "Asia/Shanghai";
+
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString("zh-CN", {
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 }
