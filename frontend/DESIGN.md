@@ -34,7 +34,8 @@
 ## 布局
 
 - 侧栏固定 `240px`，主内容区 `max-width: 1280px`，内边距 `2rem`
-- 仪表盘网格：`minmax(360px, 1fr)` 自适应
+- 仪表盘网格：小屏 `minmax(360px, 1fr)`；≥1024px 为 12 列（状态 4 + 价格 8，告警 8 + 错误 4）
+- 统计卡：2 / 3 / 6 列断点；数值等宽字体
 
 ## 组件状态
 
@@ -47,4 +48,4 @@
 - 标的区块：`.price-monitor__instrument`（内边距、边框、圆角 `--radius-panel`）
 - 支撑/阻力：`.level-chip` + `.level-chip__label` / `.level-chip__value`（等宽数字用 JetBrains Mono）
 - 来源卡片：`.price-source-card`，字段为 `.price-field`（标签 + 数值）；主价格 `.price-field__value--primary` 使用 `--color-accent`
-- 响应式：`.price-monitor__sources` 为 `auto-fill` 网格，`minmax(17.5rem, 1fr)`
+- 响应式：`.price-monitor__sources` 为 `auto-fill`，单卡宽约 `11.25rem–14.5rem`；主价单独一行，三项指标横排

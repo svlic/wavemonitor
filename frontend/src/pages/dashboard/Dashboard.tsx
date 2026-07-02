@@ -277,7 +277,7 @@ export function Dashboard() {
           <PriceMonitorPanel prices={prices} instruments={instruments} />
         </section>
 
-        <section className="panel" aria-labelledby="alerts-title">
+        <section className="panel dashboard-panel--alerts" aria-labelledby="alerts-title">
           <h2 id="alerts-title" className="panel-title">
             最近告警
           </h2>
@@ -309,7 +309,7 @@ export function Dashboard() {
           )}
         </section>
 
-        <section className="panel dashboard-panel--wide" aria-labelledby="errors-title">
+        <section className="panel dashboard-panel--errors" aria-labelledby="errors-title">
           <h2 id="errors-title" className="panel-title">
             数据源错误
           </h2>
