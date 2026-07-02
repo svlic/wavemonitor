@@ -542,6 +542,10 @@ select:focus {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .dashboard-toolbar__meta {
@@ -718,6 +722,198 @@ select:focus {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-control);
   background: rgba(0, 0, 0, 0.12);
+}
+
+.panel-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel-title-row .panel-title {
+  margin: 0;
+}
+
+.panel-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.panel-title-sub {
+  font-size: 0.8125rem;
+  margin: 0;
+  max-width: 36rem;
+}
+
+.price-refresh-hint {
+  font-size: 0.8125rem;
+}
+
+.price-monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.price-monitor__instrument {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.price-monitor__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.price-monitor__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.price-monitor__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.price-monitor__levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.level-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  font-size: 0.8125rem;
+}
+
+.level-chip__label {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.level-chip__value {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.level-chip--support {
+  border-color: rgba(61, 214, 140, 0.22);
+}
+
+.level-chip--resistance {
+  border-color: rgba(139, 149, 168, 0.35);
+}
+
+.price-monitor__sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.price-source-card {
+  margin: 0;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-panel);
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+.price-source-card:hover {
+  border-color: rgba(61, 214, 140, 0.28);
+  background: rgba(22, 27, 36, 0.92);
+}
+
+.price-source-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(37, 43, 54, 0.85);
+}
+
+.price-source-card__source {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+.price-source-card__time {
+  font-size: 0.75rem;
+}
+
+.price-source-card__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.price-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.price-field__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.price-field__value {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.price-field__value--primary {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.metric-cell {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
 }
 
 .price-cell {

@@ -145,9 +145,14 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
+      expect(screen.getByText("每 2 分钟自动刷新")).toBeInTheDocument();
       expect(screen.getAllByText("Bitcoin").length).toBeGreaterThan(0);
+      expect(screen.getByText("90000")).toBeInTheDocument();
+      expect(screen.getAllByText("支撑").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Binance · USD-M 合约 · BTCUSDT").length).toBeGreaterThan(0);
       expect(screen.getByText("95000.50")).toBeInTheDocument();
+      expect(screen.getAllByText("5.26%").length).toBe(2);
+      expect(screen.getByText("1.00")).toBeInTheDocument();
       expect(screen.getByText("接近支撑")).toBeInTheDocument();
       expect(screen.getByText("90500.00")).toBeInTheDocument();
       expect(screen.getByText("Connection timed out")).toBeInTheDocument();

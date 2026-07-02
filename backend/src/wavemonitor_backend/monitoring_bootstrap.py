@@ -17,7 +17,7 @@ from wavemonitor_backend.notifier import TelegramNotifier
 from wavemonitor_backend.settings import Settings
 
 POLL_INTERVAL_SECONDS_ENV: Final[str] = "WAVEMONITOR_POLL_INTERVAL_SECONDS"
-DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 60.0
+DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 120.0
 MONITORING_DISABLED_ENV: Final[str] = "WAVEMONITOR_MONITORING_DISABLED"
 
 

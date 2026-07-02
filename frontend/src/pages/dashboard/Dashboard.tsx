@@ -7,11 +7,13 @@ import type {
   SourceError,
   InstrumentWithMappings,
 } from "../../api/client";
+import { usePollingRefresh } from "../../hooks/usePollingRefresh";
 import {
   formatAlertKindLabel,
   formatDateTime,
   formatSourceLabel,
 } from "../../utils/format";
+import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
 type DashboardState = "loading" | "ready" | "error";
 
@@ -95,6 +97,12 @@ export function Dashboard() {
     void loadData(controller.signal);
     return () => controller.abort();
   }, [loadData]);
+
+  const pollPrices = useCallback(() => {
+    void loadData(undefined, { refresh: true });
+  }, [loadData]);
+
+  usePollingRefresh(pollPrices, 120_000);
 
   const handleRefresh = () => {
     void loadData(undefined, { refresh: true });
@@ -251,36 +259,22 @@ export function Dashboard() {
           </div>
         </section>
 
-        <section className="panel dashboard-panel--wide" aria-labelledby="prices-title">
-          <h2 id="prices-title" className="panel-title">
-            最新价格
-          </h2>
-          {prices.length === 0 ? (
-            <p className="empty-state">暂无价格数据。</p>
-          ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>标的</th>
-                    <th>来源</th>
-                    <th>价格</th>
-                    <th>时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {prices.map((price) => (
-                    <tr key={price.source_mapping_id}>
-                      <td>{price.instrument_name}</td>
-                      <td>{formatSourceLabel(price.provider, price.market_type, price.symbol)}</td>
-                      <td className="price-cell">{price.last_price}</td>
-                      <td>{formatDateTime(price.last_observed_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section
+          className="panel dashboard-panel--wide dashboard-panel--prices"
+          aria-labelledby="prices-title"
+        >
+          <div className="panel-title-row">
+            <div className="panel-title-group">
+              <h2 id="prices-title" className="panel-title">
+                价格监控
+              </h2>
+              <p className="muted-text panel-title-sub">
+                按标的汇总各来源最新价、距支撑/阻力与盈亏比
+              </p>
             </div>
-          )}
+            <p className="muted-text price-refresh-hint">每 2 分钟自动刷新</p>
+          </div>
+          <PriceMonitorPanel prices={prices} instruments={instruments} />
         </section>
 
         <section className="panel" aria-labelledby="alerts-title">

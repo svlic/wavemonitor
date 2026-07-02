@@ -110,7 +110,7 @@ Compose **不会**自动把 `WAVEMONITOR_POLL_INTERVAL_SECONDS`、`WAVEMONITOR_M
       DATABASE_URL: sqlite:////data/wavemonitor.sqlite3
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      WAVEMONITOR_POLL_INTERVAL_SECONDS: "60"
+      WAVEMONITOR_POLL_INTERVAL_SECONDS: "120"
       # WAVEMONITOR_MONITORING_DISABLED: "1"   # 设为 1/true/yes 可关闭后台轮询
 ```
 
@@ -202,7 +202,7 @@ docker compose up --build -d
 | `TELEGRAM_CHAT_ID` | 无 | 告警接收方 Chat ID（可选） |
 | `WAVEMONITOR_WEB_PASSWORD` | 无，访问验证关闭 | 设置后，前端首次访问显示密码验证页，且 `/api/*` 需要会话 Cookie（`/api/auth/*` 与 `/health` 除外） |
 | `WAVEMONITOR_SESSION_SECRET` | 无（启用密码时自动生成并持久化） | 可选覆盖；未设置时在数据库文件旁写入 `session_secret` |
-| `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `60` | 行情轮询周期（秒），须 > 0 |
+| `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `120` | 行情轮询周期（秒），须 > 0；默认 2 分钟 |
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
 | `RUN_LIVE_SMOKE` | 未设置 | 设为 `1` 时执行 `backend/scripts/live_smoke.py` 实网探测 |
 | `VITE_API_BASE_URL` | 空字符串 | **仅本地前端构建/开发**：API 根地址；Docker 生产构建留空，使用同源 `/api` |

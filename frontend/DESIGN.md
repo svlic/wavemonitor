@@ -41,3 +41,10 @@
 - 导航：当前路由 `.nav-link--active`
 - 按钮：hover 提亮、`:focus-visible` 2px accent 描边
 - 加载：`.skeleton` 脉冲占位
+
+## 仪表盘 · 价格监控
+
+- 标的区块：`.price-monitor__instrument`（内边距、边框、圆角 `--radius-panel`）
+- 支撑/阻力：`.level-chip` + `.level-chip__label` / `.level-chip__value`（等宽数字用 JetBrains Mono）
+- 来源卡片：`.price-source-card`，字段为 `.price-field`（标签 + 数值）；主价格 `.price-field__value--primary` 使用 `--color-accent`
+- 响应式：`.price-monitor__sources` 为 `auto-fill` 网格，`minmax(17.5rem, 1fr)`
