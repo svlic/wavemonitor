@@ -145,7 +145,7 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("每 2 分钟自动刷新")).toBeInTheDocument();
+      expect(screen.getByText("价格每 2 分钟自动刷新")).toBeInTheDocument();
       expect(screen.getAllByText("Bitcoin").length).toBeGreaterThan(0);
       expect(screen.getByText("90000")).toBeInTheDocument();
       expect(screen.getAllByText("支撑").length).toBeGreaterThan(0);
@@ -169,7 +169,7 @@ describe("Dashboard", () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Telegram 尚未配置/)).toBeInTheDocument();
+      expect(screen.getByText(/尚未配置/)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "发送测试告警" })).not.toBeInTheDocument();
     });
   });
