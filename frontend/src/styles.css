@@ -717,24 +717,39 @@ select:focus {
     gap: 1.25rem;
   }
 
-  .dashboard-panel--prices {
-    grid-column: span 12;
-  }
-
-  .dashboard-panel--telegram {
-    grid-column: span 4;
-    align-self: start;
-  }
-
+  .dashboard-panel--prices,
   .dashboard-panel--alerts {
-    grid-column: span 5;
+    grid-column: span 12;
     min-width: 0;
   }
+}
 
-  .dashboard-panel--errors {
-    grid-column: span 3;
-    min-width: 0;
-  }
+.ops-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.ops-layout__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.ops-layout__hint {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.ops-panel--wide {
+  width: 100%;
+}
+
+.panel-title-sub {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.875rem;
 }
 
 .inline-confirm {

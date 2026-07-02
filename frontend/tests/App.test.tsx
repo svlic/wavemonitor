@@ -81,7 +81,8 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("运行概览")).toBeInTheDocument();
       expect(screen.getByLabelText("组件就绪状态")).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Telegram" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "告警与诊断" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Telegram" })).not.toBeInTheDocument();
     });
   });
 

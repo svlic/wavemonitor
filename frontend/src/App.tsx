@@ -6,6 +6,7 @@ import { InstrumentList } from "./pages/instruments/InstrumentList";
 import { InstrumentCreate } from "./pages/instruments/InstrumentCreate";
 import { InstrumentEdit } from "./pages/instruments/InstrumentEdit";
 import { Dashboard } from "./pages/dashboard/Dashboard";
+import { OpsPanel } from "./pages/ops/OpsPanel";
 import "./styles.css";
 
 type AuthState = "checking" | "authenticated" | "password-required";
@@ -19,7 +20,13 @@ function getPageMeta(path: string): PageMeta {
   if (path === "/") {
     return {
       title: "仪表盘",
-      description: "查看调度状态、最新价格、近期告警与数据源健康情况。",
+      description: "查看调度状态、最新价格与近期告警。",
+    };
+  }
+  if (path === "/diagnostics") {
+    return {
+      title: "告警与诊断",
+      description: "发送 Telegram 测试告警并查看各数据源最近错误。",
     };
   }
   if (path === "/instruments") {
@@ -163,6 +170,11 @@ function AppShell({ authEnabled, onLogout, logoutPending }: AppShellProps) {
             </NavLink>
           </li>
           <li>
+            <NavLink href="/diagnostics" onNavigate={() => setMobileNavOpen(false)}>
+              告警与诊断
+            </NavLink>
+          </li>
+          <li>
             <NavLink href="/instruments" onNavigate={() => setMobileNavOpen(false)}>
               标的管理
             </NavLink>
@@ -192,6 +204,7 @@ function AppShell({ authEnabled, onLogout, logoutPending }: AppShellProps) {
         <main className="main-content">
           <Switch>
             <Route path="/" component={Dashboard} />
+            <Route path="/diagnostics" component={OpsPanel} />
             <Route path="/instruments" component={InstrumentList} />
             <Route path="/instruments/new" component={InstrumentCreate} />
             <Route path="/instruments/:id/edit">

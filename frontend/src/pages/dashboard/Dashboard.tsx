@@ -4,32 +4,28 @@ import type {
   RuntimeResponse,
   LatestPrice,
   RecentAlert,
-  SourceError,
   InstrumentWithMappings,
 } from "../../api/client";
 import { usePollingRefresh } from "../../hooks/usePollingRefresh";
 import {
   formatAlertKindLabel,
   formatDateTime,
-  formatSourceLabel,
 } from "../../utils/format";
 import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
 type DashboardState = "loading" | "ready" | "error";
 
 async function fetchDashboardBundle(signal?: AbortSignal) {
-  const [runtimeData, pricesData, alertsData, errorsData, instrumentsData] = await Promise.all([
+  const [runtimeData, pricesData, alertsData, instrumentsData] = await Promise.all([
     apiClient.getRuntime(signal),
     apiClient.getLatestPrices(signal),
     apiClient.getRecentAlerts(signal),
-    apiClient.getSourceErrors(signal),
     apiClient.getInstruments(signal),
   ]);
   return {
     runtime: runtimeData,
     prices: pricesData,
     alerts: alertsData,
-    errors: errorsData,
     instruments: instrumentsData,
   };
 }
@@ -42,18 +38,13 @@ export function Dashboard() {
   const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
   const [prices, setPrices] = useState<readonly LatestPrice[]>([]);
   const [alerts, setAlerts] = useState<readonly RecentAlert[]>([]);
-  const [errors, setErrors] = useState<readonly SourceError[]>([]);
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
-
-  const [testStatus, setTestStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
-  const [testMessage, setTestMessage] = useState<string | null>(null);
 
   const applyBundle = useCallback(
     (bundle: Awaited<ReturnType<typeof fetchDashboardBundle>>) => {
       setRuntime(bundle.runtime);
       setPrices(bundle.prices);
       setAlerts(bundle.alerts);
-      setErrors(bundle.errors);
       setInstruments(bundle.instruments);
       setState("ready");
       setErrorMessage(null);
@@ -106,28 +97,6 @@ export function Dashboard() {
 
   const handleRefresh = () => {
     void loadData(undefined, { refresh: true });
-  };
-
-  const handleTestTelegram = async () => {
-    setTestStatus("sending");
-    setTestMessage(null);
-    try {
-      const response = await apiClient.testTelegram();
-      if (response.sent) {
-        setTestStatus("success");
-        setTestMessage("测试消息已发送。");
-      } else {
-        setTestStatus("error");
-        setTestMessage(response.detail || "测试消息发送失败。");
-      }
-    } catch (error) {
-      setTestStatus("error");
-      if (error instanceof ApiError) {
-        setTestMessage(error.message);
-      } else {
-        setTestMessage("发生未知错误。");
-      }
-    }
   };
 
   if (state === "loading") {
@@ -251,38 +220,10 @@ export function Dashboard() {
           <PriceMonitorPanel prices={prices} instruments={instruments} />
         </section>
 
-        <section className="panel dashboard-panel--telegram" aria-labelledby="telegram-title">
-          <h2 id="telegram-title" className="panel-title">
-            Telegram
-          </h2>
-          {!runtime?.telegram_ready ? (
-            <p className="muted-text">
-              尚未配置。设置 TELEGRAM_BOT_TOKEN 与 TELEGRAM_CHAT_ID 后可推送告警。
-            </p>
-          ) : (
-            <div className="test-actions">
-              <button
-                className="button primary"
-                onClick={() => handleTestTelegram()}
-                disabled={testStatus === "sending"}
-              >
-                {testStatus === "sending" ? "发送中..." : "发送测试告警"}
-              </button>
-              {testStatus === "success" && (
-                <p className="success-text" role="status">
-                  {testMessage}
-                </p>
-              )}
-              {testStatus === "error" && (
-                <p className="error-text" role="alert">
-                  {testMessage}
-                </p>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="panel dashboard-panel--alerts" aria-labelledby="alerts-title">
+        <section
+          className="panel dashboard-panel--wide dashboard-panel--alerts"
+          aria-labelledby="alerts-title"
+        >
           <h2 id="alerts-title" className="panel-title">
             最近告警
           </h2>
@@ -306,38 +247,6 @@ export function Dashboard() {
                       <td>{getInstrumentName(alert.instrument_id)}</td>
                       <td>{formatAlertKindLabel(alert.alert_kind)}</td>
                       <td className="price-cell">{alert.price}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="panel dashboard-panel--errors" aria-labelledby="errors-title">
-          <h2 id="errors-title" className="panel-title">
-            数据源错误
-          </h2>
-          {errors.length === 0 ? (
-            <p className="empty-state">暂无数据源错误。</p>
-          ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>时间</th>
-                    <th>标的</th>
-                    <th>来源</th>
-                    <th>错误</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {errors.map((error) => (
-                    <tr key={error.source_mapping_id}>
-                      <td>{formatDateTime(error.last_observed_at)}</td>
-                      <td>{error.instrument_name}</td>
-                      <td>{formatSourceLabel(error.provider, error.market_type, error.symbol)}</td>
-                      <td className="error-cell">{error.last_error}</td>
                     </tr>
                   ))}
                 </tbody>

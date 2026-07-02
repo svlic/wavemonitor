@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/pages/dashboard/Dashboard";
 import { apiClient } from "../src/api/client";
@@ -12,9 +12,7 @@ vi.mock("../src/api/client", async (importOriginal) => {
       getRuntime: vi.fn(),
       getLatestPrices: vi.fn(),
       getRecentAlerts: vi.fn(),
-      getSourceErrors: vi.fn(),
       getInstruments: vi.fn(),
-      testTelegram: vi.fn(),
     },
   };
 });
@@ -42,7 +40,6 @@ describe("Dashboard", () => {
     vi.mocked(apiClient.getRuntime).mockImplementation(() => new Promise(() => {}));
     vi.mocked(apiClient.getLatestPrices).mockImplementation(() => new Promise(() => {}));
     vi.mocked(apiClient.getRecentAlerts).mockImplementation(() => new Promise(() => {}));
-    vi.mocked(apiClient.getSourceErrors).mockImplementation(() => new Promise(() => {}));
     vi.mocked(apiClient.getInstruments).mockImplementation(() => new Promise(() => {}));
 
     render(<Dashboard />);
@@ -54,7 +51,6 @@ describe("Dashboard", () => {
     vi.mocked(apiClient.getRuntime).mockRejectedValue(new Error("Network error"));
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
     vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<Dashboard />);
@@ -68,7 +64,6 @@ describe("Dashboard", () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
     vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<Dashboard />);
@@ -76,11 +71,10 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
       expect(screen.getByText("暂无最近告警。")).toBeInTheDocument();
-      expect(screen.getByText("暂无数据源错误。")).toBeInTheDocument();
     });
   });
 
-  it("renders latest prices, alerts, and errors when data exists", async () => {
+  it("renders latest prices and alerts when data exists", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue({
       ...emptyRuntime,
       telegram_ready: true,
@@ -129,18 +123,6 @@ describe("Dashboard", () => {
         triggered_at: "2026-06-30T11:00:00Z",
       },
     ]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([
-      {
-        instrument_id: 1,
-        instrument_name: "Bitcoin",
-        source_mapping_id: 1,
-        provider: "binance",
-        market_type: "usd_m_futures",
-        symbol: "BTCUSDT",
-        last_observed_at: "2026-06-30T10:00:00Z",
-        last_error: "Connection timed out",
-      },
-    ]);
 
     render(<Dashboard />);
 
@@ -155,78 +137,6 @@ describe("Dashboard", () => {
       expect(screen.getByText("1.00")).toBeInTheDocument();
       expect(screen.getByText("接近支撑")).toBeInTheDocument();
       expect(screen.getByText("90500.00")).toBeInTheDocument();
-      expect(screen.getByText("Connection timed out")).toBeInTheDocument();
-    });
-  });
-
-  it("disables test-send and explains required env vars when Telegram is not ready", async () => {
-    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
-    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
-    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
-
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/尚未配置/)).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "发送测试告警" })).not.toBeInTheDocument();
-    });
-  });
-
-  it("handles successful test-send", async () => {
-    vi.mocked(apiClient.getRuntime).mockResolvedValue({
-      ...emptyRuntime,
-      telegram_ready: true,
-    });
-    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
-    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
-    vi.mocked(apiClient.testTelegram).mockResolvedValue({
-      sent: true,
-      telegram_ready: true,
-      detail: "Test message sent",
-    });
-
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送测试告警" })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "发送测试告警" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("测试消息已发送。");
-    });
-  });
-
-  it("handles failed test-send", async () => {
-    vi.mocked(apiClient.getRuntime).mockResolvedValue({
-      ...emptyRuntime,
-      telegram_ready: true,
-    });
-    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
-    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
-    vi.mocked(apiClient.testTelegram).mockResolvedValue({
-      sent: false,
-      telegram_ready: true,
-      detail: "Invalid chat ID",
-    });
-
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送测试告警" })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "发送测试告警" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Invalid chat ID");
     });
   });
 });
