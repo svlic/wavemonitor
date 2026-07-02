@@ -17,6 +17,7 @@ from wavemonitor_backend.models import AlertKind, DeliveryStatus, Instrument, So
 from wavemonitor_backend.notifier import (
     TelegramAlert,
     TelegramHttpFailure,
+    TelegramNotifier,
     TelegramSendSuccess,
     format_telegram_alert,
 )
@@ -33,13 +34,20 @@ class CapturedPost:
 
 
 class FakeTelegramTransport:
-    def __init__(self, response: TelegramSendSuccess | TelegramHttpFailure) -> None:
-        self.response = response
+    def __init__(
+        self,
+        response: TelegramSendSuccess | TelegramHttpFailure | list[TelegramSendSuccess | TelegramHttpFailure],
+    ) -> None:
+        if isinstance(response, list):
+            self._responses = response
+        else:
+            self._responses = [response]
         self.posts: list[CapturedPost] = []
 
     def post_json(self, url: str, payload: dict[str, str]) -> TelegramSendSuccess | TelegramHttpFailure:
         self.posts.append(CapturedPost(url=url, json=payload))
-        return self.response
+        index = min(len(self.posts) - 1, len(self._responses) - 1)
+        return self._responses[index]
 
 
 @pytest.fixture
@@ -69,6 +77,39 @@ def make_alert() -> TelegramAlert:
         support=Decimal("98.00"),
         resistance=Decimal("130.00"),
     )
+
+
+def test_send_text_retries_transient_http_failure_then_succeeds(
+    ready_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    sleeps: list[float] = []
+    monkeypatch.setattr("wavemonitor_backend.notifier.time.sleep", lambda seconds: sleeps.append(seconds))
+    transport = FakeTelegramTransport(
+        [
+            TelegramHttpFailure(status_code=503, description="unavailable"),
+            TelegramSendSuccess(message_id="retry-ok"),
+        ]
+    )
+    notifier = TelegramNotifier(ready_settings, transport=transport)
+
+    result = notifier.send_text("WaveMonitor Telegram test message.")
+
+    assert isinstance(result, TelegramSendSuccess)
+    assert result.message_id == "retry-ok"
+    assert len(transport.posts) == 2
+    assert sleeps == [0.25]
+
+
+def test_send_text_does_not_retry_non_retryable_http_failure(ready_settings: Settings):
+    transport = FakeTelegramTransport(TelegramHttpFailure(status_code=401, description="unauthorized"))
+    notifier = TelegramNotifier(ready_settings, transport=transport)
+
+    result = notifier.send_text("WaveMonitor Telegram test message.")
+
+    assert isinstance(result, TelegramHttpFailure)
+    assert result.status_code == 401
+    assert len(transport.posts) == 1
 
 
 def test_missing_env_readiness_false_and_no_send_attempt(monkeypatch, database_url: str):

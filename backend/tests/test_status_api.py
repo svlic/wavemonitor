@@ -166,6 +166,55 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp
     ]
 
 
+def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Session):
+    instrument = Instrument(
+        name="Tie break",
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        created_at=BASE_TIME,
+        updated_at=BASE_TIME,
+    )
+    session.add(instrument)
+    session.commit()
+    session.refresh(instrument)
+    source = SourceMapping(
+        instrument_id=instrument.id,
+        provider=Provider.BINANCE,
+        market_type=MarketType.USD_M_FUTURES,
+        symbol="BTCUSDT",
+    )
+    session.add(source)
+    session.commit()
+    session.refresh(source)
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("99"),
+            observed_at=BASE_TIME,
+            raw_path="older",
+        )
+    )
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("101"),
+            observed_at=BASE_TIME,
+            raw_path="newer",
+        )
+    )
+    session.commit()
+
+    database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
+    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+        response = test_client.get("/api/prices/latest")
+
+    assert response.status_code == 200
+    assert response.json()[0]["last_price"] == "101.0000000000"
+    assert response.json()[0]["source_mapping_id"] == source.id
+
+
 def test_empty_operational_surfaces_return_empty_lists_without_500(client: TestClient):
     # Given: no instruments are configured.
     # When: collection operational endpoints are queried.

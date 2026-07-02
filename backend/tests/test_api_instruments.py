@@ -444,3 +444,21 @@ def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path
             select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
         ).one()
         assert state.near_support_active is True
+
+
+def test_create_instrument_normalizes_hyperliquid_colon_symbol_like_models(client: TestClient):
+    payload = VALID_PAYLOAD | {
+        "name": "CRCL HIP-3",
+        "source_mappings": [
+            {
+                "provider": "hyperliquid",
+                "market_type": "perpetual",
+                "symbol": "XYZ:crcl",
+                "enabled": True,
+            }
+        ],
+    }
+    response = client.post("/api/instruments", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["source_mappings"][0]["symbol"] == "xyz:CRCL"
