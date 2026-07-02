@@ -6,7 +6,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
-from wavemonitor_backend.models import AlertKind, MarketType, Provider
+from wavemonitor_backend.models import AlertKind, MarketType, Provider, normalize_market_symbol
 from wavemonitor_backend.source_pairs import validate_provider_market_pair
 
 ZERO: Final[Decimal] = Decimal("0")
@@ -48,10 +48,7 @@ class SourceMappingRequest(BaseModel):
     @field_validator("symbol")
     @classmethod
     def normalize_symbol(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        if not normalized:
-            raise ValueError("symbol must not be blank")
-        return normalized
+        return normalize_market_symbol(value)
 
     @model_validator(mode="after")
     def validate_adapter_pair(self) -> Self:

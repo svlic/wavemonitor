@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 from json import dumps, loads
-from typing import Protocol, TypeAlias, assert_never
+from typing import Final, Protocol, TypeAlias, assert_never
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -39,6 +40,15 @@ class TelegramHttpFailure:
 
 
 TelegramSendResult: TypeAlias = TelegramSendSuccess | TelegramHttpFailure
+
+TELEGRAM_SEND_MAX_ATTEMPTS: Final[int] = 3
+TELEGRAM_RETRY_BASE_DELAY_SECONDS: Final[float] = 0.25
+
+
+def _telegram_failure_is_retryable(result: TelegramHttpFailure) -> bool:
+    if result.status_code == 429:
+        return True
+    return result.status_code >= 500
 
 
 class TelegramTransport(Protocol):
@@ -83,10 +93,18 @@ class TelegramNotifier:
         chat_id = self._settings.telegram_chat_id
         if token is None or chat_id is None:
             return None
-        return self._transport.post_json(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            {"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-        )
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+        last_result: TelegramSendResult | None = None
+        for attempt in range(TELEGRAM_SEND_MAX_ATTEMPTS):
+            last_result = self._transport.post_json(url, payload)
+            if isinstance(last_result, TelegramSendSuccess):
+                return last_result
+            if not _telegram_failure_is_retryable(last_result):
+                return last_result
+            if attempt < TELEGRAM_SEND_MAX_ATTEMPTS - 1:
+                time.sleep(TELEGRAM_RETRY_BASE_DELAY_SECONDS * (2**attempt))
+        return last_result
 
 
 def format_telegram_alert(alert: TelegramAlert) -> str:

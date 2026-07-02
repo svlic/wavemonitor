@@ -173,7 +173,7 @@ def latest_observation_for(session: Session, source: SourceMapping) -> PriceObse
     statement = (
         select(PriceObservation)
         .where(PriceObservation.source_mapping_id == require_id(source.id))
-        .order_by(desc(PriceObservation.observed_at))
+        .order_by(desc(PriceObservation.observed_at), desc(PriceObservation.id))
         .limit(1)
     )
     return session.exec(statement).first()
