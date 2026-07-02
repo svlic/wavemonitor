@@ -175,90 +175,65 @@ export function Dashboard() {
     { label: "Telegram 投递", value: runtime?.telegram_deliveries_attempted ?? 0 },
   ];
 
+  const tickMeta = runtime?.last_tick_finished_at
+    ? `最近轮询：${formatDateTime(runtime.last_tick_finished_at)}（UTC+8）`
+    : "尚未完成轮询周期";
+
   return (
     <div className="dashboard-layout">
-      <div className="dashboard-toolbar">
-        <p className="dashboard-toolbar__meta muted-text">
-          {runtime?.last_tick_finished_at
-            ? `最近轮询完成：${formatDateTime(runtime.last_tick_finished_at)}`
-            : "尚未完成轮询周期"}
-        </p>
-        <button
-          type="button"
-          className="button small"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          aria-busy={refreshing}
-        >
-          {refreshing ? "刷新中..." : "刷新数据"}
-        </button>
-      </div>
-
-      <div className="stat-grid" role="list">
-        {statCards.map((card) => (
-          <div key={card.label} className="stat-card" role="listitem">
-            <span className="stat-card__label">{card.label}</span>
-            <span className="stat-card__value">{card.value}</span>
+      <header className="dashboard-overview panel" aria-label="运行概览">
+        <div className="dashboard-overview__head">
+          <p className="dashboard-overview__meta muted-text">{tickMeta}</p>
+          <div className="dashboard-overview__actions">
+            <span className="muted-text dashboard-overview__hint">价格每 2 分钟自动刷新</span>
+            <button
+              type="button"
+              className="button small"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              aria-busy={refreshing}
+            >
+              {refreshing ? "刷新中..." : "刷新数据"}
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+        <div className="stat-grid" role="list">
+          {statCards.map((card) => (
+            <div key={card.label} className="stat-card" role="listitem">
+              <span className="stat-card__label">{card.label}</span>
+              <span className="stat-card__value">{card.value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="status-strip" role="list" aria-label="组件就绪状态">
+          <div className="status-strip__item" role="listitem">
+            <span className="status-strip__label">调度器</span>
+            <span
+              className={`status-pill ${runtime?.scheduler_ready ? "status-pill--ready" : "status-pill--idle"}`}
+            >
+              {runtime?.scheduler_ready ? "就绪" : "未就绪"}
+            </span>
+          </div>
+          <div className="status-strip__item" role="listitem">
+            <span className="status-strip__label">数据源</span>
+            <span
+              className={`status-pill ${runtime?.providers_ready ? "status-pill--ready" : "status-pill--idle"}`}
+            >
+              {runtime?.providers_ready ? "就绪" : "未就绪"}
+            </span>
+          </div>
+          <div className="status-strip__item" role="listitem">
+            <span className="status-strip__label">Telegram</span>
+            <span
+              className={`status-pill ${runtime?.telegram_ready ? "status-pill--ready" : "status-pill--idle"}`}
+            >
+              {runtime?.telegram_ready ? "就绪" : "未配置"}
+            </span>
+          </div>
+        </div>
+      </header>
 
       <div className="dashboard-grid">
-        <section className="panel dashboard-panel--status" aria-labelledby="status-title">
-          <h2 id="status-title" className="panel-title">
-            系统状态
-          </h2>
-          <ul className="status-list">
-            <li>
-              <span className="status-label">调度器</span>
-              <span className={`status-pill ${runtime?.scheduler_ready ? "status-pill--ready" : "status-pill--idle"}`}>
-                {runtime?.scheduler_ready ? "就绪" : "未就绪"}
-              </span>
-            </li>
-            <li>
-              <span className="status-label">数据源</span>
-              <span className={`status-pill ${runtime?.providers_ready ? "status-pill--ready" : "status-pill--idle"}`}>
-                {runtime?.providers_ready ? "就绪" : "未就绪"}
-              </span>
-            </li>
-            <li>
-              <span className="status-label">Telegram</span>
-              <span className={`status-pill ${runtime?.telegram_ready ? "status-pill--ready" : "status-pill--idle"}`}>
-                {runtime?.telegram_ready ? "就绪" : "未配置"}
-              </span>
-            </li>
-          </ul>
-
-          <div className="telegram-test-section">
-            <h3>Telegram 测试</h3>
-            {!runtime?.telegram_ready ? (
-              <p className="muted-text">
-                Telegram 尚未配置。设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量后即可启用告警通知。
-              </p>
-            ) : (
-              <div className="test-actions">
-                <button
-                  className="button primary"
-                  onClick={() => handleTestTelegram()}
-                  disabled={testStatus === "sending"}
-                >
-                  {testStatus === "sending" ? "发送中..." : "发送测试告警"}
-                </button>
-                {testStatus === "success" && (
-                  <p className="success-text" role="status">
-                    {testMessage}
-                  </p>
-                )}
-                {testStatus === "error" && (
-                  <p className="error-text" role="alert">
-                    {testMessage}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
         <section
           className="panel dashboard-panel--wide dashboard-panel--prices"
           aria-labelledby="prices-title"
@@ -272,9 +247,39 @@ export function Dashboard() {
                 按标的汇总各来源最新价、距支撑/阻力与盈亏比
               </p>
             </div>
-            <p className="muted-text price-refresh-hint">每 2 分钟自动刷新</p>
           </div>
           <PriceMonitorPanel prices={prices} instruments={instruments} />
+        </section>
+
+        <section className="panel dashboard-panel--telegram" aria-labelledby="telegram-title">
+          <h2 id="telegram-title" className="panel-title">
+            Telegram
+          </h2>
+          {!runtime?.telegram_ready ? (
+            <p className="muted-text">
+              尚未配置。设置 TELEGRAM_BOT_TOKEN 与 TELEGRAM_CHAT_ID 后可推送告警。
+            </p>
+          ) : (
+            <div className="test-actions">
+              <button
+                className="button primary"
+                onClick={() => handleTestTelegram()}
+                disabled={testStatus === "sending"}
+              >
+                {testStatus === "sending" ? "发送中..." : "发送测试告警"}
+              </button>
+              {testStatus === "success" && (
+                <p className="success-text" role="status">
+                  {testMessage}
+                </p>
+              )}
+              {testStatus === "error" && (
+                <p className="error-text" role="alert">
+                  {testMessage}
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="panel dashboard-panel--alerts" aria-labelledby="alerts-title">

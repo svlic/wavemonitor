@@ -536,21 +536,57 @@ select:focus {
   gap: 1.75rem;
 }
 
-.dashboard-toolbar {
+.dashboard-overview {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1.1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.1rem 1.25rem;
 }
 
-.dashboard-toolbar__meta {
+.dashboard-overview__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-overview__meta {
   flex: 1;
   min-width: 12rem;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-overview__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-overview__hint {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.status-strip__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-strip__label {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
 }
 
 .stat-grid {
@@ -681,22 +717,22 @@ select:focus {
     gap: 1.25rem;
   }
 
-  .dashboard-panel--status {
+  .dashboard-panel--prices {
+    grid-column: span 12;
+  }
+
+  .dashboard-panel--telegram {
     grid-column: span 4;
     align-self: start;
   }
 
-  .dashboard-panel--prices {
-    grid-column: span 8;
-  }
-
   .dashboard-panel--alerts {
-    grid-column: span 8;
+    grid-column: span 5;
     min-width: 0;
   }
 
   .dashboard-panel--errors {
-    grid-column: span 4;
+    grid-column: span 3;
     min-width: 0;
   }
 }
