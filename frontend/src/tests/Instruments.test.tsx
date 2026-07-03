@@ -94,9 +94,10 @@ describe("InstrumentList", () => {
   });
 
   it("pauses and resumes monitoring from the list", async () => {
+    const btc = mockInstruments[0]!;
     vi.mocked(apiClient.getInstruments).mockResolvedValue(mockInstruments);
     vi.mocked(apiClient.patchInstrumentEnabled).mockResolvedValue({
-      ...mockInstruments[0],
+      ...btc,
       enabled: false,
     });
 
@@ -113,7 +114,7 @@ describe("InstrumentList", () => {
     });
     expect(screen.getByText("已暂停")).toBeInTheDocument();
 
-    vi.mocked(apiClient.patchInstrumentEnabled).mockResolvedValue(mockInstruments[0]);
+    vi.mocked(apiClient.patchInstrumentEnabled).mockResolvedValue(btc);
     fireEvent.click(screen.getByRole("button", { name: "恢复" }));
 
     await waitFor(() => {
