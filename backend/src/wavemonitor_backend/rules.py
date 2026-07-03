@@ -6,6 +6,7 @@ from typing import Final
 
 from wavemonitor_backend.models import AlertKind
 from wavemonitor_backend.rule_types import DEFAULT_COOLDOWN, AlertDecision, InvalidRuleState, RuleEvaluation, RuleState
+from wavemonitor_backend.support_resistance import levels_for_alerts
 
 ZERO: Final[Decimal] = Decimal("0")
 
@@ -13,26 +14,41 @@ ZERO: Final[Decimal] = Decimal("0")
 def evaluate_rules(
     *,
     price: Decimal,
-    support: Decimal,
-    resistance: Decimal,
+    support: Decimal | None,
+    resistance: Decimal | None,
     near_support_threshold: Decimal,
     risk_reward_threshold: Decimal,
     previous_state: RuleState,
     observed_at: datetime,
     cooldown: timedelta = DEFAULT_COOLDOWN,
 ) -> RuleEvaluation:
-    if price <= support:
+    alert_support, alert_resistance = levels_for_alerts(
+        support=support, resistance=resistance, price=price
+    )
+
+    if support is not None and price <= support:
         return RuleEvaluation(
             alerts=(),
             next_state=RuleState(last_price=price),
             invalid_state=InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT,
         )
 
-    near_support_metric = (price - support) / price
-    near_support_active = near_support_metric <= near_support_threshold
-    risk_reward_metric = risk_reward_ratio(price=price, support=support, resistance=resistance)
-    risk_reward_active = risk_reward_metric is not None and risk_reward_metric >= risk_reward_threshold
-    above_resistance_active = price > resistance
+    near_support_active = False
+    near_support_metric: Decimal | None = None
+    if support is not None:
+        near_support_metric = (price - support) / price
+        near_support_active = near_support_metric <= near_support_threshold
+
+    risk_reward_metric: Decimal | None = None
+    risk_reward_active = False
+    if support is not None and resistance is not None:
+        risk_reward_metric = risk_reward_ratio(price=price, support=support, resistance=resistance)
+        risk_reward_active = (
+            risk_reward_metric is not None and risk_reward_metric >= risk_reward_threshold
+        )
+
+    above_resistance_active = resistance is not None and price > resistance
+
     alerts = tuple(
         alert
         for alert in (
@@ -42,31 +58,38 @@ def evaluate_rules(
                 cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
-                support=support,
-                resistance=resistance,
+                support=alert_support,
+                resistance=alert_resistance,
                 threshold=near_support_threshold,
-                metric=near_support_metric,
-            ),
+                metric=near_support_metric if near_support_metric is not None else ZERO,
+            )
+            if support is not None
+            else None,
             risk_reward_alert(
                 active=risk_reward_active,
                 previous_state=previous_state,
                 cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
-                support=support,
-                resistance=resistance,
+                support=alert_support,
+                resistance=alert_resistance,
                 threshold=risk_reward_threshold,
                 metric=risk_reward_metric,
-            ),
+            )
+            if support is not None and resistance is not None
+            else None,
             breakout_alert(
                 active=above_resistance_active,
                 previous_state=previous_state,
                 cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
-                support=support,
-                resistance=resistance,
-            ),
+                support=alert_support,
+                resistance=alert_resistance,
+                resistance_level=resistance,
+            )
+            if resistance is not None
+            else None,
         )
         if alert is not None
     )
@@ -183,9 +206,10 @@ def breakout_alert(
     price: Decimal,
     support: Decimal,
     resistance: Decimal,
+    resistance_level: Decimal,
 ) -> AlertDecision | None:
     previous_price = previous_state.last_price
-    crossed = previous_price is not None and previous_price <= resistance and active
+    crossed = previous_price is not None and previous_price <= resistance_level and active
     can_emit = should_emit(
         active=crossed,
         was_active=previous_state.above_resistance_active,
@@ -200,10 +224,10 @@ def breakout_alert(
         price=price,
         support=support,
         resistance=resistance,
-        threshold=resistance,
+        threshold=resistance_level,
         metric=price,
         triggered_at=observed_at,
-        message=f"price {price} crossed resistance {resistance}",
+        message=f"price {price} crossed resistance {resistance_level}",
     )
 
 

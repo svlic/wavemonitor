@@ -313,3 +313,41 @@ def test_persistence_integration_records_alert_and_suppresses_duplicate(tmp_path
         assert repeated.alerts == ()
         assert len(stored_events) == 1
         assert stored_events[0].price == Decimal("100.0000000000")
+
+
+def test_support_only_emits_near_support_not_risk_reward_or_breakout():
+    state = RuleState()
+
+    evaluation = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("98"),
+        resistance=None,
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=state,
+        observed_at=OBSERVED_AT,
+    )
+
+    kinds = {alert.kind for alert in evaluation.alerts}
+    assert kinds == {AlertKind.NEAR_SUPPORT}
+    assert evaluation.next_state.risk_reward_active is False
+    assert evaluation.next_state.above_resistance_active is False
+
+
+def test_resistance_only_emits_breakout_not_near_support_or_risk_reward():
+    below = RuleState(last_price=Decimal("100"))
+
+    evaluation = evaluate_rules(
+        price=Decimal("111"),
+        support=None,
+        resistance=Decimal("110"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=below,
+        observed_at=OBSERVED_AT,
+    )
+
+    kinds = {alert.kind for alert in evaluation.alerts}
+    assert kinds == {AlertKind.RESISTANCE_BREAKOUT}
+    assert evaluation.next_state.near_support_active is False
+    assert evaluation.next_state.risk_reward_active is False
