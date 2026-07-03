@@ -88,6 +88,12 @@ class InstrumentRequest(DecimalStringMixin):
         return self
 
 
+class InstrumentEnabledPatch(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+
+
 class InstrumentResponse(DecimalStringMixin):
     model_config = ConfigDict(frozen=True)
 

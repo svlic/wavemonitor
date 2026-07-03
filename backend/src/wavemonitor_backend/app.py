@@ -21,6 +21,7 @@ from wavemonitor_backend.api import (
     get_instrument_status,
     list_instruments,
     list_recent_alerts,
+    patch_instrument_enabled,
     record_telegram_delivery,
     update_instrument,
 )
@@ -47,6 +48,7 @@ from wavemonitor_backend.notifier import (
 from wavemonitor_backend.operational_api import list_latest_prices, list_source_errors
 from wavemonitor_backend.schemas import (
     AlertResponse,
+    InstrumentEnabledPatch,
     InstrumentRequest,
     InstrumentResponse,
     InstrumentStatusResponse,
@@ -328,6 +330,14 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         session: Session = Depends(get_session),
     ) -> InstrumentResponse:
         return update_instrument(session, instrument_id, payload)
+
+    @app.patch("/api/instruments/{instrument_id}", response_model=InstrumentResponse)
+    def patch_instrument_endpoint(
+        instrument_id: int,
+        payload: InstrumentEnabledPatch,
+        session: Session = Depends(get_session),
+    ) -> InstrumentResponse:
+        return patch_instrument_enabled(session, instrument_id, payload)
 
     @app.delete("/api/instruments/{instrument_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_instrument_endpoint(

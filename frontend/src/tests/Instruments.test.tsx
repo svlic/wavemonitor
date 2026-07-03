@@ -17,6 +17,7 @@ vi.mock("../api/client", async () => {
       createInstrument: vi.fn(),
       updateInstrument: vi.fn(),
       deleteInstrument: vi.fn(),
+      patchInstrumentEnabled: vi.fn(),
       querySymbols: vi.fn(),
     },
   };
@@ -90,6 +91,35 @@ describe("InstrumentList", () => {
     await waitFor(() => {
       expect(apiClient.deleteInstrument).toHaveBeenCalledWith(1);
     });
+  });
+
+  it("pauses and resumes monitoring from the list", async () => {
+    vi.mocked(apiClient.getInstruments).mockResolvedValue(mockInstruments);
+    vi.mocked(apiClient.patchInstrumentEnabled).mockResolvedValue({
+      ...mockInstruments[0],
+      enabled: false,
+    });
+
+    render(<InstrumentList />);
+
+    await waitFor(() => {
+      expect(screen.getByText("BTC/USD")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+
+    await waitFor(() => {
+      expect(apiClient.patchInstrumentEnabled).toHaveBeenCalledWith(1, false);
+    });
+    expect(screen.getByText("已暂停")).toBeInTheDocument();
+
+    vi.mocked(apiClient.patchInstrumentEnabled).mockResolvedValue(mockInstruments[0]);
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+
+    await waitFor(() => {
+      expect(apiClient.patchInstrumentEnabled).toHaveBeenCalledWith(1, true);
+    });
+    expect(screen.getByText("监控中")).toBeInTheDocument();
   });
 });
 

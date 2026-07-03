@@ -305,6 +305,19 @@ export class ApiClient {
     );
   }
 
+  async patchInstrumentEnabled(
+    id: number | string,
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<InstrumentWithMappings> {
+    const pathId = typeof id === "string" ? id : String(id);
+    return this.fetch(
+      `/api/instruments/${pathId}`,
+      InstrumentWithMappingsSchema,
+      this.requestInit(signal, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    );
+  }
+
   async deleteInstrument(id: number | string, signal?: AbortSignal): Promise<void> {
     const pathId = typeof id === "string" ? id : String(id);
     await this.fetch(`/api/instruments/${pathId}`, z.object({}), this.requestInit(signal, { method: "DELETE" }));

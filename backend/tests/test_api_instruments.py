@@ -101,6 +101,22 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
     assert list_after_delete.json() == []
 
 
+def test_patch_instrument_enabled_toggles_without_full_put(client: TestClient):
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    instrument_id = create_response.json()["id"]
+
+    pause_response = client.patch(f"/api/instruments/{instrument_id}", json={"enabled": False})
+    assert pause_response.status_code == 200
+    assert pause_response.json()["enabled"] is False
+    assert pause_response.json()["name"] == "Bitcoin"
+    assert pause_response.json()["source_mappings"][0]["enabled"] is True
+
+    resume_response = client.patch(f"/api/instruments/{instrument_id}", json={"enabled": True})
+    assert resume_response.status_code == 200
+    assert resume_response.json()["enabled"] is True
+
+
 def test_enabled_and_disabled_source_mappings_round_trip(client: TestClient):
     # Given: one instrument configured with active and inactive sources.
     payload = VALID_PAYLOAD | {

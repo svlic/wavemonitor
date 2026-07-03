@@ -20,6 +20,7 @@ from wavemonitor_backend.models import (
 from wavemonitor_backend.notifier import TelegramHttpFailure, TelegramSendSuccess, sanitize_telegram_failure
 from wavemonitor_backend.schemas import (
     AlertResponse,
+    InstrumentEnabledPatch,
     InstrumentRequest,
     InstrumentResponse,
     InstrumentStatusResponse,
@@ -85,6 +86,18 @@ def update_instrument(session: Session, instrument_id: int, payload: InstrumentR
             status_code=status.HTTP_409_CONFLICT,
             detail="Source mapping already exists",
         ) from exc
+    session.refresh(instrument)
+    return instrument_response(session, instrument)
+
+
+def patch_instrument_enabled(
+    session: Session, instrument_id: int, payload: InstrumentEnabledPatch
+) -> InstrumentResponse:
+    instrument = get_instrument(session, instrument_id)
+    instrument.enabled = payload.enabled
+    instrument.updated_at = datetime.now(UTC)
+    session.add(instrument)
+    session.commit()
     session.refresh(instrument)
     return instrument_response(session, instrument)
 

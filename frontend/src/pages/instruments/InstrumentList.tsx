@@ -10,6 +10,8 @@ export function InstrumentList() {
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -28,6 +30,19 @@ export function InstrumentList() {
       setError("标的列表加载失败，请重试。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleMonitoring(id: number, enabled: boolean) {
+    setTogglingId(id);
+    setToggleError(null);
+    try {
+      const updated = await apiClient.patchInstrumentEnabled(id, enabled);
+      setInstruments((current) => current.map((i) => (i.id === id ? updated : i)));
+    } catch {
+      setToggleError(enabled ? "恢复监控失败，请稍后重试。" : "暂停监控失败，请稍后重试。");
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -77,7 +92,7 @@ export function InstrumentList() {
           <p className="summary">
             {instruments.length === 0
               ? "创建第一个标的以开始轮询与告警。"
-              : `共 ${instruments.length} 个标的，${instruments.filter((i) => i.enabled).length} 个已启用。`}
+              : `共 ${instruments.length} 个标的，${instruments.filter((i) => i.enabled).length} 个监控中，${instruments.filter((i) => !i.enabled).length} 个已暂停。`}
           </p>
         </div>
         <Link href="/instruments/new" className="button primary">
@@ -85,9 +100,9 @@ export function InstrumentList() {
         </Link>
       </div>
 
-      {deleteError && (
+      {(deleteError ?? toggleError) && (
         <div className="error-banner" role="alert">
-          <p className="error-text">{deleteError}</p>
+          <p className="error-text">{deleteError ?? toggleError}</p>
         </div>
       )}
 
@@ -119,7 +134,7 @@ export function InstrumentList() {
                   <td>{inst.name}</td>
                   <td>
                     <span className={`status-pill ${inst.enabled ? "status-pill--ready" : "status-pill--idle"}`}>
-                      {inst.enabled ? "启用" : "停用"}
+                      {inst.enabled ? "监控中" : "已暂停"}
                     </span>
                   </td>
                   <td className="price-cell">{inst.support}</td>
@@ -128,6 +143,25 @@ export function InstrumentList() {
                   <td>{inst.risk_reward_threshold}</td>
                   <td>{inst.source_mappings.length}</td>
                   <td className="actions">
+                    {inst.enabled ? (
+                      <button
+                        type="button"
+                        className="button small"
+                        disabled={togglingId === inst.id || pendingDeleteId === inst.id}
+                        onClick={() => void toggleMonitoring(inst.id, false)}
+                      >
+                        {togglingId === inst.id ? "处理中..." : "暂停"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button small primary"
+                        disabled={togglingId === inst.id || pendingDeleteId === inst.id}
+                        onClick={() => void toggleMonitoring(inst.id, true)}
+                      >
+                        {togglingId === inst.id ? "处理中..." : "恢复"}
+                      </button>
+                    )}
                     <Link href={`/instruments/${inst.id}/edit`} className="button small">
                       编辑
                     </Link>
