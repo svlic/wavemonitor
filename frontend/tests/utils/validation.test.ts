@@ -26,20 +26,24 @@ describe("validation", () => {
   });
 
   describe("validateSupportResistance", () => {
-    it("returns error for empty values", () => {
-      expect(validateSupportResistance("", "100")).toBe("支撑位和阻力位都不能为空");
-      expect(validateSupportResistance("100", "")).toBe("支撑位和阻力位都不能为空");
+    it("returns error when both levels are empty", () => {
+      expect(validateSupportResistance("", "")).toBe("支撑位和阻力位至少填写一项");
     });
 
-    it("returns error for non-numbers", () => {
-      expect(validateSupportResistance("abc", "100")).toBe("支撑位和阻力位必须是数字");
-      expect(validateSupportResistance("100", "def")).toBe("支撑位和阻力位必须是数字");
+    it("returns null when only one level is set", () => {
+      expect(validateSupportResistance("", "100")).toBeNull();
+      expect(validateSupportResistance("50", "")).toBeNull();
     });
 
-    it("returns error for non-positive values", () => {
-      expect(validateSupportResistance("0", "100")).toBe("支撑位和阻力位必须为正数");
-      expect(validateSupportResistance("-10", "100")).toBe("支撑位和阻力位必须为正数");
-      expect(validateSupportResistance("100", "0")).toBe("支撑位和阻力位必须为正数");
+    it("returns error for non-numbers on filled fields", () => {
+      expect(validateSupportResistance("abc", "100")).toBe("支撑位必须是数字");
+      expect(validateSupportResistance("100", "def")).toBe("阻力位必须是数字");
+    });
+
+    it("returns error for non-positive values on filled fields", () => {
+      expect(validateSupportResistance("0", "100")).toBe("支撑位必须为正数");
+      expect(validateSupportResistance("-10", "100")).toBe("支撑位必须为正数");
+      expect(validateSupportResistance("100", "0")).toBe("阻力位必须为正数");
     });
 
     it("returns error when support >= resistance", () => {

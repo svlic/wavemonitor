@@ -35,6 +35,13 @@ export function formatAlertKindLabel(kind: string): string {
 
 export const DISPLAY_TIME_ZONE = "Asia/Shanghai";
 
+export function formatOptionalLevel(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") {
+    return "未设置";
+  }
+  return value;
+}
+
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;

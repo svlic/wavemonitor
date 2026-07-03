@@ -89,12 +89,17 @@ const SourceMappingSchema = z.object({
 
 type SourceMapping = z.infer<typeof SourceMappingSchema>;
 
+const optionalLevelString = z
+  .string()
+  .nullable()
+  .transform((v) => (v === null || v === "" ? null : v));
+
 const InstrumentSchema = z.object({
   id: z.number(),
   name: z.string(),
   enabled: z.boolean(),
-  support: z.string(),
-  resistance: z.string(),
+  support: optionalLevelString,
+  resistance: optionalLevelString,
   near_support_threshold: z.string(),
   risk_reward_threshold: z.string(),
 });
@@ -125,6 +130,18 @@ const CreateInstrumentRequestSchema = z.object({
 });
 
 export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
+
+export function serializeInstrumentLevelsForApi(
+  data: CreateInstrumentRequest,
+): CreateInstrumentRequest & { support: string | null; resistance: string | null } {
+  const supportTrimmed = data.support.trim();
+  const resistanceTrimmed = data.resistance.trim();
+  return {
+    ...data,
+    support: supportTrimmed === "" ? null : supportTrimmed,
+    resistance: resistanceTrimmed === "" ? null : resistanceTrimmed,
+  };
+}
 
 const SymbolOptionSchema = z.object({
   symbol: z.string(),
@@ -288,7 +305,10 @@ export class ApiClient {
     return this.fetch(
       "/api/instruments",
       InstrumentWithMappingsSchema,
-      this.requestInit(signal, { method: "POST", body: JSON.stringify(data) }),
+      this.requestInit(signal, {
+        method: "POST",
+        body: JSON.stringify(serializeInstrumentLevelsForApi(data)),
+      }),
     );
   }
 
@@ -301,7 +321,10 @@ export class ApiClient {
     return this.fetch(
       `/api/instruments/${pathId}`,
       InstrumentWithMappingsSchema,
-      this.requestInit(signal, { method: "PUT", body: JSON.stringify(data) }),
+      this.requestInit(signal, {
+        method: "PUT",
+        body: JSON.stringify(serializeInstrumentLevelsForApi(data)),
+      }),
     );
   }
 

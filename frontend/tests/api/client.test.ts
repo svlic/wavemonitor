@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiError } from "../../src/api/client";
+import { ApiClient, ApiError, serializeInstrumentLevelsForApi } from "../../src/api/client";
 
 describe("ApiClient", () => {
   const client = new ApiClient("http://test.local");
@@ -45,6 +45,53 @@ describe("ApiClient", () => {
 
     const result = await client.getRuntime();
     expect(result).toEqual(mockData);
+  });
+
+  it("serializeInstrumentLevelsForApi maps blank levels to null", () => {
+    const payload = {
+      name: "X",
+      enabled: true,
+      support: "",
+      resistance: "200",
+      near_support_threshold: "0.02",
+      risk_reward_threshold: "2",
+      source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
+    };
+    expect(serializeInstrumentLevelsForApi(payload)).toMatchObject({
+      support: null,
+      resistance: "200",
+    });
+  });
+
+  it("createInstrument sends null for empty support", async () => {
+    const created = {
+      id: 1,
+      name: "X",
+      enabled: true,
+      support: null,
+      resistance: "200.0000000000",
+      near_support_threshold: "0.02",
+      risk_reward_threshold: "2",
+      source_mappings: [],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(created), { status: 201 }),
+    );
+
+    await client.createInstrument({
+      name: "X",
+      enabled: true,
+      support: "",
+      resistance: "200",
+      near_support_threshold: "0.02",
+      risk_reward_threshold: "2",
+      source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as { support: string | null; resistance: string | null };
+    expect(body.support).toBeNull();
+    expect(body.resistance).toBe("200");
   });
 
   it("getInstrument resolves from list response", async () => {
