@@ -1,5 +1,5 @@
 import type { InstrumentWithMappings, LatestPrice } from "../../api/client";
-import { formatDateTime, formatSourceLabel } from "../../utils/format";
+import { formatDateTime, formatOptionalLevel, formatSourceLabel } from "../../utils/format";
 import {
   computeResistanceDistancePercent,
   computeRiskRewardRatio,
@@ -133,11 +133,11 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
                 <div className="price-monitor__levels">
                   <span className="level-chip level-chip--support">
                     <span className="level-chip__label">支撑</span>
-                    <span className="level-chip__value">{instrument.support}</span>
+                    <span className="level-chip__value">{formatOptionalLevel(instrument.support)}</span>
                   </span>
                   <span className="level-chip level-chip--resistance">
                     <span className="level-chip__label">阻力</span>
-                    <span className="level-chip__value">{instrument.resistance}</span>
+                    <span className="level-chip__value">{formatOptionalLevel(instrument.resistance)}</span>
                   </span>
                 </div>
               )}
