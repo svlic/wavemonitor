@@ -16,7 +16,11 @@ from wavemonitor_backend.schemas import LatestPriceResponse, SourceErrorResponse
 def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
     prices: list[LatestPriceResponse] = []
     for instrument in session.exec(select(Instrument).order_by(Instrument.id)).all():
+        if not instrument.enabled:
+            continue
         for source in source_mappings_for(session, require_id(instrument.id)):
+            if not source.enabled:
+                continue
             observation = latest_observation_for(session, source)
             if observation is not None and observation.error is None:
                 prices.append(latest_price_response(instrument, source, observation))

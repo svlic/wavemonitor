@@ -139,4 +139,51 @@ describe("Dashboard", () => {
       expect(screen.getByText("90500.00")).toBeInTheDocument();
     });
   });
+
+  it("hides paused instruments from price monitor", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([
+      {
+        id: 1,
+        name: "Bitcoin",
+        enabled: false,
+        support: "90000",
+        resistance: "100000",
+        near_support_threshold: "0.01",
+        risk_reward_threshold: "2.0",
+        source_mappings: [
+          {
+            id: 1,
+            provider: "binance",
+            market_type: "usd_m_futures",
+            symbol: "BTCUSDT",
+            enabled: true,
+          },
+        ],
+      },
+    ] satisfies readonly InstrumentWithMappings[]);
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([
+      {
+        instrument_id: 1,
+        instrument_name: "Bitcoin",
+        source_mapping_id: 1,
+        provider: "binance",
+        market_type: "usd_m_futures",
+        symbol: "BTCUSDT",
+        last_price: "95000.50",
+        last_observed_at: "2026-06-30T12:00:00Z",
+        last_error: null,
+      },
+    ]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("价格每 2 分钟自动刷新")).toBeInTheDocument();
+      expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("95000.50")).not.toBeInTheDocument();
+    expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
+  });
 });

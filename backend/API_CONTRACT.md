@@ -15,7 +15,7 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | PATCH | `/api/instruments/{instrument_id}` | Body `{ enabled: boolean }` only. Toggles monitoring pause/resume without replacing source mappings or rule fields. |
 | DELETE | `/api/instruments/{instrument_id}` | Deletes an instrument and its source mappings. |
 | GET | `/api/instruments/{instrument_id}/status` | Returns the instrument enabled flag, per-source latest price/error/`last_invalid_state` (rule invalid reason when price is not above support), and recent alerts for that instrument. |
-| GET | `/api/prices/latest` | Returns collection-level latest successful price observations by source mapping. Empty when no instruments or prices exist. |
+| GET | `/api/prices/latest` | Returns latest successful price observations for **enabled** instruments and **enabled** source mappings only (paused instruments are omitted). Empty when none qualify. |
 | GET | `/api/alerts` | Returns recent alert events. Empty when no alerts exist. |
 | GET | `/api/source-errors` | Returns collection-level latest source mappings whose most recent observation is an error. Empty when no source errors exist. |
 | GET | `/api/runtime` | Returns scheduler/provider/Telegram readiness, polling counters, alert/delivery counters, and last tick timestamps. |

@@ -101,7 +101,14 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
   }
 
   const instrumentById = new Map(instruments.map((item) => [item.id, item]));
-  const groups = groupPricesByInstrument(prices);
+  const groups = groupPricesByInstrument(prices).filter((group) => {
+    const instrument = instrumentById.get(group.instrumentId);
+    return instrument !== undefined && instrument.enabled;
+  });
+
+  if (groups.length === 0) {
+    return <p className="empty-state">暂无价格数据。</p>;
+  }
 
   return (
     <div className="price-monitor">

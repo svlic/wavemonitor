@@ -215,6 +215,87 @@ def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Se
     assert response.json()[0]["source_mapping_id"] == source.id
 
 
+def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, session: Session):
+    enabled_instrument = Instrument(
+        name="Active",
+        enabled=True,
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        created_at=BASE_TIME,
+        updated_at=BASE_TIME,
+    )
+    paused_instrument = Instrument(
+        name="Paused",
+        enabled=False,
+        support=Decimal("1"),
+        resistance=Decimal("2"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        created_at=BASE_TIME,
+        updated_at=BASE_TIME,
+    )
+    session.add(enabled_instrument)
+    session.add(paused_instrument)
+    session.commit()
+    session.refresh(enabled_instrument)
+    session.refresh(paused_instrument)
+    active_source = SourceMapping(
+        instrument_id=enabled_instrument.id,
+        provider=Provider.BINANCE,
+        market_type=MarketType.USD_M_FUTURES,
+        symbol="ETHUSDT",
+        enabled=True,
+    )
+    disabled_source = SourceMapping(
+        instrument_id=enabled_instrument.id,
+        provider=Provider.YFINANCE,
+        market_type=MarketType.EQUITY,
+        symbol="ETH",
+        enabled=False,
+    )
+    paused_source = SourceMapping(
+        instrument_id=paused_instrument.id,
+        provider=Provider.BINANCE,
+        market_type=MarketType.USD_M_FUTURES,
+        symbol="BTCUSDT",
+        enabled=True,
+    )
+    session.add(active_source)
+    session.add(disabled_source)
+    session.add(paused_source)
+    session.commit()
+    session.refresh(active_source)
+    session.refresh(disabled_source)
+    session.refresh(paused_source)
+    for source, price in (
+        (active_source, Decimal("200")),
+        (disabled_source, Decimal("199")),
+        (paused_source, Decimal("100")),
+    ):
+        session.add(
+            PriceObservation(
+                source_mapping_id=source.id,
+                price=price,
+                observed_at=BASE_TIME,
+                raw_path="test",
+            )
+        )
+    session.commit()
+
+    database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
+    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+        response = test_client.get("/api/prices/latest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["instrument_name"] == "Active"
+    assert payload[0]["symbol"] == "ETHUSDT"
+    assert payload[0]["last_price"] == "200.0000000000"
+
+
 def test_empty_operational_surfaces_return_empty_lists_without_500(client: TestClient):
     # Given: no instruments are configured.
     # When: collection operational endpoints are queried.
