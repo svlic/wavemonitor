@@ -19,6 +19,7 @@ from wavemonitor_backend.notifier import (
     TelegramHttpFailure,
     TelegramNotifier,
     TelegramSendSuccess,
+    escape_telegram_markdown_v2,
     format_telegram_alert,
 )
 from wavemonitor_backend.settings import Settings
@@ -161,7 +162,11 @@ def test_successful_mocked_send_persists_delivery_and_logs_safe_metadata(
     assert transport.posts == [
         CapturedPost(
             url=f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": "WaveMonitor Telegram test message.", "parse_mode": "HTML"},
+            json={
+                "chat_id": CHAT_ID,
+                "text": escape_telegram_markdown_v2("WaveMonitor Telegram test message."),
+                "parse_mode": "MarkdownV2",
+            },
         )
     ]
     engine = create_database_engine(database_url)
@@ -232,13 +237,14 @@ def test_formatter_includes_instrument_source_rule_price_support_and_resistance(
     # When: the Telegram message is formatted.
     message = format_telegram_alert(alert)
 
-    # Then: operators see the instrument, source, rule, price, support, and resistance.
+    # Then: MarkdownV2 payload includes escaped field values (dots/underscores escaped).
+    assert "*WaveMonitor alert*" in message
     assert "Bitcoin" in message
-    assert "binance:usd_m_futures:BTCUSDT" in message
-    assert "near_support" in message
-    assert "100.25" in message
-    assert "98.00" in message
-    assert "130.00" in message
+    assert "binance:usd\\_m\\_futures:BTCUSDT" in message
+    assert "near\\_support" in message
+    assert "100\\.25" in message
+    assert "98\\.00" in message
+    assert "130\\.00" in message
 
 
 def test_send_alert_persists_delivery_result_without_storing_credentials(

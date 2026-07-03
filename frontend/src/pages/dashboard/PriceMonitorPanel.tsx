@@ -147,8 +147,8 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
                 <SourcePriceCard
                   key={price.source_mapping_id}
                   price={price}
-                  support={support}
-                  resistance={resistance}
+                  support={support ?? undefined}
+                  resistance={resistance ?? undefined}
                 />
               ))}
             </div>

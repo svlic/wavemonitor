@@ -130,6 +130,12 @@ describe("InstrumentForm", () => {
     vi.mocked(apiClient.querySymbols).mockResolvedValue([]);
   });
 
+  it("prefills default thresholds on create", () => {
+    render(<InstrumentForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByLabelText(/^接近支撑阈值/)).toHaveValue(0.02);
+    expect(screen.getByLabelText(/^风险回报阈值/)).toHaveValue(3);
+  });
+
   it("validates support and resistance", async () => {
     render(<InstrumentForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
     

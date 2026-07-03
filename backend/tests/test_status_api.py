@@ -9,7 +9,7 @@ from typing import Final
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
@@ -164,6 +164,23 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp
             "last_error": "provider_error: provider down",
         }
     ]
+
+
+def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, session: Session):
+    seed_operational_rows(session)
+    failing_source = session.exec(
+        select(SourceMapping).where(SourceMapping.symbol == "BTC", SourceMapping.provider == Provider.YFINANCE)
+    ).one()
+    failing_source.enabled = False
+    session.add(failing_source)
+    session.commit()
+
+    database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
+    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+        errors_response = test_client.get("/api/source-errors")
+
+    assert errors_response.status_code == 200
+    assert errors_response.json() == []
 
 
 def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Session):

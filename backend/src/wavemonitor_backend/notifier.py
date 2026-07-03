@@ -94,7 +94,7 @@ class TelegramNotifier:
         if token is None or chat_id is None:
             return None
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2"}
         last_result: TelegramSendResult | None = None
         for attempt in range(TELEGRAM_SEND_MAX_ATTEMPTS):
             last_result = self._transport.post_json(url, payload)
@@ -107,29 +107,37 @@ class TelegramNotifier:
         return last_result
 
 
+def escape_telegram_markdown_v2(text: str) -> str:
+    """Escape user-controlled text for Telegram MarkdownV2 (outside code/pre blocks)."""
+    special = r"_*[]()~`>#+-=|{}.!"
+    return "".join(f"\\{ch}" if ch in special else ch for ch in text)
+
+
 def format_telegram_alert(alert: TelegramAlert) -> str:
+    instrument = escape_telegram_markdown_v2(alert.instrument)
+    source = escape_telegram_markdown_v2(alert.source)
+    rule = escape_telegram_markdown_v2(alert.rule.value)
+    price = escape_telegram_markdown_v2(str(alert.price))
+    support = escape_telegram_markdown_v2(str(alert.support))
+    resistance = escape_telegram_markdown_v2(str(alert.resistance))
     return "\n".join(
         (
-            "WaveMonitor alert",
-            f"Instrument: {alert.instrument}",
-            f"Source: {alert.source}",
-            f"Rule: {alert.rule.value}",
-            f"Price: {alert.price}",
-            f"Support: {alert.support}",
-            f"Resistance: {alert.resistance}",
+            "*WaveMonitor alert*",
+            f"*Instrument:* {instrument}",
+            f"*Source:* {source}",
+            f"*Rule:* {rule}",
+            f"*Price:* {price}",
+            f"*Support:* {support}",
+            f"*Resistance:* {resistance}",
         )
     )
 
 
 def message_for_kind(kind: MessageKind, alert: TelegramAlert | None) -> str:
     match kind:
-        case MessageKind.TEST:
+        case MessageKind.TEST | MessageKind.ALERT:
             if alert is None:
-                return "WaveMonitor Telegram test message."
-            return format_telegram_alert(alert)
-        case MessageKind.ALERT:
-            if alert is None:
-                return "WaveMonitor Telegram test message."
+                return escape_telegram_markdown_v2("WaveMonitor Telegram test message.")
             return format_telegram_alert(alert)
         case _ as unreachable:
             assert_never(unreachable)

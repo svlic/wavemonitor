@@ -26,8 +26,12 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [support, setSupport] = useState(initialData?.support ?? "");
   const [resistance, setResistance] = useState(initialData?.resistance ?? "");
-  const [nearSupportThreshold, setNearSupportThreshold] = useState(initialData?.near_support_threshold ?? "");
-  const [riskRewardThreshold, setRiskRewardThreshold] = useState(initialData?.risk_reward_threshold ?? "");
+  const [nearSupportThreshold, setNearSupportThreshold] = useState(
+    initialData?.near_support_threshold ?? "0.02",
+  );
+  const [riskRewardThreshold, setRiskRewardThreshold] = useState(
+    initialData?.risk_reward_threshold ?? "3",
+  );
   const [mappings, setMappings] = useState<MappingForm[]>(
     initialData?.source_mappings.map(m => ({
       provider: m.provider,

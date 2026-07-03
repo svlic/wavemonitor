@@ -87,8 +87,6 @@ const SourceMappingSchema = z.object({
   enabled: z.boolean(),
 });
 
-type SourceMapping = z.infer<typeof SourceMappingSchema>;
-
 const optionalLevelString = z
   .string()
   .nullable()
@@ -103,8 +101,6 @@ const InstrumentSchema = z.object({
   near_support_threshold: z.string(),
   risk_reward_threshold: z.string(),
 });
-
-type Instrument = z.infer<typeof InstrumentSchema>;
 
 const InstrumentWithMappingsSchema = InstrumentSchema.extend({
   source_mappings: z.array(SourceMappingSchema),
@@ -131,13 +127,17 @@ const CreateInstrumentRequestSchema = z.object({
 
 export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
 
-export function serializeInstrumentLevelsForApi(
-  data: CreateInstrumentRequest,
-): CreateInstrumentRequest & { support: string | null; resistance: string | null } {
+export type CreateInstrumentApiPayload = Omit<CreateInstrumentRequest, "support" | "resistance"> & {
+  support: string | null;
+  resistance: string | null;
+};
+
+export function serializeInstrumentLevelsForApi(data: CreateInstrumentRequest): CreateInstrumentApiPayload {
   const supportTrimmed = data.support.trim();
   const resistanceTrimmed = data.resistance.trim();
+  const { support: _support, resistance: _resistance, ...rest } = data;
   return {
-    ...data,
+    ...rest,
     support: supportTrimmed === "" ? null : supportTrimmed,
     resistance: resistanceTrimmed === "" ? null : resistanceTrimmed,
   };
