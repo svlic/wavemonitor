@@ -9,6 +9,8 @@ from pydantic import ConfigDict, field_validator, model_validator
 from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from wavemonitor_backend.support_resistance import normalize_optional_level, validate_instrument_levels
+
 DECIMAL_MAX_DIGITS: Final[int] = 24
 DECIMAL_PLACES: Final[int] = 10
 
@@ -56,9 +58,12 @@ class DeliveryStatus(StrEnum):
 
 
 class RuleDecimalMixin(SQLModel):
+    @field_validator("support", "resistance", mode="before", check_fields=False)
+    @classmethod
+    def parse_optional_level(cls, value: Decimal | str | int | float | None) -> Decimal | None:
+        return normalize_optional_level(value)
+
     @field_validator(
-        "support",
-        "resistance",
         "near_support_threshold",
         "risk_reward_threshold",
         "price",
@@ -74,7 +79,10 @@ class RuleDecimalMixin(SQLModel):
         if isinstance(value, Decimal):
             return value
         if isinstance(value, str):
-            return Decimal(value)
+            stripped = value.strip()
+            if stripped == "":
+                return None
+            return Decimal(stripped)
         if isinstance(value, int):
             return Decimal(value)
         if isinstance(value, float):
@@ -83,13 +91,13 @@ class RuleDecimalMixin(SQLModel):
 
 
 class Instrument(RuleDecimalMixin, table=True):
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=False)
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(min_length=1, max_length=120, index=True)
     enabled: bool = Field(default=True)
-    support: Decimal = Field(sa_column=decimal_column())
-    resistance: Decimal = Field(sa_column=decimal_column())
+    support: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    resistance: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     near_support_threshold: Decimal = Field(sa_column=decimal_column())
     risk_reward_threshold: Decimal = Field(sa_column=decimal_column())
     created_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
@@ -97,27 +105,39 @@ class Instrument(RuleDecimalMixin, table=True):
 
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
-        if not self.has_complete_rule_values:
-            return self
-        if self.support >= self.resistance:
-            raise ValueError("support must be less than resistance")
+        self._coerce_rule_fields()
+        self._assert_rule_contract()
+        return self
+
+    def model_post_init(self, __context: object) -> None:
+        if self._needs_rule_field_coercion():
+            self._coerce_rule_fields()
+        self._assert_rule_contract()
+
+    def _needs_rule_field_coercion(self) -> bool:
+        return (
+            self.support is not None and not isinstance(self.support, Decimal)
+            or self.resistance is not None and not isinstance(self.resistance, Decimal)
+            or not isinstance(self.near_support_threshold, Decimal)
+            or not isinstance(self.risk_reward_threshold, Decimal)
+        )
+
+    def _coerce_rule_fields(self) -> None:
+        self.support = normalize_optional_level(self.support)
+        self.resistance = normalize_optional_level(self.resistance)
+        near = self.parse_decimal_from_string(self.near_support_threshold)
+        risk = self.parse_decimal_from_string(self.risk_reward_threshold)
+        if near is None or risk is None:
+            raise ValueError("near_support_threshold and risk_reward_threshold are required")
+        self.near_support_threshold = near
+        self.risk_reward_threshold = risk
+
+    def _assert_rule_contract(self) -> None:
+        validate_instrument_levels(support=self.support, resistance=self.resistance)
         if not Decimal("0") < self.near_support_threshold < Decimal("1"):
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
         if self.risk_reward_threshold <= Decimal("0"):
             raise ValueError("risk_reward_threshold must be greater than 0")
-        return self
-
-    @property
-    def has_complete_rule_values(self) -> bool:
-        return all(
-            value is not None
-            for value in (
-                self.support,
-                self.resistance,
-                self.near_support_threshold,
-                self.risk_reward_threshold,
-            )
-        )
 
 
 class SourceMapping(SQLModel, table=True):

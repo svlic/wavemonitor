@@ -39,12 +39,14 @@ def test_instrument_rejects_float_only_rule_inputs():
     # Given: binary floats would introduce inexact rule arithmetic.
     # When / Then: the model rejects floats at the domain boundary.
     with pytest.raises(ValidationError, match="Decimal values must be provided as strings"):
-        Instrument(
-            name="Bitcoin",
-            support=90000.10,
-            resistance="110000.25",
-            near_support_threshold="0.02",
-            risk_reward_threshold="3.5",
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin",
+                "support": 90000.10,
+                "resistance": "110000.25",
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": "3.5",
+            }
         )
 
 
@@ -52,12 +54,39 @@ def test_instrument_rejects_support_greater_than_or_equal_to_resistance():
     # Given: an invalid support/resistance pair.
     # When / Then: validation rejects the rule contract.
     with pytest.raises(ValidationError, match="support must be less than resistance"):
-        Instrument(
-            name="Broken range",
-            support="100",
-            resistance="100",
-            near_support_threshold="0.02",
-            risk_reward_threshold="2",
+        Instrument.model_validate(
+            {
+                "name": "Broken range",
+                "support": "100",
+                "resistance": "100",
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": "2",
+            }
+        )
+
+
+def test_instrument_accepts_support_only():
+    instrument = Instrument(
+        name="Resistance TBD",
+        support="100",
+        resistance=None,
+        near_support_threshold="0.02",
+        risk_reward_threshold="2",
+    )
+    assert instrument.support == Decimal("100")
+    assert instrument.resistance is None
+
+
+def test_instrument_rejects_both_levels_unset():
+    with pytest.raises(ValidationError, match="at least one of support or resistance"):
+        Instrument.model_validate(
+            {
+                "name": "No levels",
+                "support": None,
+                "resistance": None,
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": "2",
+            }
         )
 
 
