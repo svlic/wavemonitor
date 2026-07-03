@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { apiClient, ApiError } from "../../api/client";
 import type {
   RuntimeResponse,
@@ -7,6 +7,10 @@ import type {
   InstrumentWithMappings,
 } from "../../api/client";
 import { usePollingRefresh } from "../../hooks/usePollingRefresh";
+import {
+  getInstrumentRevision,
+  subscribeInstrumentRevision,
+} from "../../state/instrumentRevision";
 import {
   formatAlertKindLabel,
   formatDateTime,
@@ -88,6 +92,20 @@ export function Dashboard() {
     void loadData(controller.signal);
     return () => controller.abort();
   }, [loadData]);
+
+  const instrumentRevision = useSyncExternalStore(
+    subscribeInstrumentRevision,
+    getInstrumentRevision,
+  );
+  const loadedInstrumentRevisionRef = useRef(instrumentRevision);
+
+  useEffect(() => {
+    if (instrumentRevision === loadedInstrumentRevisionRef.current) {
+      return;
+    }
+    loadedInstrumentRevisionRef.current = instrumentRevision;
+    void loadData(undefined, { refresh: true });
+  }, [instrumentRevision, loadData]);
 
   const pollPrices = useCallback(() => {
     void loadData(undefined, { refresh: true });

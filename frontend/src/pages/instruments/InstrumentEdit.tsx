@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { InstrumentForm } from "./InstrumentForm";
 import { apiClient } from "../../api/client";
+import { bumpInstrumentRevision } from "../../state/instrumentRevision";
 import type { InstrumentWithMappings, CreateInstrumentRequest } from "../../api/client";
 
 type Props = {
@@ -35,6 +36,7 @@ export function InstrumentEdit({ id }: Props) {
 
   const handleSubmit = async (data: CreateInstrumentRequest) => {
     await apiClient.updateInstrument(id, data);
+    bumpInstrumentRevision();
     setLocation("/instruments");
   };
 
