@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/pages/dashboard/Dashboard";
 import { apiClient } from "../src/api/client";
+import { bumpInstrumentRevision } from "../src/state/instrumentRevision";
 import type { InstrumentWithMappings } from "../src/api/client";
 
 vi.mock("../src/api/client", async (importOriginal) => {
@@ -32,6 +33,13 @@ const emptyRuntime = {
 };
 
 describe("Dashboard", () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.getRuntime).mockClear();
+    vi.mocked(apiClient.getLatestPrices).mockClear();
+    vi.mocked(apiClient.getRecentAlerts).mockClear();
+    vi.mocked(apiClient.getInstruments).mockClear();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -185,5 +193,25 @@ describe("Dashboard", () => {
     });
     expect(screen.queryByText("95000.50")).not.toBeInTheDocument();
     expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
+  });
+
+  it("refetches dashboard data when instrument configuration changes", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(apiClient.getInstruments).toHaveBeenCalledTimes(1);
+    });
+
+    bumpInstrumentRevision();
+
+    await waitFor(() => {
+      expect(apiClient.getInstruments).toHaveBeenCalledTimes(2);
+      expect(apiClient.getLatestPrices).toHaveBeenCalledTimes(2);
+    });
   });
 });
