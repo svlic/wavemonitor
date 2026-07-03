@@ -101,6 +101,30 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
     assert list_after_delete.json() == []
 
 
+def test_create_instrument_with_support_only(client: TestClient):
+    payload = VALID_PAYLOAD | {"support": "90000.00", "resistance": None}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["support"] is not None
+    assert body["resistance"] is None
+
+
+def test_create_instrument_with_resistance_only(client: TestClient):
+    payload = VALID_PAYLOAD | {"support": None, "resistance": "110000.00"}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["support"] is None
+    assert body["resistance"] is not None
+
+
+def test_create_instrument_rejects_both_levels_null(client: TestClient):
+    payload = VALID_PAYLOAD | {"support": None, "resistance": None}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 422
+
+
 def test_patch_instrument_enabled_toggles_without_full_put(client: TestClient):
     create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
     assert create_response.status_code == 201
