@@ -24,6 +24,31 @@ describe("ApiClient", () => {
     await expect(client.getRuntime()).rejects.toThrow(ApiError);
   });
 
+  it("sets no-store cache policy on API requests", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        scheduler_ready: true,
+        providers_ready: true,
+        telegram_ready: false,
+        enabled_sources: 0,
+        polled_sources: 0,
+        observations_written: 0,
+        source_errors: 0,
+        alert_events_created: 0,
+        telegram_deliveries_attempted: 0,
+        last_tick_started_at: null,
+        last_tick_finished_at: null,
+      }), { status: 200 }),
+    );
+
+    await client.getRuntime();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: "/api/runtime" }),
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
   it("returns parsed data on success", async () => {
     const mockData = {
       scheduler_ready: true,
