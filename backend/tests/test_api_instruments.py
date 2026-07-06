@@ -24,6 +24,17 @@ class FakeTelegramTransport:
         return TelegramSendSuccess(message_id="redaction-test")
 
 
+class FakeRequestingLifecycle:
+    def __init__(self) -> None:
+        self.tick_requests = 0
+
+    async def run(self) -> None:
+        return None
+
+    def request_tick(self) -> None:
+        self.tick_requests += 1
+
+
 VALID_PAYLOAD: Final[dict[str, str | bool | list[dict[str, str | bool]]]] = {
     "name": "Bitcoin",
     "enabled": True,
@@ -108,6 +119,27 @@ def test_create_instrument_with_support_only(client: TestClient):
     body = response.json()
     assert body["support"] is not None
     assert body["resistance"] is None
+
+
+def test_create_instrument_requests_immediate_monitoring_tick(tmp_path: Path):
+    # Given: the API is wired to a monitoring lifecycle with an observable tick request hook.
+    lifecycle = FakeRequestingLifecycle()
+    database_url = f"sqlite:///{tmp_path / 'immediate.sqlite3'}"
+    with TestClient(
+        create_app(
+            AppRuntime(
+                settings=Settings(),
+                database_url=database_url,
+                monitoring_lifecycle=lifecycle,
+            )
+        )
+    ) as test_client:
+        # When: a valid instrument is created through the HTTP API.
+        response = test_client.post("/api/instruments", json=VALID_PAYLOAD)
+
+    # Then: the mutation commits and asks the scheduler to run without waiting for the interval.
+    assert response.status_code == 201
+    assert lifecycle.tick_requests == 1
 
 
 def test_create_instrument_with_resistance_only(client: TestClient):

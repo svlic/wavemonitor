@@ -12,7 +12,7 @@ from sqlmodel import Session
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
-from wavemonitor_backend.lifecycle import MonitoringLifecycle
+from wavemonitor_backend.lifecycle import MonitoringLifecycle, WakingTicker
 from wavemonitor_backend.monitoring import MonitoringScheduler, RuntimeMetrics, RuntimeMetricsStore
 from wavemonitor_backend.settings import Settings
 
@@ -21,6 +21,7 @@ class FakeAppLifecycle:
     def __init__(self) -> None:
         self.started = Event()
         self.stopped = Event()
+        self.tick_requests = 0
 
     async def run(self) -> None:
         self.started.set()
@@ -28,6 +29,9 @@ class FakeAppLifecycle:
             await anyio.sleep_forever()
         finally:
             self.stopped.set()
+
+    def request_tick(self) -> None:
+        self.tick_requests += 1
 
 
 @dataclass(slots=True)
@@ -173,6 +177,37 @@ def test_monitoring_lifecycle_continues_after_tick_exception(tmp_path: Path):
             task_group.cancel_scope.cancel()
 
         # Then: the lifecycle logs and continues instead of letting polling die permanently.
+        assert runner.ticks == 2
+
+    anyio.run(scenario)
+
+
+def test_monitoring_lifecycle_runs_requested_tick_without_waiting_for_interval(tmp_path: Path):
+    # Given: the lifecycle is parked on a long polling interval after its startup tick.
+    async def scenario() -> None:
+        engine = create_database_engine(f"sqlite:///{tmp_path / 'wake.sqlite3'}")
+        create_schema(engine)
+        runner = FakeTickRunner()
+        lifecycle = MonitoringLifecycle(
+            runner=runner,
+            session_factory=lambda: session_scope(engine),
+            ticker=WakingTicker(interval_seconds=60),
+        )
+
+        async def wait_for_ticks(expected: int) -> None:
+            with anyio.fail_after(1):
+                while runner.ticks < expected:
+                    await anyio.sleep(0)
+
+        # When: an external caller requests another tick while the interval wait is pending.
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(lifecycle.run)
+            await wait_for_ticks(1)
+            lifecycle.request_tick()
+            await wait_for_ticks(2)
+            task_group.cancel_scope.cancel()
+
+        # Then: the requested tick runs immediately instead of waiting for the 60-second interval.
         assert runner.ticks == 2
 
     anyio.run(scenario)
