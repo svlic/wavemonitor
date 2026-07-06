@@ -8,13 +8,18 @@ from typing import Final
 from sqlalchemy import Engine
 
 from wavemonitor_backend.adapters import BinanceFuturesAdapter, HyperliquidAdapter, YFinanceAdapter
-from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
 from wavemonitor_backend.db import session_scope
-from wavemonitor_backend.lifecycle import FixedIntervalTicker, MonitoringLifecycle
+from wavemonitor_backend.lifecycle import MonitoringLifecycle, WakingTicker
 from wavemonitor_backend.models import MarketType, Provider
-from wavemonitor_backend.monitoring import AdapterRegistry, MonitoringScheduler, RuntimeMetricsStore, SourcePoller
+from wavemonitor_backend.monitoring import (
+    AdapterRegistry,
+    MonitoringScheduler,
+    RuntimeMetricsStore,
+    SourcePoller,
+)
 from wavemonitor_backend.notifier import TelegramNotifier
 from wavemonitor_backend.settings import Settings
+from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
 
 POLL_INTERVAL_SECONDS_ENV: Final[str] = "WAVEMONITOR_POLL_INTERVAL_SECONDS"
 DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 120.0
@@ -79,8 +84,16 @@ def build_monitoring_lifecycle(
         with session_scope(engine) as session:
             yield session
 
-    interval = poll_interval_seconds if poll_interval_seconds is not None else poll_interval_seconds_from_env()
-    return MonitoringLifecycle(scheduler, session_factory, FixedIntervalTicker(interval_seconds=interval))
+    interval = (
+        poll_interval_seconds
+        if poll_interval_seconds is not None
+        else poll_interval_seconds_from_env()
+    )
+    return MonitoringLifecycle(
+        scheduler,
+        session_factory,
+        WakingTicker(interval_seconds=interval),
+    )
 
 
 def default_monitoring_lifecycle(

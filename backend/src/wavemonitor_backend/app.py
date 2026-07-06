@@ -1,11 +1,11 @@
 import base64
 import hmac
 from collections.abc import AsyncIterator, Iterator
-from functools import lru_cache
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from typing import Final, Protocol
 
 import anyio
@@ -32,9 +32,13 @@ from wavemonitor_backend.db import (
     database_url_from_env,
     session_scope,
 )
+from wavemonitor_backend.lifecycle import ImmediateTickRequester
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
-from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
+from wavemonitor_backend.monitoring_bootstrap import (
+    build_symbol_catalog,
+    default_monitoring_lifecycle,
+)
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
@@ -57,7 +61,6 @@ from wavemonitor_backend.schemas import (
 )
 from wavemonitor_backend.settings import Settings
 from wavemonitor_backend.symbol_catalog import SymbolCatalog
-from wavemonitor_backend.monitoring_bootstrap import build_symbol_catalog
 
 
 class HealthResponse(BaseModel):
@@ -159,6 +162,8 @@ SESSION_VALUE: Final[str] = "authenticated"
 class AppLifecycle(Protocol):
     async def run(self) -> None: ...
 
+    def request_tick(self) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class AppRuntime:
@@ -204,6 +209,11 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
     telegram_notifier = TelegramNotifier(runtime_settings, app_runtime.telegram_transport)
+
+    def request_monitoring_tick() -> None:
+        lifecycle = app_runtime.monitoring_lifecycle
+        if isinstance(lifecycle, ImmediateTickRequester):
+            lifecycle.request_tick()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -321,7 +331,9 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         payload: InstrumentRequest,
         session: Session = Depends(get_session),
     ) -> InstrumentResponse:
-        return create_instrument(session, payload)
+        response = create_instrument(session, payload)
+        request_monitoring_tick()
+        return response
 
     @app.put("/api/instruments/{instrument_id}", response_model=InstrumentResponse)
     def update_instrument_endpoint(
@@ -329,7 +341,9 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         payload: InstrumentRequest,
         session: Session = Depends(get_session),
     ) -> InstrumentResponse:
-        return update_instrument(session, instrument_id, payload)
+        response = update_instrument(session, instrument_id, payload)
+        request_monitoring_tick()
+        return response
 
     @app.patch("/api/instruments/{instrument_id}", response_model=InstrumentResponse)
     def patch_instrument_endpoint(
@@ -337,7 +351,9 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         payload: InstrumentEnabledPatch,
         session: Session = Depends(get_session),
     ) -> InstrumentResponse:
-        return patch_instrument_enabled(session, instrument_id, payload)
+        response = patch_instrument_enabled(session, instrument_id, payload)
+        request_monitoring_tick()
+        return response
 
     @app.delete("/api/instruments/{instrument_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_instrument_endpoint(
