@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 from wavemonitor_backend.api import (
     decimal_to_api_string,
     latest_observation_for,
+    latest_successful_observation_for,
     require_id,
     source_mappings_for,
 )
@@ -21,8 +22,8 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
         for source in source_mappings_for(session, require_id(instrument.id)):
             if not source.enabled:
                 continue
-            observation = latest_observation_for(session, source)
-            if observation is not None and observation.error is None:
+            observation = latest_successful_observation_for(session, source)
+            if observation is not None:
                 prices.append(latest_price_response(instrument, source, observation))
     return prices
 

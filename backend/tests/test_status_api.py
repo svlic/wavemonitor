@@ -232,6 +232,121 @@ def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Se
     assert response.json()[0]["source_mapping_id"] == source.id
 
 
+def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path, session: Session):
+    # Given: one enabled source has an older successful price and a newer provider error.
+    instrument = Instrument(
+        name="Bitcoin",
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        created_at=BASE_TIME,
+        updated_at=BASE_TIME,
+    )
+    session.add(instrument)
+    session.commit()
+    session.refresh(instrument)
+    source = SourceMapping(
+        instrument_id=instrument.id,
+        provider=Provider.BINANCE,
+        market_type=MarketType.USD_M_FUTURES,
+        symbol="BTCUSDT",
+    )
+    session.add(source)
+    session.commit()
+    session.refresh(source)
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("100"),
+            observed_at=BASE_TIME,
+            raw_path="success.price",
+        )
+    )
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("0"),
+            observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
+            error="provider_error: provider down",
+        )
+    )
+    session.commit()
+
+    database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
+    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+        response = test_client.get("/api/prices/latest")
+
+    # Then: the latest prices endpoint reports the last successful price, not the newer error row.
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "instrument_id": instrument.id,
+            "instrument_name": "Bitcoin",
+            "source_mapping_id": source.id,
+            "provider": "binance",
+            "market_type": "usd_m_futures",
+            "symbol": "BTCUSDT",
+            "last_price": "100.0000000000",
+            "last_observed_at": "2026-06-30T12:00:00",
+            "last_error": None,
+        }
+    ]
+
+
+def test_instrument_status_keeps_last_success_after_newer_source_error(tmp_path: Path, session: Session):
+    # Given: one enabled source has an older successful price and a newer provider error.
+    instrument = Instrument(
+        name="Bitcoin",
+        support=Decimal("98"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        created_at=BASE_TIME,
+        updated_at=BASE_TIME,
+    )
+    session.add(instrument)
+    session.commit()
+    session.refresh(instrument)
+    source = SourceMapping(
+        instrument_id=instrument.id,
+        provider=Provider.BINANCE,
+        market_type=MarketType.USD_M_FUTURES,
+        symbol="BTCUSDT",
+    )
+    session.add(source)
+    session.commit()
+    session.refresh(source)
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("100"),
+            observed_at=BASE_TIME,
+            raw_path="success.price",
+        )
+    )
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("0"),
+            observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
+            error="provider_error: provider down",
+        )
+    )
+    session.commit()
+
+    database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
+    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+        response = test_client.get(f"/api/instruments/{instrument.id}/status")
+
+    # Then: source status preserves the last successful price while also exposing the latest error.
+    assert response.status_code == 200
+    source_status = response.json()["sources"][0]
+    assert source_status["last_price"] == "100.0000000000"
+    assert source_status["last_observed_at"] == "2026-06-30T12:00:00"
+    assert source_status["last_error"] == "provider_error: provider down"
+
+
 def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, session: Session):
     enabled_instrument = Instrument(
         name="Active",

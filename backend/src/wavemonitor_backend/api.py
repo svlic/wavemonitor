@@ -151,6 +151,7 @@ def source_response(source: SourceMapping) -> SourceMappingResponse:
 
 def source_status(session: Session, source: SourceMapping) -> SourceStatusResponse:
     observation = latest_observation_for(session, source)
+    successful_observation = latest_successful_observation_for(session, source)
     rule_state = latest_rule_state_for(session, source)
     return SourceStatusResponse(
         id=require_id(source.id),
@@ -158,8 +159,8 @@ def source_status(session: Session, source: SourceMapping) -> SourceStatusRespon
         market_type=source.market_type,
         symbol=source.symbol,
         enabled=source.enabled,
-        last_price=decimal_to_api_string(observation.price) if observation is not None and observation.price is not None else None,
-        last_observed_at=observation.observed_at if observation is not None else None,
+        last_price=decimal_to_api_string(successful_observation.price) if successful_observation is not None else None,
+        last_observed_at=successful_observation.observed_at if successful_observation is not None else None,
         last_error=observation.error if observation is not None else None,
         last_invalid_state=rule_state.last_invalid_state if rule_state is not None else None,
     )
@@ -186,6 +187,20 @@ def latest_observation_for(session: Session, source: SourceMapping) -> PriceObse
     statement = (
         select(PriceObservation)
         .where(PriceObservation.source_mapping_id == require_id(source.id))
+        .order_by(desc(PriceObservation.observed_at), desc(PriceObservation.id))
+        .limit(1)
+    )
+    return session.exec(statement).first()
+
+
+def latest_successful_observation_for(session: Session, source: SourceMapping) -> PriceObservation | None:
+    statement = (
+        select(PriceObservation)
+        .where(
+            PriceObservation.source_mapping_id == require_id(source.id),
+            PriceObservation.error.is_(None),
+            PriceObservation.price.is_not(None),
+        )
         .order_by(desc(PriceObservation.observed_at), desc(PriceObservation.id))
         .limit(1)
     )
