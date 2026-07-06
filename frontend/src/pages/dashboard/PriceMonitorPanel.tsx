@@ -13,13 +13,24 @@ type PriceMonitorPanelProps = {
   readonly instruments: readonly InstrumentWithMappings[];
 };
 
-type InstrumentPriceGroup = {
+type InstrumentPriceBucket = {
   readonly instrumentId: number;
-  readonly instrumentName: string;
   readonly rows: readonly LatestPrice[];
 };
 
-function groupPricesByInstrument(prices: readonly LatestPrice[]): readonly InstrumentPriceGroup[] {
+type SourceMapping = InstrumentWithMappings["source_mappings"][number];
+
+type SourcePriceRow = {
+  readonly price: LatestPrice;
+  readonly source: SourceMapping;
+};
+
+type InstrumentPriceGroup = {
+  readonly instrument: InstrumentWithMappings;
+  readonly rows: readonly SourcePriceRow[];
+};
+
+function groupPricesByInstrument(prices: readonly LatestPrice[]): readonly InstrumentPriceBucket[] {
   const order: number[] = [];
   const buckets = new Map<number, LatestPrice[]>();
 
@@ -33,23 +44,20 @@ function groupPricesByInstrument(prices: readonly LatestPrice[]): readonly Instr
     }
   }
 
-  return order.map((instrumentId) => {
-    const rows = buckets.get(instrumentId) ?? [];
-    return {
-      instrumentId,
-      instrumentName: rows[0]?.instrument_name ?? String(instrumentId),
-      rows,
-    };
-  });
+  return order.map((instrumentId) => ({
+    instrumentId,
+    rows: buckets.get(instrumentId) ?? [],
+  }));
 }
 
 type SourcePriceCardProps = {
   readonly price: LatestPrice;
+  readonly source: SourceMapping;
   readonly support: string | undefined;
   readonly resistance: string | undefined;
 };
 
-function SourcePriceCard({ price, support, resistance }: SourcePriceCardProps) {
+function SourcePriceCard({ price, source, support, resistance }: SourcePriceCardProps) {
   const supportPct =
     support !== undefined ? computeSupportDistancePercent(price.last_price, support) : null;
   const resistancePct =
@@ -65,7 +73,7 @@ function SourcePriceCard({ price, support, resistance }: SourcePriceCardProps) {
     <article className="price-source-card">
       <header className="price-source-card__head">
         <h4 className="price-source-card__source">
-          {formatSourceLabel(price.provider, price.market_type, price.symbol)}
+          {formatSourceLabel(source.provider, source.market_type, source.symbol)}
         </h4>
         <time className="price-source-card__time muted-text" dateTime={price.last_observed_at}>
           {formatDateTime(price.last_observed_at)}
@@ -101,10 +109,23 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
   }
 
   const instrumentById = new Map(instruments.map((item) => [item.id, item]));
-  const groups = groupPricesByInstrument(prices).filter((group) => {
-    const instrument = instrumentById.get(group.instrumentId);
-    return instrument !== undefined && instrument.enabled;
-  });
+  const groups: InstrumentPriceGroup[] = [];
+
+  for (const bucket of groupPricesByInstrument(prices)) {
+    const instrument = instrumentById.get(bucket.instrumentId);
+    if (instrument === undefined || !instrument.enabled) {
+      continue;
+    }
+
+    const sourceById = new Map(instrument.source_mappings.map((source) => [source.id, source]));
+    const rows = bucket.rows.flatMap((price) => {
+      const source = sourceById.get(price.source_mapping_id);
+      return source === undefined || !source.enabled ? [] : [{ price, source }];
+    });
+    if (rows.length > 0) {
+      groups.push({ instrument, rows });
+    }
+  }
 
   if (groups.length === 0) {
     return <p className="empty-state">暂无价格数据。</p>;
@@ -113,40 +134,39 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
   return (
     <div className="price-monitor">
       {groups.map((group) => {
-        const instrument = instrumentById.get(group.instrumentId);
-        const support = instrument?.support;
-        const resistance = instrument?.resistance;
+        const { instrument } = group;
+        const support = instrument.support;
+        const resistance = instrument.resistance;
 
         return (
           <section
-            key={group.instrumentId}
+            key={instrument.id}
             className="price-monitor__instrument"
-            aria-labelledby={`price-instrument-${group.instrumentId}`}
+            aria-labelledby={`price-instrument-${instrument.id}`}
           >
             <header className="price-monitor__header">
               <div className="price-monitor__title-row">
-                <h3 id={`price-instrument-${group.instrumentId}`} className="price-monitor__title">
-                  {group.instrumentName}
+                <h3 id={`price-instrument-${instrument.id}`} className="price-monitor__title">
+                  {instrument.name}
                 </h3>
               </div>
-              {instrument !== undefined && (
-                <div className="price-monitor__levels">
-                  <span className="level-chip level-chip--support">
-                    <span className="level-chip__label">支撑</span>
-                    <span className="level-chip__value">{formatOptionalLevel(instrument.support)}</span>
-                  </span>
-                  <span className="level-chip level-chip--resistance">
-                    <span className="level-chip__label">阻力</span>
-                    <span className="level-chip__value">{formatOptionalLevel(instrument.resistance)}</span>
-                  </span>
-                </div>
-              )}
+              <div className="price-monitor__levels">
+                <span className="level-chip level-chip--support">
+                  <span className="level-chip__label">支撑</span>
+                  <span className="level-chip__value">{formatOptionalLevel(instrument.support)}</span>
+                </span>
+                <span className="level-chip level-chip--resistance">
+                  <span className="level-chip__label">阻力</span>
+                  <span className="level-chip__value">{formatOptionalLevel(instrument.resistance)}</span>
+                </span>
+              </div>
             </header>
             <div className="price-monitor__sources">
-              {group.rows.map((price) => (
+              {group.rows.map((row) => (
                 <SourcePriceCard
-                  key={price.source_mapping_id}
-                  price={price}
+                  key={row.price.source_mapping_id}
+                  price={row.price}
+                  source={row.source}
                   support={support ?? undefined}
                   resistance={resistance ?? undefined}
                 />

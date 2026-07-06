@@ -148,6 +148,66 @@ describe("Dashboard", () => {
     });
   });
 
+  it("uses current instrument config when latest price metadata is stale", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([
+      {
+        id: 1,
+        name: "Bitcoin Updated",
+        enabled: true,
+        support: "91000",
+        resistance: "101000",
+        near_support_threshold: "0.01",
+        risk_reward_threshold: "2.0",
+        source_mappings: [
+          {
+            id: 2,
+            provider: "hyperliquid",
+            market_type: "perpetual",
+            symbol: "BTC",
+            enabled: true,
+          },
+        ],
+      },
+    ] satisfies readonly InstrumentWithMappings[]);
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([
+      {
+        instrument_id: 1,
+        instrument_name: "Bitcoin Old",
+        source_mapping_id: 1,
+        provider: "binance",
+        market_type: "usd_m_futures",
+        symbol: "BTCUSDT",
+        last_price: "95000.50",
+        last_observed_at: "2026-06-30T12:00:00Z",
+        last_error: null,
+      },
+      {
+        instrument_id: 1,
+        instrument_name: "Bitcoin Old",
+        source_mapping_id: 2,
+        provider: "binance",
+        market_type: "usd_m_futures",
+        symbol: "BTCUSDT",
+        last_price: "95010.50",
+        last_observed_at: "2026-06-30T12:01:00Z",
+        last_error: null,
+      },
+    ]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Bitcoin Updated")).toBeInTheDocument();
+      expect(screen.getByText("Hyperliquid · 永续合约 · BTC")).toBeInTheDocument();
+      expect(screen.getByText("95010.50")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Bitcoin Old")).not.toBeInTheDocument();
+    expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
+    expect(screen.queryByText("95000.50")).not.toBeInTheDocument();
+  });
+
   it("hides paused instruments from price monitor", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([
