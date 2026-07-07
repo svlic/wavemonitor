@@ -45,7 +45,7 @@
 
 ## 仪表盘 · 价格监控
 
-- 标的区块：`.price-monitor__instrument`（内边距、边框、圆角 `--radius-panel`）
-- 支撑/阻力：`.level-chip` + `.level-chip__label` / `.level-chip__value`（等宽数字用 JetBrains Mono）
-- 来源卡片：`.price-source-card`，字段为 `.price-field`（标签 + 数值）；主价格 `.price-field__value--primary` 使用 `--color-accent`
-- 响应式：`.price-monitor__sources` 为 `auto-fill`，单卡宽约 `11.25rem–14.5rem`；主价单独一行，三项指标横排
+- 标的区块：`.price-monitor__instrument`（紧凑内边距、`--radius-control`）
+- 标题行：`.price-monitor__header--compact`；支撑/阻力为 `.price-monitor__levels-inline` + `.price-monitor__level-value`（等宽数字）
+- 来源数据：`.price-monitor__table` 表格式一行一来源；主价 `.price-source-row__price` 使用 `--color-accent`
+- 窄屏：`.price-monitor__table-wrap` 横向滚动，表头列对齐（来源左、数值右）

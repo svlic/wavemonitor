@@ -57,7 +57,7 @@ type SourcePriceCardProps = {
   readonly resistance: string | undefined;
 };
 
-function SourcePriceCard({ price, source, support, resistance }: SourcePriceCardProps) {
+function SourcePriceRow({ price, source, support, resistance }: SourcePriceCardProps) {
   const supportPct =
     support !== undefined ? computeSupportDistancePercent(price.last_price, support) : null;
   const resistancePct =
@@ -68,38 +68,21 @@ function SourcePriceCard({ price, source, support, resistance }: SourcePriceCard
     support !== undefined && resistance !== undefined
       ? computeRiskRewardRatio(price.last_price, support, resistance)
       : null;
+  const sourceLabel = formatSourceLabel(source.provider, source.market_type, source.symbol);
 
   return (
-    <article className="price-source-card">
-      <header className="price-source-card__head">
-        <h4 className="price-source-card__source">
-          {formatSourceLabel(source.provider, source.market_type, source.symbol)}
-        </h4>
-        <time className="price-source-card__time muted-text" dateTime={price.last_observed_at}>
+    <tr className="price-source-row">
+      <th scope="row" className="price-source-row__source">
+        <span className="price-source-row__source-label">{sourceLabel}</span>
+        <time className="price-source-row__time muted-text" dateTime={price.last_observed_at}>
           {formatDateTime(price.last_observed_at)}
         </time>
-      </header>
-      <dl className="price-source-card__fields">
-        <div className="price-field price-field--hero">
-          <dt className="price-field__label">价格</dt>
-          <dd className="price-field__value price-field__value--primary">{price.last_price}</dd>
-        </div>
-        <div className="price-source-card__metrics">
-          <div className="price-field">
-            <dt className="price-field__label">距支撑</dt>
-            <dd className="price-field__value">{formatMetricPercent(supportPct)}</dd>
-          </div>
-          <div className="price-field">
-            <dt className="price-field__label">距阻力</dt>
-            <dd className="price-field__value">{formatMetricPercent(resistancePct)}</dd>
-          </div>
-          <div className="price-field">
-            <dt className="price-field__label">盈亏比</dt>
-            <dd className="price-field__value">{formatRiskReward(riskReward)}</dd>
-          </div>
-        </div>
-      </dl>
-    </article>
+      </th>
+      <td className="price-source-row__price">{price.last_price}</td>
+      <td className="price-source-row__metric">{formatMetricPercent(supportPct)}</td>
+      <td className="price-source-row__metric">{formatMetricPercent(resistancePct)}</td>
+      <td className="price-source-row__metric">{formatRiskReward(riskReward)}</td>
+    </tr>
   );
 }
 
@@ -144,33 +127,47 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
             className="price-monitor__instrument"
             aria-labelledby={`price-instrument-${instrument.id}`}
           >
-            <header className="price-monitor__header">
-              <div className="price-monitor__title-row">
-                <h3 id={`price-instrument-${instrument.id}`} className="price-monitor__title">
-                  {instrument.name}
-                </h3>
-              </div>
-              <div className="price-monitor__levels">
-                <span className="level-chip level-chip--support">
-                  <span className="level-chip__label">支撑</span>
-                  <span className="level-chip__value">{formatOptionalLevel(instrument.support)}</span>
+            <header className="price-monitor__header price-monitor__header--compact">
+              <h3 id={`price-instrument-${instrument.id}`} className="price-monitor__title">
+                {instrument.name}
+              </h3>
+              <p className="price-monitor__levels-inline muted-text">
+                <span>
+                  支撑{" "}
+                  <span className="price-monitor__level-value">{formatOptionalLevel(instrument.support)}</span>
                 </span>
-                <span className="level-chip level-chip--resistance">
-                  <span className="level-chip__label">阻力</span>
-                  <span className="level-chip__value">{formatOptionalLevel(instrument.resistance)}</span>
+                <span className="price-monitor__levels-sep" aria-hidden="true">
+                  ·
                 </span>
-              </div>
+                <span>
+                  阻力{" "}
+                  <span className="price-monitor__level-value">{formatOptionalLevel(instrument.resistance)}</span>
+                </span>
+              </p>
             </header>
-            <div className="price-monitor__sources">
-              {group.rows.map((row) => (
-                <SourcePriceCard
-                  key={row.price.source_mapping_id}
-                  price={row.price}
-                  source={row.source}
-                  support={support ?? undefined}
-                  resistance={resistance ?? undefined}
-                />
-              ))}
+            <div className="price-monitor__table-wrap">
+              <table className="price-monitor__table">
+                <thead>
+                  <tr>
+                    <th scope="col">来源</th>
+                    <th scope="col">价格</th>
+                    <th scope="col">距支撑</th>
+                    <th scope="col">距阻力</th>
+                    <th scope="col">盈亏比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row) => (
+                    <SourcePriceRow
+                      key={row.price.source_mapping_id}
+                      price={row.price}
+                      source={row.source}
+                      support={support ?? undefined}
+                      resistance={resistance ?? undefined}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
         );
