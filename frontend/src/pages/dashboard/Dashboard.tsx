@@ -3,7 +3,6 @@ import { apiClient, ApiError } from "../../api/client";
 import type {
   RuntimeResponse,
   LatestPrice,
-  RecentAlert,
   InstrumentWithMappings,
 } from "../../api/client";
 import { usePollingRefresh } from "../../hooks/usePollingRefresh";
@@ -11,26 +10,20 @@ import {
   getInstrumentRevision,
   subscribeInstrumentRevision,
 } from "../../state/instrumentRevision";
-import {
-  formatAlertKindLabel,
-  formatDateTime,
-  formatDecimal,
-} from "../../utils/format";
+import { formatDateTime } from "../../utils/format";
 import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
 type DashboardState = "loading" | "ready" | "error";
 
 async function fetchDashboardBundle(signal?: AbortSignal) {
-  const [runtimeData, pricesData, alertsData, instrumentsData] = await Promise.all([
+  const [runtimeData, pricesData, instrumentsData] = await Promise.all([
     apiClient.getRuntime(signal),
     apiClient.getLatestPrices(signal),
-    apiClient.getRecentAlerts(signal),
     apiClient.getInstruments(signal),
   ]);
   return {
     runtime: runtimeData,
     prices: pricesData,
-    alerts: alertsData,
     instruments: instrumentsData,
   };
 }
@@ -42,14 +35,12 @@ export function Dashboard() {
 
   const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
   const [prices, setPrices] = useState<readonly LatestPrice[]>([]);
-  const [alerts, setAlerts] = useState<readonly RecentAlert[]>([]);
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
 
   const applyBundle = useCallback(
     (bundle: Awaited<ReturnType<typeof fetchDashboardBundle>>) => {
       setRuntime(bundle.runtime);
       setPrices(bundle.prices);
-      setAlerts(bundle.alerts);
       setInstruments(bundle.instruments);
       setState("ready");
       setErrorMessage(null);
@@ -150,10 +141,6 @@ export function Dashboard() {
     );
   }
 
-  const getInstrumentName = (id: number) => {
-    return instruments.find((i) => i.id === id)?.name ?? String(id);
-  };
-
   const statCards = [
     { label: "启用来源", value: runtime?.enabled_sources ?? 0 },
     { label: "已轮询来源", value: runtime?.polled_sources ?? 0 },
@@ -221,55 +208,18 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="dashboard-grid">
-        <section
-          className="panel dashboard-panel--prices"
-          aria-labelledby="prices-title"
-        >
-          <h2 id="prices-title" className="panel-title panel-title--inline">
-            价格监控
-            <span className="muted-text panel-title-sub panel-title-sub--inline">
-              各来源最新价 · 距支撑/阻力 · 盈亏比
-            </span>
-          </h2>
-          <PriceMonitorPanel prices={prices} instruments={instruments} />
-        </section>
-
-        <section
-          className="panel dashboard-panel--alerts"
-          aria-labelledby="alerts-title"
-        >
-          <h2 id="alerts-title" className="panel-title panel-title--inline">
-            最近告警
-          </h2>
-          {alerts.length === 0 ? (
-            <p className="empty-state">暂无最近告警。</p>
-          ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>时间</th>
-                    <th>标的</th>
-                    <th>规则</th>
-                    <th>价格</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alerts.map((alert) => (
-                    <tr key={alert.id}>
-                      <td>{formatDateTime(alert.triggered_at)}</td>
-                      <td>{getInstrumentName(alert.instrument_id)}</td>
-                      <td>{formatAlertKindLabel(alert.alert_kind)}</td>
-                      <td className="price-cell">{formatDecimal(alert.price)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
+      <section
+        className="panel dashboard-panel--prices dashboard-panel--wide"
+        aria-labelledby="prices-title"
+      >
+        <h2 id="prices-title" className="panel-title panel-title--inline">
+          价格监控
+          <span className="muted-text panel-title-sub panel-title-sub--inline">
+            全宽表格 · 各来源最新价 · 距支撑/阻力 · 盈亏比
+          </span>
+        </h2>
+        <PriceMonitorPanel prices={prices} instruments={instruments} />
+      </section>
     </div>
   );
 }

@@ -20,13 +20,13 @@ function getPageMeta(path: string): PageMeta {
   if (path === "/") {
     return {
       title: "仪表盘",
-      description: "运行状态、价格监控与近期告警。",
+      description: "运行状态与全宽价格监控表格。",
     };
   }
   if (path === "/diagnostics") {
     return {
       title: "告警与诊断",
-      description: "发送 Telegram 测试告警并查看各数据源最近错误。",
+      description: "最近告警、Telegram 测试与各数据源最近错误。",
     };
   }
   if (path === "/instruments") {
