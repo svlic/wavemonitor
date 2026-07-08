@@ -34,7 +34,8 @@
 ## 布局
 
 - 侧栏固定 `240px`，主内容区 `max-width: 1280px`，内边距 `2rem`
-- 仪表盘网格：小屏 `minmax(360px, 1fr)`；≥1024px 为 12 列（状态 4 + 价格 8，告警 8 + 错误 4）
+- 仪表盘：顶栏运行概览；≥1024px 主区为 **价格监控（约 62%）+ 最近告警（约 38%）** 并排，告警区可滚动
+- 价格监控内：标的卡片网格 1 / 2 / 3 列（720px / 1200px 断点）
 - 统计卡：2 / 3 / 6 列断点；数值等宽字体
 
 ## 组件状态
@@ -45,7 +46,9 @@
 
 ## 仪表盘 · 价格监控
 
-- 标的区块：`.price-monitor__instrument`（紧凑内边距、`--radius-control`）
+- 容器：`.price-monitor` 为响应式网格，减少单列长空白
+- 标的区块：`.price-monitor__instrument`（紧凑内边距、`--radius-control`、等高拉伸）
+- 面板标题：`.panel-title--inline` 与副标题同一行，避免重复大标题块
 - 标题行：`.price-monitor__header--compact`；支撑/阻力为 `.price-monitor__levels-inline` + `.price-monitor__level-value`（等宽数字）
 - 来源数据：`.price-monitor__table` 表格式一行一来源；主价 `.price-source-row__price` 使用 `--color-accent`
 - 窄屏：`.price-monitor__table-wrap` 横向滚动，表头列对齐（来源左、数值右）
