@@ -99,6 +99,14 @@ body {
   width: 100%;
 }
 
+.page-header--dashboard {
+  padding: 1rem 2.5rem 0;
+}
+
+.page-header--dashboard .page-title {
+  font-size: 1.375rem;
+}
+
 .page-title {
   margin: 0;
   font-size: 1.75rem;
@@ -533,7 +541,7 @@ select:focus {
 .dashboard-layout {
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: 1.25rem;
 }
 
 .dashboard-overview {
@@ -640,9 +648,9 @@ select:focus {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 1.25rem;
-  align-items: start;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: stretch;
 }
 
 .panel-title {
@@ -711,16 +719,35 @@ select:focus {
   grid-column: 1 / -1;
 }
 
+.dashboard-panel--prices,
+.dashboard-panel--alerts {
+  min-width: 0;
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
 @media (min-width: 1024px) {
   .dashboard-grid {
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+    gap: 1rem;
+    align-items: start;
   }
 
-  .dashboard-panel--prices,
+  .dashboard-panel--prices {
+    grid-column: 1;
+  }
+
   .dashboard-panel--alerts {
-    grid-column: span 12;
-    min-width: 0;
+    grid-column: 2;
+    max-height: min(70vh, 42rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dashboard-panel--alerts .table-container {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
   }
 }
 
@@ -750,6 +777,21 @@ select:focus {
 .panel-title-sub {
   margin: -0.75rem 0 1rem;
   font-size: 0.875rem;
+}
+
+.panel-title--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-title-sub--inline {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  max-width: none;
 }
 
 .inline-confirm {
@@ -844,19 +886,34 @@ select:focus {
 }
 
 .price-monitor {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+@media (min-width: 720px) {
+  .price-monitor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .price-monitor {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .price-monitor__instrument {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.5rem 0.65rem 0.55rem;
+  gap: 0.3rem;
+  padding: 0.45rem 0.55rem 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: rgba(0, 0, 0, 0.12);
+  min-width: 0;
+  height: 100%;
 }
 
 .price-monitor__header--compact {

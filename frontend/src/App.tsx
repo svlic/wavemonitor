@@ -20,7 +20,7 @@ function getPageMeta(path: string): PageMeta {
   if (path === "/") {
     return {
       title: "仪表盘",
-      description: "查看调度状态、最新价格与近期告警。",
+      description: "运行状态、价格监控与近期告警。",
     };
   }
   if (path === "/diagnostics") {
@@ -194,11 +194,13 @@ function AppShell({ authEnabled, onLogout, logoutPending }: AppShellProps) {
         )}
       </nav>
       <div className="main-column">
-        <header className="page-header">
+        <header
+          className={`page-header${location === "/" ? " page-header--dashboard" : ""}`}
+        >
           <div className="page-header__copy">
-            <p className="eyebrow">监控后台</p>
+            {location !== "/" && <p className="eyebrow">监控后台</p>}
             <h1 className="page-title">{page.title}</h1>
-            <p className="page-description">{page.description}</p>
+            {location !== "/" && <p className="page-description">{page.description}</p>}
           </div>
         </header>
         <main className="main-content">

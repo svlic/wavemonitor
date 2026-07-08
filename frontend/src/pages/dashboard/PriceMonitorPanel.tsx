@@ -117,7 +117,7 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
   groups.sort((left, right) => left.instrument.name.localeCompare(right.instrument.name));
 
   return (
-    <div className="price-monitor">
+    <div className="price-monitor" role="list">
       {groups.map((group) => {
         const { instrument } = group;
         const support = instrument.support;
@@ -127,6 +127,7 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
           <section
             key={instrument.id}
             className="price-monitor__instrument"
+            role="listitem"
             aria-labelledby={`price-instrument-${instrument.id}`}
           >
             <header className="price-monitor__header price-monitor__header--compact">

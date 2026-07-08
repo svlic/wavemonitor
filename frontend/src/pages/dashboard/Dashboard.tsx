@@ -223,27 +223,23 @@ export function Dashboard() {
 
       <div className="dashboard-grid">
         <section
-          className="panel dashboard-panel--wide dashboard-panel--prices"
+          className="panel dashboard-panel--prices"
           aria-labelledby="prices-title"
         >
-          <div className="panel-title-row">
-            <div className="panel-title-group">
-              <h2 id="prices-title" className="panel-title">
-                价格监控
-              </h2>
-              <p className="muted-text panel-title-sub">
-                按标的汇总各来源最新价、距支撑/阻力与盈亏比
-              </p>
-            </div>
-          </div>
+          <h2 id="prices-title" className="panel-title panel-title--inline">
+            价格监控
+            <span className="muted-text panel-title-sub panel-title-sub--inline">
+              各来源最新价 · 距支撑/阻力 · 盈亏比
+            </span>
+          </h2>
           <PriceMonitorPanel prices={prices} instruments={instruments} />
         </section>
 
         <section
-          className="panel dashboard-panel--wide dashboard-panel--alerts"
+          className="panel dashboard-panel--alerts"
           aria-labelledby="alerts-title"
         >
-          <h2 id="alerts-title" className="panel-title">
+          <h2 id="alerts-title" className="panel-title panel-title--inline">
             最近告警
           </h2>
           {alerts.length === 0 ? (
