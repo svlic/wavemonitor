@@ -10,6 +10,8 @@ vi.mock("../src/api/client", async (importOriginal) => {
     apiClient: {
       getRuntime: vi.fn(),
       getSourceErrors: vi.fn(),
+      getRecentAlerts: vi.fn(),
+      getInstruments: vi.fn(),
       testTelegram: vi.fn(),
     },
   };
@@ -34,13 +36,17 @@ describe("OpsPanel", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows empty source errors on diagnostics page", async () => {
+  it("shows empty recent alerts and source errors on diagnostics page", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<OpsPanel />);
 
     await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "最近告警" })).toBeInTheDocument();
+      expect(screen.getByText("暂无最近告警。")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "测试告警" })).toBeInTheDocument();
       expect(screen.getByText("暂无数据源错误。")).toBeInTheDocument();
     });
@@ -49,6 +55,8 @@ describe("OpsPanel", () => {
   it("disables test-send when Telegram is not ready", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<OpsPanel />);
 
@@ -64,6 +72,8 @@ describe("OpsPanel", () => {
       telegram_ready: true,
     });
     vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
     vi.mocked(apiClient.testTelegram).mockResolvedValue({
       sent: true,
       telegram_ready: true,
@@ -85,6 +95,8 @@ describe("OpsPanel", () => {
 
   it("renders source errors when present", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
     vi.mocked(apiClient.getSourceErrors).mockResolvedValue([
       {
         instrument_id: 1,

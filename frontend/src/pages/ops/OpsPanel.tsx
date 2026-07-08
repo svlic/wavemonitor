@@ -1,16 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiClient, ApiError } from "../../api/client";
-import type { RuntimeResponse, SourceError } from "../../api/client";
-import { formatDateTime, formatSourceLabel } from "../../utils/format";
+import type {
+  InstrumentWithMappings,
+  RecentAlert,
+  RuntimeResponse,
+  SourceError,
+} from "../../api/client";
+import {
+  formatAlertKindLabel,
+  formatDateTime,
+  formatDecimal,
+  formatSourceLabel,
+} from "../../utils/format";
 
 type OpsState = "loading" | "ready" | "error";
 
 async function fetchOpsBundle(signal?: AbortSignal) {
-  const [runtimeData, errorsData] = await Promise.all([
+  const [runtimeData, errorsData, alertsData, instrumentsData] = await Promise.all([
     apiClient.getRuntime(signal),
     apiClient.getSourceErrors(signal),
+    apiClient.getRecentAlerts(signal),
+    apiClient.getInstruments(signal),
   ]);
-  return { runtime: runtimeData, errors: errorsData };
+  return {
+    runtime: runtimeData,
+    errors: errorsData,
+    alerts: alertsData,
+    instruments: instrumentsData,
+  };
 }
 
 export function OpsPanel() {
@@ -19,6 +36,8 @@ export function OpsPanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
   const [errors, setErrors] = useState<readonly SourceError[]>([]);
+  const [alerts, setAlerts] = useState<readonly RecentAlert[]>([]);
+  const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
 
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
@@ -35,6 +54,8 @@ export function OpsPanel() {
       if (signal?.aborted) return;
       setRuntime(bundle.runtime);
       setErrors(bundle.errors);
+      setAlerts(bundle.alerts);
+      setInstruments(bundle.instruments);
       setState("ready");
       setErrorMessage(null);
     } catch (error) {
@@ -119,7 +140,7 @@ export function OpsPanel() {
     <div className="ops-layout">
       <header className="ops-layout__toolbar">
         <p className="muted-text ops-layout__hint">
-          发送 Telegram 测试消息并查看各数据源最近错误。
+          最近告警、Telegram 测试与各数据源最近错误。
         </p>
         <button
           type="button"
@@ -131,6 +152,44 @@ export function OpsPanel() {
           {refreshing ? "刷新中..." : "刷新数据"}
         </button>
       </header>
+
+      <section className="panel ops-panel--wide" aria-labelledby="recent-alerts-title">
+        <h2 id="recent-alerts-title" className="panel-title">
+          最近告警
+        </h2>
+        <p className="muted-text panel-title-sub">
+          规则触发后写入的近期告警记录。
+        </p>
+        {alerts.length === 0 ? (
+          <p className="empty-state">暂无最近告警。</p>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>标的</th>
+                  <th>规则</th>
+                  <th>价格</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert) => (
+                  <tr key={alert.id}>
+                    <td>{formatDateTime(alert.triggered_at)}</td>
+                    <td>
+                      {instruments.find((item) => item.id === alert.instrument_id)?.name ??
+                        String(alert.instrument_id)}
+                    </td>
+                    <td>{formatAlertKindLabel(alert.alert_kind)}</td>
+                    <td className="price-cell">{formatDecimal(alert.price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel ops-panel--wide" aria-labelledby="telegram-test-title">
         <h2 id="telegram-test-title" className="panel-title">
