@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Final
 
 from wavemonitor_backend.models import AlertKind
-
-DEFAULT_COOLDOWN: Final[timedelta] = timedelta(minutes=5)
 
 
 class InvalidRuleState(StrEnum):

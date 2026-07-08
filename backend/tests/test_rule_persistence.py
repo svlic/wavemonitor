@@ -163,7 +163,7 @@ def test_evaluate_and_persist_uses_last_rule_state_for_dedupe(tmp_path: Path):
         assert len(stored_events) == 1
 
 
-def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: Path):
+def test_persisted_near_support_never_re_alerts_after_condition_resets(tmp_path: Path):
     # Given: near-support becomes active, stays active, resets, then triggers again.
     engine = create_engine(
         f"sqlite:///{tmp_path / 'edge.sqlite3'}", connect_args={"check_same_thread": False}
@@ -205,11 +205,11 @@ def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: 
             select(AlertEvent).where(AlertEvent.source_mapping_id == source.id)
         ).all()
 
-        # Then: only edge transitions persist new AlertEvent rows.
+        # Then: the source/rule's first alert is the only persisted AlertEvent row.
         assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
         assert repeated.alerts == ()
-        assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
-        assert len(stored_events) == 2
+        assert retriggered.alerts == ()
+        assert len(stored_events) == 1
 
 
 def test_no_alert_evaluation_updates_last_rule_state_timestamp(tmp_path: Path):

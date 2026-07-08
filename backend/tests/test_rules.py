@@ -119,7 +119,10 @@ def test_breakout_requires_crossing_from_at_or_below_resistance():
 
 def test_price_at_or_below_support_returns_invalid_non_alert_without_division():
     # Given: prices at and below support make the long risk denominator zero or negative.
-    state = RuleState(last_price=Decimal("101"))
+    state = RuleState(
+        last_price=Decimal("101"),
+        near_support_last_alert_at=OBSERVED_AT - timedelta(minutes=1),
+    )
 
     # When: equal-support and below-support prices are evaluated.
     equal_support = evaluate_rules(
@@ -145,6 +148,7 @@ def test_price_at_or_below_support_returns_invalid_non_alert_without_division():
     assert equal_support.alerts == ()
     assert equal_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
     assert equal_support.next_state.near_support_active is False
+    assert equal_support.next_state.near_support_last_alert_at == OBSERVED_AT - timedelta(minutes=1)
     assert below_support.alerts == ()
     assert below_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
 
@@ -169,7 +173,7 @@ def test_resistance_at_or_below_price_resets_long_setup_without_risk_reward_aler
     assert evaluation.next_state.risk_reward_active is False
 
 
-def test_repeated_near_support_suppressed_until_condition_resets():
+def test_repeated_near_support_suppressed_after_condition_resets():
     # Given: a first near-support observation has activated that rule.
     first = evaluate_rules(
         price=Decimal("100"),
@@ -210,11 +214,11 @@ def test_repeated_near_support_suppressed_until_condition_resets():
         observed_at=OBSERVED_AT + timedelta(seconds=90),
     )
 
-    # Then: repeated active near-support is deduped until inactive reset occurs.
+    # Then: a source/rule that alerted once never emits that rule again.
     assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
     assert repeated.alerts == ()
     assert reset.next_state.near_support_active is False
-    assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
+    assert retriggered.alerts == ()
 
 
 def test_active_near_support_never_re_alerts_while_condition_stays_true():
@@ -225,7 +229,7 @@ def test_active_near_support_never_re_alerts_while_condition_stays_true():
         near_support_last_alert_at=OBSERVED_AT,
     )
 
-    # When: the active condition repeats long after any former cooldown window.
+    # When: the active condition repeats long after the previous alert.
     still_active = evaluate_rules(
         price=Decimal("100"),
         support=Decimal("98"),
@@ -234,10 +238,9 @@ def test_active_near_support_never_re_alerts_while_condition_stays_true():
         risk_reward_threshold=Decimal("20"),
         previous_state=previous_state,
         observed_at=OBSERVED_AT + timedelta(hours=24),
-        cooldown=timedelta(minutes=5),
     )
 
-    # Then: no second alert until the condition becomes inactive and triggers again.
+    # Then: no second alert is emitted for that source/rule.
     assert still_active.alerts == ()
 
 

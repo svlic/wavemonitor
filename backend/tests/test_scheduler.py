@@ -132,6 +132,9 @@ def price(
 def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Session):
     # Given: one enabled instrument has three enabled source mappings and fake prices near support.
     instrument, sources = seed_instrument(session)
+    instrument.risk_reward_threshold = Decimal("10")
+    session.add(instrument)
+    session.commit()
     clock = FakeClock(BASE_TIME)
     notifier = FakeNotifier()
     registry = AdapterRegistry(
@@ -152,7 +155,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     # When: the scheduler runs one deterministic polling tick.
     metrics = scheduler.run_tick(session)
 
-    # Then: observations and alert events are persisted, but Telegram is attempted once only.
+    # Then: every new alert event is persisted and delivered once per source/rule.
     observations = session.exec(
         select(PriceObservation).order_by(PriceObservation.source_mapping_id)
     ).all()
@@ -162,11 +165,11 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     assert [observation.price for observation in observations] == [Decimal("100.0000000000")] * 3
     assert [observation.raw_path for observation in observations] == ["fake.price"] * 3
     assert [observation.error for observation in observations] == [None, None, None]
-    assert len(alerts) == 3
+    assert len(alerts) == 6
     assert {alert.instrument_id for alert in alerts} == {instrument.id}
     assert {alert.source_mapping_id for alert in alerts} == {source.id for source in sources}
-    assert [delivery.status for delivery in deliveries] == [DeliveryStatus.SENT]
-    assert len(notifier.messages) == 1
+    assert [delivery.status for delivery in deliveries] == [DeliveryStatus.SENT] * 6
+    assert len(notifier.messages) == 6
     assert metrics == RuntimeMetrics(
         scheduler_ready=True,
         providers_ready=True,
@@ -174,15 +177,16 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
         polled_sources=3,
         observations_written=3,
         source_errors=0,
-        alert_events_created=3,
-        telegram_deliveries_attempted=1,
+        alert_events_created=6,
+        telegram_deliveries_attempted=6,
         last_tick_started_at=BASE_TIME,
         last_tick_finished_at=BASE_TIME,
     )
     assert [state.near_support_active for state in states] == [True, True, True]
+    assert [state.risk_reward_active for state in states] == [True, True, True]
 
 
-def test_poll_tick_dedupes_then_retriggers_after_reset(session: Session):
+def test_poll_tick_dedupes_source_rule_after_reset(session: Session):
     # Given: a first tick already emitted near-support alerts for all three sources.
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
@@ -225,7 +229,7 @@ def test_poll_tick_dedupes_then_retriggers_after_reset(session: Session):
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
 
-    # Then: price monitoring continues and alert events persist, while Telegram sends once only.
+    # Then: price monitoring continues, but each source/rule delivers only its first alert.
     alerts = session.exec(
         select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
     ).all()
@@ -233,13 +237,15 @@ def test_poll_tick_dedupes_then_retriggers_after_reset(session: Session):
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
-    assert retrigger.alert_events_created == 1
-    assert len(alerts) == 4
+    assert retrigger.alert_events_created == 0
+    assert len(alerts) == 3
     assert len(observations) == 12
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
-        DeliveryStatus.SENT
+        DeliveryStatus.SENT,
+        DeliveryStatus.SENT,
+        DeliveryStatus.SENT,
     ]
-    assert len(notifier.messages) == 1
+    assert len(notifier.messages) == 3
 
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):
@@ -291,8 +297,8 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     assert metrics.providers_ready is False
     assert metrics.source_errors == 1
     assert metrics.observations_written == 2
-    assert metrics.telegram_deliveries_attempted == 1
-    assert len(notifier.messages) == 1
+    assert metrics.telegram_deliveries_attempted == 2
+    assert len(notifier.messages) == 2
 
 
 def test_poll_tick_does_not_poll_disabled_instrument(session: Session):

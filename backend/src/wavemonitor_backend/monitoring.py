@@ -19,7 +19,6 @@ from wavemonitor_backend.models import (
     PriceObservation,
     Provider,
     SourceMapping,
-    TelegramDelivery,
 )
 from wavemonitor_backend.notifier import (
     MessageKind,
@@ -208,17 +207,7 @@ class MonitoringScheduler:
             observed_at=result.timestamp,
         )
         deliveries = 0
-        alert_delivery_attempted = (
-            session.exec(
-                select(TelegramDelivery).where(
-                    TelegramDelivery.message_kind == MessageKind.ALERT.value
-                )
-            ).first()
-            is not None
-        )
         for alert in evaluation.alerts:
-            if alert_delivery_attempted:
-                continue
             message = message_for_kind(
                 MessageKind.ALERT,
                 TelegramAlert(
@@ -238,7 +227,6 @@ class MonitoringScheduler:
                     message_text=message,
                     result=send_result,
                 )
-                alert_delivery_attempted = True
                 deliveries += 1
         return counts.with_success(len(evaluation.alerts), deliveries)
 

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Final
 
 from wavemonitor_backend.models import AlertKind
 from wavemonitor_backend.rule_types import (
-    DEFAULT_COOLDOWN,
     AlertDecision,
     InvalidRuleState,
     RuleEvaluation,
@@ -26,7 +25,6 @@ def evaluate_rules(
     risk_reward_threshold: Decimal,
     previous_state: RuleState,
     observed_at: datetime,
-    cooldown: timedelta = DEFAULT_COOLDOWN,
 ) -> RuleEvaluation:
     alert_support, alert_resistance = levels_for_alerts(
         support=support, resistance=resistance, price=price
@@ -35,7 +33,12 @@ def evaluate_rules(
     if support is not None and price <= support:
         return RuleEvaluation(
             alerts=(),
-            next_state=RuleState(last_price=price),
+            next_state=RuleState(
+                last_price=price,
+                near_support_last_alert_at=previous_state.near_support_last_alert_at,
+                risk_reward_last_alert_at=previous_state.risk_reward_last_alert_at,
+                breakout_last_alert_at=previous_state.breakout_last_alert_at,
+            ),
             invalid_state=InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT,
         )
 
@@ -61,7 +64,6 @@ def evaluate_rules(
             near_support_alert(
                 active=near_support_active,
                 previous_state=previous_state,
-                cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
                 support=alert_support,
@@ -74,7 +76,6 @@ def evaluate_rules(
             risk_reward_alert(
                 active=risk_reward_active,
                 previous_state=previous_state,
-                cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
                 support=alert_support,
@@ -87,7 +88,6 @@ def evaluate_rules(
             breakout_alert(
                 active=above_resistance_active,
                 previous_state=previous_state,
-                cooldown=cooldown,
                 observed_at=observed_at,
                 price=price,
                 support=alert_support,
@@ -139,7 +139,6 @@ def near_support_alert(
     *,
     active: bool,
     previous_state: RuleState,
-    cooldown: timedelta,
     observed_at: datetime,
     price: Decimal,
     support: Decimal,
@@ -149,10 +148,7 @@ def near_support_alert(
 ) -> AlertDecision | None:
     can_emit = should_emit(
         active=active,
-        was_active=previous_state.near_support_active,
         last_alert_at=previous_state.near_support_last_alert_at,
-        observed_at=observed_at,
-        cooldown=cooldown,
     )
     if not can_emit:
         return None
@@ -172,7 +168,6 @@ def risk_reward_alert(
     *,
     active: bool,
     previous_state: RuleState,
-    cooldown: timedelta,
     observed_at: datetime,
     price: Decimal,
     support: Decimal,
@@ -184,10 +179,7 @@ def risk_reward_alert(
         return None
     can_emit = should_emit(
         active=active,
-        was_active=previous_state.risk_reward_active,
         last_alert_at=previous_state.risk_reward_last_alert_at,
-        observed_at=observed_at,
-        cooldown=cooldown,
     )
     if not can_emit:
         return None
@@ -207,7 +199,6 @@ def breakout_alert(
     *,
     active: bool,
     previous_state: RuleState,
-    cooldown: timedelta,
     observed_at: datetime,
     price: Decimal,
     support: Decimal,
@@ -218,10 +209,7 @@ def breakout_alert(
     crossed = previous_price is not None and previous_price <= resistance_level and active
     can_emit = should_emit(
         active=crossed,
-        was_active=previous_state.above_resistance_active,
         last_alert_at=previous_state.breakout_last_alert_at,
-        observed_at=observed_at,
-        cooldown=cooldown,
     )
     if not can_emit:
         return None
@@ -237,18 +225,10 @@ def breakout_alert(
     )
 
 
-def should_emit(
-    *,
-    active: bool,
-    was_active: bool,
-    last_alert_at: datetime | None,
-    observed_at: datetime,
-    cooldown: timedelta,
-) -> bool:
-    del last_alert_at, observed_at, cooldown
+def should_emit(*, active: bool, last_alert_at: datetime | None) -> bool:
     if not active:
         return False
-    return not was_active
+    return last_alert_at is None
 
 
 def next_alert_time(

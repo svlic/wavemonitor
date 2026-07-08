@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlmodel import Session, select
 
 from wavemonitor_backend.models import AlertEvent, Instrument, LastRuleState, SourceMapping
-from wavemonitor_backend.rule_types import DEFAULT_COOLDOWN, RuleEvaluation, RuleState
+from wavemonitor_backend.rule_types import RuleEvaluation, RuleState
 
 
 def evaluate_and_persist_rules(
@@ -16,7 +16,6 @@ def evaluate_and_persist_rules(
     source_mapping: SourceMapping,
     price: Decimal,
     observed_at: datetime,
-    cooldown: timedelta = DEFAULT_COOLDOWN,
 ) -> RuleEvaluation:
     from wavemonitor_backend.rules import evaluate_rules
 
@@ -36,7 +35,6 @@ def evaluate_and_persist_rules(
             )
         ),
         observed_at=observed_at,
-        cooldown=cooldown,
     )
     persist_rule_evaluation(
         session=session,
