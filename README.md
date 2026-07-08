@@ -5,8 +5,8 @@
 ## 功能概览
 
 - **标的管理**：配置名称、支撑/阻力、阈值及多数据源映射（交易所、品种、是否启用）
-- **仪表盘**：系统运行状态、全宽价格监控与近期告警
-- **告警与诊断**：Telegram 测试告警与各数据源最近错误
+- **仪表盘**：系统运行状态与全宽价格监控表格
+- **告警与诊断**：最近告警、Telegram 测试告警与各数据源最近错误
 - **Telegram**：配置 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_CHAT_ID` 后可发送测试消息与告警
 - **访问验证**：可通过 `WAVEMONITOR_WEB_PASSWORD` 启用首次访问密码验证（无需账号）
 
@@ -142,8 +142,8 @@ curl -s http://localhost:8000/api/runtime | python3 -m json.tool
 
 1. 若设置了 `WAVEMONITOR_WEB_PASSWORD`，先在中文访问验证页输入共享密码；会话通过 7 天有效的 `HttpOnly` Cookie 保持。
 2. 打开 **标的管理**，新建标的并配置支撑/阻力、阈值及数据源（YFinance / Binance / Hyperliquid 等）；Symbol 输入框会通过实时查询接口给出候选项，也支持手动输入。
-3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources`、全宽价格监控与近期告警。
-4. 若已配置 Telegram，在 **告警与诊断** 发送测试告警（或 `POST /api/telegram/test`）并查看数据源错误。
+3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources` 与全宽价格监控表格。
+4. 在 **告警与诊断** 查看最近告警；若已配置 Telegram，发送测试告警（或 `POST /api/telegram/test`）并查看数据源错误。
 
 ### 5. 日常运维
 
