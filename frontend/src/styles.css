@@ -646,11 +646,10 @@ select:focus {
   line-height: 1.2;
 }
 
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: 1fr;
+.dashboard-layout {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  align-items: stretch;
 }
 
 .panel-title {
@@ -719,36 +718,9 @@ select:focus {
   grid-column: 1 / -1;
 }
 
-.dashboard-panel--prices,
-.dashboard-panel--alerts {
+.dashboard-panel--prices {
   min-width: 0;
   padding: 1.1rem 1.25rem 1.25rem;
-}
-
-@media (min-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
-    gap: 1rem;
-    align-items: start;
-  }
-
-  .dashboard-panel--prices {
-    grid-column: 1;
-  }
-
-  .dashboard-panel--alerts {
-    grid-column: 2;
-    max-height: min(70vh, 42rem);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .dashboard-panel--alerts .table-container {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-  }
 }
 
 .ops-layout {
@@ -883,6 +855,93 @@ select:focus {
 
 .price-refresh-hint {
   font-size: 0.8125rem;
+}
+
+.price-monitor-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.5rem;
+}
+
+.price-monitor-table {
+  width: 100%;
+  min-width: 52rem;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.price-monitor-table thead th {
+  padding: 0.45rem 0.65rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.price-monitor-table thead th:nth-child(n + 4):not(:last-child) {
+  text-align: right;
+}
+
+.price-table-row td {
+  padding: 0.5rem 0.65rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(37, 43, 54, 0.55);
+}
+
+.price-monitor-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.price-table-row:hover td {
+  background: rgba(61, 214, 140, 0.04);
+}
+
+.price-table-row__instrument {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.price-table-row__levels {
+  min-width: 10rem;
+}
+
+.price-table-row__level-pair {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.price-table-row__source {
+  min-width: 9rem;
+  max-width: 16rem;
+}
+
+.price-table-row__price {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.price-table-row__metric {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.price-table-row__time {
+  white-space: nowrap;
+  font-size: 0.75rem;
 }
 
 .price-monitor {

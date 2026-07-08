@@ -12,7 +12,6 @@ vi.mock("../src/api/client", async (importOriginal) => {
     apiClient: {
       getRuntime: vi.fn(),
       getLatestPrices: vi.fn(),
-      getRecentAlerts: vi.fn(),
       getInstruments: vi.fn(),
     },
   };
@@ -36,7 +35,6 @@ describe("Dashboard", () => {
   beforeEach(() => {
     vi.mocked(apiClient.getRuntime).mockClear();
     vi.mocked(apiClient.getLatestPrices).mockClear();
-    vi.mocked(apiClient.getRecentAlerts).mockClear();
     vi.mocked(apiClient.getInstruments).mockClear();
   });
 
@@ -47,7 +45,6 @@ describe("Dashboard", () => {
   it("shows loading state initially", () => {
     vi.mocked(apiClient.getRuntime).mockImplementation(() => new Promise(() => {}));
     vi.mocked(apiClient.getLatestPrices).mockImplementation(() => new Promise(() => {}));
-    vi.mocked(apiClient.getRecentAlerts).mockImplementation(() => new Promise(() => {}));
     vi.mocked(apiClient.getInstruments).mockImplementation(() => new Promise(() => {}));
 
     render(<Dashboard />);
@@ -58,7 +55,6 @@ describe("Dashboard", () => {
   it("shows error state when API fails", async () => {
     vi.mocked(apiClient.getRuntime).mockRejectedValue(new Error("Network error"));
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<Dashboard />);
@@ -68,21 +64,20 @@ describe("Dashboard", () => {
     });
   });
 
-  it("shows empty state when no data exists", async () => {
+  it("shows empty state when no price data exists", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
 
     render(<Dashboard />);
 
     await waitFor(() => {
       expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
-      expect(screen.getByText("暂无最近告警。")).toBeInTheDocument();
     });
+    expect(screen.queryByText("暂无最近告警。")).not.toBeInTheDocument();
   });
 
-  it("renders latest prices and alerts when data exists", async () => {
+  it("renders latest prices in the full-width table when data exists", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue({
       ...emptyRuntime,
       telegram_ready: true,
@@ -120,32 +115,21 @@ describe("Dashboard", () => {
         last_error: null,
       },
     ]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([
-      {
-        id: 1,
-        instrument_id: 1,
-        source_mapping_id: 1,
-        alert_kind: "near_support",
-        price: "90500.00",
-        message: "Near support",
-        triggered_at: "2026-06-30T11:00:00Z",
-      },
-    ]);
 
     render(<Dashboard />);
 
     await waitFor(() => {
       expect(screen.getByText("价格每 2 分钟自动刷新")).toBeInTheDocument();
-      expect(screen.getAllByText("Bitcoin").length).toBeGreaterThan(0);
+      expect(screen.getByRole("heading", { name: /价格监控/ })).toBeInTheDocument();
+      expect(screen.getByText("Bitcoin")).toBeInTheDocument();
       expect(screen.getByText("90000.00")).toBeInTheDocument();
-      expect(screen.getAllByText("支撑").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Binance · USD-M 合约 · BTCUSDT").length).toBeGreaterThan(0);
+      expect(screen.getByText("支撑")).toBeInTheDocument();
+      expect(screen.getByText("Binance · USD-M 合约 · BTCUSDT")).toBeInTheDocument();
       expect(screen.getByText("95000.50")).toBeInTheDocument();
       expect(screen.getAllByText("5.26%").length).toBe(2);
       expect(screen.getByText("1.00")).toBeInTheDocument();
-      expect(screen.getByText("接近支撑")).toBeInTheDocument();
-      expect(screen.getByText("90500.00")).toBeInTheDocument();
     });
+    expect(screen.queryByText("接近支撑")).not.toBeInTheDocument();
   });
 
   it("uses current instrument config when latest price metadata is stale", async () => {
@@ -194,7 +178,6 @@ describe("Dashboard", () => {
         last_error: null,
       },
     ]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
 
     render(<Dashboard />);
 
@@ -243,7 +226,6 @@ describe("Dashboard", () => {
         last_error: null,
       },
     ]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
 
     render(<Dashboard />);
 
@@ -257,7 +239,6 @@ describe("Dashboard", () => {
 
   it("refetches dashboard data when instrument configuration changes", async () => {
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
 

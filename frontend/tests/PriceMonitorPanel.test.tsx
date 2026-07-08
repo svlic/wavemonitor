@@ -100,7 +100,10 @@ describe("PriceMonitorPanel", () => {
   it("sorts instruments by name", () => {
     render(<PriceMonitorPanel prices={prices} instruments={instruments} />);
 
-    expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent ?? "")).toEqual([
+    const instrumentCells = screen
+      .getAllByRole("cell")
+      .filter((cell) => cell.classList.contains("price-table-row__instrument"));
+    expect(instrumentCells.map((cell) => cell.textContent ?? "")).toEqual([
       "Apple",
       "Bitcoin",
       "Ethereum",
