@@ -14,6 +14,7 @@ import {
 import {
   formatAlertKindLabel,
   formatDateTime,
+  formatDecimal,
 } from "../../utils/format";
 import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
@@ -264,7 +265,7 @@ export function Dashboard() {
                       <td>{formatDateTime(alert.triggered_at)}</td>
                       <td>{getInstrumentName(alert.instrument_id)}</td>
                       <td>{formatAlertKindLabel(alert.alert_kind)}</td>
-                      <td className="price-cell">{alert.price}</td>
+                      <td className="price-cell">{formatDecimal(alert.price)}</td>
                     </tr>
                   ))}
                 </tbody>

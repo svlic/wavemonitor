@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { apiClient } from "../../api/client";
 import { bumpInstrumentRevision } from "../../state/instrumentRevision";
 import type { InstrumentWithMappings } from "../../api/client";
-import { formatOptionalLevel } from "../../utils/format";
+import { formatDecimal, formatOptionalLevel } from "../../utils/format";
 
 export function InstrumentList() {
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
@@ -143,8 +143,8 @@ export function InstrumentList() {
                   </td>
                   <td className="price-cell">{formatOptionalLevel(inst.support)}</td>
                   <td className="price-cell">{formatOptionalLevel(inst.resistance)}</td>
-                  <td>{inst.near_support_threshold}</td>
-                  <td>{inst.risk_reward_threshold}</td>
+                  <td>{formatDecimal(inst.near_support_threshold)}</td>
+                  <td>{formatDecimal(inst.risk_reward_threshold)}</td>
                   <td>{inst.source_mappings.length}</td>
                   <td className="actions">
                     {inst.enabled ? (

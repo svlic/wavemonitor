@@ -62,8 +62,8 @@ describe("InstrumentList", () => {
     await waitFor(() => {
       expect(screen.getByText("BTC/USD")).toBeInTheDocument();
     });
-    expect(screen.getByText("60000")).toBeInTheDocument();
-    expect(screen.getByText("65000")).toBeInTheDocument();
+    expect(screen.getByText("60000.00")).toBeInTheDocument();
+    expect(screen.getByText("65000.00")).toBeInTheDocument();
   });
 
   it("handles API error", async () => {

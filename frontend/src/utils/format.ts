@@ -35,11 +35,19 @@ export function formatAlertKindLabel(kind: string): string {
 
 export const DISPLAY_TIME_ZONE = "Asia/Shanghai";
 
+export function formatDecimal(value: string, fractionDigits = 2): string {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return value;
+  }
+  return numericValue.toFixed(fractionDigits);
+}
+
 export function formatOptionalLevel(value: string | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "未设置";
   }
-  return value;
+  return formatDecimal(value);
 }
 
 export function formatDateTime(iso: string): string {

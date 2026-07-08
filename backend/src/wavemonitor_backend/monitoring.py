@@ -7,10 +7,27 @@ from typing import Protocol, assert_never
 
 from sqlmodel import Session, select
 
-from wavemonitor_backend.adapter_types import AdapterError, AdapterErrorKind, PriceAdapterResult, PriceResult
+from wavemonitor_backend.adapter_types import (
+    AdapterError,
+    AdapterErrorKind,
+    PriceAdapterResult,
+    PriceResult,
+)
 from wavemonitor_backend.api import record_telegram_delivery
-from wavemonitor_backend.models import Instrument, MarketType, PriceObservation, Provider, SourceMapping
-from wavemonitor_backend.notifier import MessageKind, TelegramAlert, TelegramSendResult, message_for_kind
+from wavemonitor_backend.models import (
+    Instrument,
+    MarketType,
+    PriceObservation,
+    Provider,
+    SourceMapping,
+    TelegramDelivery,
+)
+from wavemonitor_backend.notifier import (
+    MessageKind,
+    TelegramAlert,
+    TelegramSendResult,
+    message_for_kind,
+)
 from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, require_id
 
 
@@ -70,7 +87,9 @@ class AdapterRegistry:
     def get(self, provider: Provider, market_type: MarketType) -> PollingPriceAdapter | None:
         return self._adapters.get((provider, market_type))
 
-    def replace(self, provider: Provider, market_type: MarketType, adapter: PollingPriceAdapter) -> None:
+    def replace(
+        self, provider: Provider, market_type: MarketType, adapter: PollingPriceAdapter
+    ) -> None:
         self._adapters[(provider, market_type)] = adapter
 
 
@@ -87,7 +106,10 @@ class SourcePoller:
                 symbol=source.symbol,
                 kind=AdapterErrorKind.PROVIDER_ERROR,
                 message="No price adapter is registered for source mapping",
-                raw_metadata={"provider": source.provider.value, "market_type": source.market_type.value},
+                raw_metadata={
+                    "provider": source.provider.value,
+                    "market_type": source.market_type.value,
+                },
             )
         return adapter.get_latest_price(source.symbol, source.market_type)
 
@@ -186,7 +208,17 @@ class MonitoringScheduler:
             observed_at=result.timestamp,
         )
         deliveries = 0
+        alert_delivery_attempted = (
+            session.exec(
+                select(TelegramDelivery).where(
+                    TelegramDelivery.message_kind == MessageKind.ALERT.value
+                )
+            ).first()
+            is not None
+        )
         for alert in evaluation.alerts:
+            if alert_delivery_attempted:
+                continue
             message = message_for_kind(
                 MessageKind.ALERT,
                 TelegramAlert(
@@ -206,6 +238,7 @@ class MonitoringScheduler:
                     message_text=message,
                     result=send_result,
                 )
+                alert_delivery_attempted = True
                 deliveries += 1
         return counts.with_success(len(evaluation.alerts), deliveries)
 
@@ -283,7 +316,9 @@ def record_price_observation(session: Session, source: SourceMapping, result: Pr
     )
 
 
-def record_source_error(session: Session, source: SourceMapping, error: AdapterError, observed_at: datetime) -> None:
+def record_source_error(
+    session: Session, source: SourceMapping, error: AdapterError, observed_at: datetime
+) -> None:
     session.add(
         PriceObservation(
             source_mapping_id=require_id(source.id),

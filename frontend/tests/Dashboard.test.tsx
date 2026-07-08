@@ -137,7 +137,7 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(screen.getByText("价格每 2 分钟自动刷新")).toBeInTheDocument();
       expect(screen.getAllByText("Bitcoin").length).toBeGreaterThan(0);
-      expect(screen.getByText("90000")).toBeInTheDocument();
+      expect(screen.getByText("90000.00")).toBeInTheDocument();
       expect(screen.getAllByText("支撑").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Binance · USD-M 合约 · BTCUSDT").length).toBeGreaterThan(0);
       expect(screen.getByText("95000.50")).toBeInTheDocument();

@@ -10,7 +10,12 @@ from typing import Final
 import pytest
 from sqlmodel import Session, select
 
-from wavemonitor_backend.adapter_types import AdapterError, AdapterErrorKind, PriceAdapterResult, PriceResult
+from wavemonitor_backend.adapter_types import (
+    AdapterError,
+    AdapterErrorKind,
+    PriceAdapterResult,
+    PriceResult,
+)
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
 from wavemonitor_backend.models import (
     AlertEvent,
@@ -23,7 +28,12 @@ from wavemonitor_backend.models import (
     SourceMapping,
     TelegramDelivery,
 )
-from wavemonitor_backend.monitoring import AdapterRegistry, MonitoringScheduler, RuntimeMetrics, SourcePoller
+from wavemonitor_backend.monitoring import (
+    AdapterRegistry,
+    MonitoringScheduler,
+    RuntimeMetrics,
+    SourcePoller,
+)
 from wavemonitor_backend.notifier import TelegramSendSuccess
 
 BASE_TIME: Final[datetime] = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
@@ -106,7 +116,9 @@ def seed_instrument(session: Session) -> tuple[Instrument, list[SourceMapping]]:
     return instrument, sources
 
 
-def price(provider: Provider, market_type: MarketType, symbol: str, value: str, observed_at: datetime) -> PriceResult:
+def price(
+    provider: Provider, market_type: MarketType, symbol: str, value: str, observed_at: datetime
+) -> PriceResult:
     return PriceResult(
         source=provider,
         market_type=market_type,
@@ -140,8 +152,10 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     # When: the scheduler runs one deterministic polling tick.
     metrics = scheduler.run_tick(session)
 
-    # Then: observations, alert events, Telegram delivery records, and status metrics are persisted.
-    observations = session.exec(select(PriceObservation).order_by(PriceObservation.source_mapping_id)).all()
+    # Then: observations and alert events are persisted, but Telegram is attempted once only.
+    observations = session.exec(
+        select(PriceObservation).order_by(PriceObservation.source_mapping_id)
+    ).all()
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
     deliveries = session.exec(select(TelegramDelivery).order_by(TelegramDelivery.id)).all()
     states = session.exec(select(LastRuleState).order_by(LastRuleState.source_mapping_id)).all()
@@ -151,8 +165,8 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     assert len(alerts) == 3
     assert {alert.instrument_id for alert in alerts} == {instrument.id}
     assert {alert.source_mapping_id for alert in alerts} == {source.id for source in sources}
-    assert [delivery.status for delivery in deliveries] == [DeliveryStatus.SENT] * 3
-    assert len(notifier.messages) == 3
+    assert [delivery.status for delivery in deliveries] == [DeliveryStatus.SENT]
+    assert len(notifier.messages) == 1
     assert metrics == RuntimeMetrics(
         scheduler_ready=True,
         providers_ready=True,
@@ -161,7 +175,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
         observations_written=3,
         source_errors=0,
         alert_events_created=3,
-        telegram_deliveries_attempted=3,
+        telegram_deliveries_attempted=1,
         last_tick_started_at=BASE_TIME,
         last_tick_finished_at=BASE_TIME,
     )
@@ -189,33 +203,43 @@ def test_poll_tick_dedupes_then_retriggers_after_reset(session: Session):
     scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
     first = scheduler.run_tick(session)
 
-    # When: the same price is polled again, then price resets away from support, then returns near support.
+    # When: price repeats, resets away from support, then returns near support.
     clock.set(BASE_TIME + timedelta(minutes=1))
     second = scheduler.run_tick(session)
     registry.replace(
         Provider.BINANCE,
         MarketType.USD_M_FUTURES,
-        FakePriceAdapter(price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", clock.current)),
+        FakePriceAdapter(
+            price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", clock.current)
+        ),
     )
     clock.set(BASE_TIME + timedelta(minutes=2))
     reset = scheduler.run_tick(session)
     registry.replace(
         Provider.BINANCE,
         MarketType.USD_M_FUTURES,
-        FakePriceAdapter(price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", clock.current)),
+        FakePriceAdapter(
+            price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", clock.current)
+        ),
     )
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
 
-    # Then: duplicate active alerts are suppressed, while reset/retrigger creates one new event for that source.
-    alerts = session.exec(select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)).all()
+    # Then: price monitoring continues and alert events persist, while Telegram sends once only.
+    alerts = session.exec(
+        select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
+    ).all()
+    observations = session.exec(select(PriceObservation)).all()
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
     assert retrigger.alert_events_created == 1
     assert len(alerts) == 4
-    assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [DeliveryStatus.SENT] * 4
-    assert len(notifier.messages) == 4
+    assert len(observations) == 12
+    assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
+        DeliveryStatus.SENT
+    ]
+    assert len(notifier.messages) == 1
 
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):
@@ -249,9 +273,15 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     metrics = scheduler.run_tick(session)
 
     # Then: the failing source records an observation error and other sources still alert/deliver.
-    observations = session.exec(select(PriceObservation).order_by(PriceObservation.source_mapping_id)).all()
+    observations = session.exec(
+        select(PriceObservation).order_by(PriceObservation.source_mapping_id)
+    ).all()
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
-    assert [observation.error for observation in observations] == ["provider_error: provider down", None, None]
+    assert [observation.error for observation in observations] == [
+        "provider_error: provider down",
+        None,
+        None,
+    ]
     assert [observation.price for observation in observations] == [
         None,
         Decimal("100.0000000000"),
@@ -261,8 +291,8 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     assert metrics.providers_ready is False
     assert metrics.source_errors == 1
     assert metrics.observations_written == 2
-    assert metrics.telegram_deliveries_attempted == 2
-    assert len(notifier.messages) == 2
+    assert metrics.telegram_deliveries_attempted == 1
+    assert len(notifier.messages) == 1
 
 
 def test_poll_tick_does_not_poll_disabled_instrument(session: Session):

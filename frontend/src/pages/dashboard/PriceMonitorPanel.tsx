@@ -1,5 +1,5 @@
 import type { InstrumentWithMappings, LatestPrice } from "../../api/client";
-import { formatDateTime, formatOptionalLevel, formatSourceLabel } from "../../utils/format";
+import { formatDateTime, formatDecimal, formatOptionalLevel, formatSourceLabel } from "../../utils/format";
 import {
   computeResistanceDistancePercent,
   computeRiskRewardRatio,
@@ -78,7 +78,7 @@ function SourcePriceRow({ price, source, support, resistance }: SourcePriceCardP
           {formatDateTime(price.last_observed_at)}
         </time>
       </th>
-      <td className="price-source-row__price">{price.last_price}</td>
+      <td className="price-source-row__price">{formatDecimal(price.last_price)}</td>
       <td className="price-source-row__metric">{formatMetricPercent(supportPct)}</td>
       <td className="price-source-row__metric">{formatMetricPercent(resistancePct)}</td>
       <td className="price-source-row__metric">{formatRiskReward(riskReward)}</td>
@@ -113,6 +113,8 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
   if (groups.length === 0) {
     return <p className="empty-state">暂无价格数据。</p>;
   }
+
+  groups.sort((left, right) => left.instrument.name.localeCompare(right.instrument.name));
 
   return (
     <div className="price-monitor">
