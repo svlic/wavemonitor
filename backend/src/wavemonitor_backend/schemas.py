@@ -4,11 +4,21 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from wavemonitor_backend.models import AlertKind, MarketType, Provider, normalize_market_symbol
 from wavemonitor_backend.source_pairs import validate_provider_market_pair
-from wavemonitor_backend.support_resistance import normalize_optional_level, validate_instrument_levels
+from wavemonitor_backend.support_resistance import (
+    normalize_optional_level,
+    validate_instrument_levels,
+)
 
 ZERO: Final[Decimal] = Decimal("0")
 ONE: Final[Decimal] = Decimal("1")

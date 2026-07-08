@@ -72,7 +72,9 @@ def persist_rule_evaluation(
     ]
     for event in events:
         session.add(event)
-    state = load_or_create_state(session=session, instrument_id=instrument_id, source_mapping_id=source_mapping_id)
+    state = load_or_create_state(
+        session=session, instrument_id=instrument_id, source_mapping_id=source_mapping_id
+    )
     state.last_price = evaluation.next_state.last_price
     state.near_support_active = evaluation.next_state.near_support_active
     state.risk_reward_active = evaluation.next_state.risk_reward_active
@@ -83,7 +85,9 @@ def persist_rule_evaluation(
     state.last_invalid_state = (
         None if evaluation.invalid_state is None else evaluation.invalid_state.value
     )
-    observed_stamp = observed_at if observed_at.tzinfo is not None else observed_at.replace(tzinfo=UTC)
+    observed_stamp = (
+        observed_at if observed_at.tzinfo is not None else observed_at.replace(tzinfo=UTC)
+    )
     state.updated_at = max(
         (alert.triggered_at for alert in evaluation.alerts),
         default=observed_stamp,
@@ -113,7 +117,9 @@ def utc_timestamp(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC)
 
 
-def load_or_create_state(*, session: Session, instrument_id: int, source_mapping_id: int) -> LastRuleState:
+def load_or_create_state(
+    *, session: Session, instrument_id: int, source_mapping_id: int
+) -> LastRuleState:
     statement = select(LastRuleState).where(
         LastRuleState.instrument_id == instrument_id,
         LastRuleState.source_mapping_id == source_mapping_id,

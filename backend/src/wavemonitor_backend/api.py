@@ -17,7 +17,6 @@ from wavemonitor_backend.models import (
     Provider,
     SourceMapping,
 )
-from wavemonitor_backend.notifier import TelegramHttpFailure, TelegramSendSuccess, sanitize_telegram_failure
 from wavemonitor_backend.schemas import (
     AlertResponse,
     InstrumentEnabledPatch,
@@ -28,7 +27,6 @@ from wavemonitor_backend.schemas import (
     SourceMappingResponse,
     SourceStatusResponse,
 )
-from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
 def list_instruments(session: Session) -> list[InstrumentResponse]:
@@ -64,7 +62,9 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
     return instrument_response(session, instrument)
 
 
-def update_instrument(session: Session, instrument_id: int, payload: InstrumentRequest) -> InstrumentResponse:
+def update_instrument(
+    session: Session, instrument_id: int, payload: InstrumentRequest
+) -> InstrumentResponse:
     instrument = get_instrument(session, instrument_id)
     rule_fields_changed = instrument_rule_fields_changed(instrument, payload)
     instrument.name = payload.name
@@ -111,7 +111,9 @@ def delete_instrument(session: Session, instrument_id: int) -> None:
 
 def get_instrument_status(session: Session, instrument_id: int) -> InstrumentStatusResponse:
     instrument = get_instrument(session, instrument_id)
-    source_statuses = tuple(source_status(session, source) for source in source_mappings_for(session, instrument_id))
+    source_statuses = tuple(
+        source_status(session, source) for source in source_mappings_for(session, instrument_id)
+    )
     alerts = tuple(alert_response(alert) for alert in recent_alerts_for(session, instrument_id))
     return InstrumentStatusResponse(
         instrument_id=instrument_id,
@@ -135,7 +137,10 @@ def instrument_response(session: Session, instrument: Instrument) -> InstrumentR
         resistance=instrument.resistance,
         near_support_threshold=instrument.near_support_threshold,
         risk_reward_threshold=instrument.risk_reward_threshold,
-        source_mappings=tuple(source_response(source) for source in source_mappings_for(session, require_id(instrument.id))),
+        source_mappings=tuple(
+            source_response(source)
+            for source in source_mappings_for(session, require_id(instrument.id))
+        ),
     )
 
 
@@ -159,8 +164,12 @@ def source_status(session: Session, source: SourceMapping) -> SourceStatusRespon
         market_type=source.market_type,
         symbol=source.symbol,
         enabled=source.enabled,
-        last_price=decimal_to_api_string(successful_observation.price) if successful_observation is not None else None,
-        last_observed_at=successful_observation.observed_at if successful_observation is not None else None,
+        last_price=decimal_to_api_string(successful_observation.price)
+        if successful_observation is not None
+        else None,
+        last_observed_at=successful_observation.observed_at
+        if successful_observation is not None
+        else None,
         last_error=observation.error if observation is not None else None,
         last_invalid_state=rule_state.last_invalid_state if rule_state is not None else None,
     )
@@ -179,7 +188,11 @@ def alert_response(alert: AlertEvent) -> AlertResponse:
 
 
 def source_mappings_for(session: Session, instrument_id: int) -> list[SourceMapping]:
-    statement = select(SourceMapping).where(SourceMapping.instrument_id == instrument_id).order_by(SourceMapping.id)
+    statement = (
+        select(SourceMapping)
+        .where(SourceMapping.instrument_id == instrument_id)
+        .order_by(SourceMapping.id)
+    )
     return list(session.exec(statement).all())
 
 
@@ -193,7 +206,9 @@ def latest_observation_for(session: Session, source: SourceMapping) -> PriceObse
     return session.exec(statement).first()
 
 
-def latest_successful_observation_for(session: Session, source: SourceMapping) -> PriceObservation | None:
+def latest_successful_observation_for(
+    session: Session, source: SourceMapping
+) -> PriceObservation | None:
     statement = (
         select(PriceObservation)
         .where(
@@ -247,7 +262,10 @@ def add_source_mappings(session: Session, instrument_id: int, payload: Instrumen
 
 
 def sync_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:
-    existing = {mapping_identity_key(source): source for source in source_mappings_for(session, instrument_id)}
+    existing = {
+        mapping_identity_key(source): source
+        for source in source_mappings_for(session, instrument_id)
+    }
     desired_keys = {mapping_identity_key_from_request(source) for source in payload.source_mappings}
     for key, row in list(existing.items()):
         if key not in desired_keys:
@@ -274,12 +292,16 @@ def mapping_identity_key(source: SourceMapping) -> tuple[Provider, MarketType, s
     return (source.provider, source.market_type, source.symbol)
 
 
-def mapping_identity_key_from_request(source: SourceMappingRequest) -> tuple[Provider, MarketType, str]:
+def mapping_identity_key_from_request(
+    source: SourceMappingRequest,
+) -> tuple[Provider, MarketType, str]:
     return (source.provider, source.market_type, source.symbol)
 
 
 def latest_rule_state_for(session: Session, source: SourceMapping) -> LastRuleState | None:
-    statement = select(LastRuleState).where(LastRuleState.source_mapping_id == require_id(source.id))
+    statement = select(LastRuleState).where(
+        LastRuleState.source_mapping_id == require_id(source.id)
+    )
     return session.exec(statement).first()
 
 
@@ -294,7 +316,9 @@ def delete_source_mapping_cascade(session: Session, source: SourceMapping) -> No
         select(PriceObservation).where(PriceObservation.source_mapping_id == source_id)
     ).all():
         session.delete(observation)
-    for alert in session.exec(select(AlertEvent).where(AlertEvent.source_mapping_id == source_id)).all():
+    for alert in session.exec(
+        select(AlertEvent).where(AlertEvent.source_mapping_id == source_id)
+    ).all():
         session.delete(alert)
     for state in session.exec(
         select(LastRuleState).where(LastRuleState.source_mapping_id == source_id)
@@ -312,7 +336,9 @@ def get_instrument(session: Session, instrument_id: int) -> Instrument:
 
 def require_id(value: int | None) -> int:
     if value is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database row id is missing")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database row id is missing"
+        )
     return value
 
 

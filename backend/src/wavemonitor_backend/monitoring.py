@@ -13,7 +13,6 @@ from wavemonitor_backend.adapter_types import (
     PriceAdapterResult,
     PriceResult,
 )
-from wavemonitor_backend.api import record_telegram_delivery
 from wavemonitor_backend.models import (
     Instrument,
     MarketType,
@@ -29,6 +28,7 @@ from wavemonitor_backend.notifier import (
     message_for_kind,
 )
 from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, require_id
+from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
 class PollingPriceAdapter(Protocol):

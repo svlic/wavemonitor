@@ -13,9 +13,9 @@ from sqlmodel import select
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, session_scope
 from wavemonitor_backend.models import LastRuleState
+from wavemonitor_backend.notifier import TelegramSendSuccess
 from wavemonitor_backend.rule_types import RuleEvaluation
 from wavemonitor_backend.rules import RuleState, persist_rule_evaluation
-from wavemonitor_backend.notifier import TelegramSendSuccess
 from wavemonitor_backend.settings import Settings
 
 
@@ -57,7 +57,9 @@ VALID_PAYLOAD: Final[dict[str, str | bool | list[dict[str, str | bool]]]] = {
 def client(tmp_path: Path) -> Iterator[TestClient]:
     # Given: each test owns an isolated SQLite database.
     database_url = f"sqlite:///{tmp_path / 'api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         yield test_client
 
 
@@ -305,7 +307,10 @@ def test_health_runtime_recent_alerts_and_telegram_test_redact_secrets(tmp_path:
 @pytest.mark.parametrize(
     ("payload", "expected_fragment"),
     [
-        (VALID_PAYLOAD | {"source_mappings": [{"market_type": "equity", "symbol": "AAPL"}]}, "provider"),
+        (
+            VALID_PAYLOAD | {"source_mappings": [{"market_type": "equity", "symbol": "AAPL"}]},
+            "provider",
+        ),
         (
             VALID_PAYLOAD
             | {
@@ -326,7 +331,11 @@ def test_health_runtime_recent_alerts_and_telegram_test_redact_secrets(tmp_path:
         ),
         (
             VALID_PAYLOAD
-            | {"source_mappings": [{"provider": "yfinance", "market_type": "equity", "symbol": " "}]},
+            | {
+                "source_mappings": [
+                    {"provider": "yfinance", "market_type": "equity", "symbol": " "}
+                ]
+            },
             "symbol",
         ),
         (VALID_PAYLOAD | {"near_support_threshold": "1.5"}, "near_support_threshold"),

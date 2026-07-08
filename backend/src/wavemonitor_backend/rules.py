@@ -5,7 +5,13 @@ from decimal import Decimal
 from typing import Final
 
 from wavemonitor_backend.models import AlertKind
-from wavemonitor_backend.rule_types import DEFAULT_COOLDOWN, AlertDecision, InvalidRuleState, RuleEvaluation, RuleState
+from wavemonitor_backend.rule_types import (
+    DEFAULT_COOLDOWN,
+    AlertDecision,
+    InvalidRuleState,
+    RuleEvaluation,
+    RuleState,
+)
 from wavemonitor_backend.support_resistance import levels_for_alerts
 
 ZERO: Final[Decimal] = Decimal("0")
@@ -245,7 +251,9 @@ def should_emit(
     return not was_active
 
 
-def next_alert_time(*, alerts: tuple[AlertDecision, ...], kind: AlertKind, previous: datetime | None) -> datetime | None:
+def next_alert_time(
+    *, alerts: tuple[AlertDecision, ...], kind: AlertKind, previous: datetime | None
+) -> datetime | None:
     for alert in alerts:
         if alert.kind == kind:
             return alert.triggered_at
@@ -254,5 +262,7 @@ def next_alert_time(*, alerts: tuple[AlertDecision, ...], kind: AlertKind, previ
 
 from wavemonitor_backend.rule_persistence import (  # noqa: E402
     evaluate_and_persist_rules as evaluate_and_persist_rules,
+)
+from wavemonitor_backend.rule_persistence import (  # noqa: E402
     persist_rule_evaluation as persist_rule_evaluation,
 )

@@ -41,3 +41,6 @@ src = ["backend/src", "backend/tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ANN"]
 ignore = ["ANN201"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]

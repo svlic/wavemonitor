@@ -181,10 +181,14 @@ class YFinanceAdapter:
                 except (KeyError, TypeError, IndexError):
                     raw_price = None
         payload = _parse_price(raw_price, "history.close")
-        return None if payload is None else _price_result(
-            identity,
-            payload,
-            self._clock,
+        return (
+            None
+            if payload is None
+            else _price_result(
+                identity,
+                payload,
+                self._clock,
+            )
         )
 
     def _default_ticker_factory(self, symbol: str) -> YFinanceTicker:
@@ -252,9 +256,7 @@ class BinanceFuturesAdapter:
     ) -> PriceResult | None:
         parsed_payload = _parse_price(payload.get(price_key), path)
         return (
-            None
-            if parsed_payload is None
-            else _price_result(identity, parsed_payload, self._clock)
+            None if parsed_payload is None else _price_result(identity, parsed_payload, self._clock)
         )
 
 
@@ -263,7 +265,6 @@ def _hyperliquid_mids_scope(symbol: str) -> tuple[str, str]:
         return "", f"all_mids.{symbol}"
     dex = symbol.split(":", maxsplit=1)[0]
     return dex, f"all_mids.{dex}.{symbol}"
-
 
 
 class HyperliquidAdapter:

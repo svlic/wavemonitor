@@ -116,8 +116,7 @@ def _rebuild_sqlite_source_mapping_table(connection: Connection) -> None:
     connection.exec_driver_sql("DROP TABLE sourcemapping")
     connection.exec_driver_sql("ALTER TABLE sourcemapping_new RENAME TO sourcemapping")
     connection.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_sourcemapping_instrument_id "
-        "ON sourcemapping (instrument_id)"
+        "CREATE INDEX IF NOT EXISTS ix_sourcemapping_instrument_id ON sourcemapping (instrument_id)"
     )
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_sourcemapping_market_type ON sourcemapping (market_type)"

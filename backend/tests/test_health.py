@@ -1,9 +1,12 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from wavemonitor_backend.app import create_app
 
 
-def test_health_reports_ok_and_telegram_not_ready_when_env_missing(monkeypatch):
+def test_health_reports_ok_and_telegram_not_ready_when_env_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
     # Given: optional Telegram credentials are absent.
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)

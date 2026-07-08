@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -98,7 +99,7 @@ class CountingTicker:
 
 
 def test_app_lifespan_starts_and_stops_injected_monitoring_lifecycle(tmp_path: Path):
-    # Given: the backend app receives an injected monitoring lifecycle with observable start/stop signals.
+    # Given: the backend app receives an observable injected lifecycle.
     lifecycle = FakeAppLifecycle()
 
     # When: TestClient enters and exits the FastAPI lifespan.
@@ -121,7 +122,7 @@ def test_app_lifespan_starts_and_stops_injected_monitoring_lifecycle(tmp_path: P
 
 
 def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path: Path):
-    # Given: a lifecycle with a real SQLite session factory and a ticker that parks after the first tick.
+    # Given: a lifecycle whose ticker parks after the first tick.
     async def scenario() -> None:
         engine = create_database_engine(f"sqlite:///{tmp_path / 'loop.sqlite3'}")
         create_schema(engine)
@@ -129,7 +130,7 @@ def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path:
         ticker = BlockingTicker()
 
         @contextmanager
-        def session_factory():
+        def session_factory() -> Iterator[Session]:
             with session_scope(engine) as db_session:
                 yield db_session
 
@@ -152,7 +153,7 @@ def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path:
 
 
 def test_monitoring_lifecycle_continues_after_tick_exception(tmp_path: Path):
-    # Given: the first scheduler tick raises, then the same runner can produce metrics on the next tick.
+    # Given: the first scheduler tick raises, then the next tick succeeds.
     async def scenario() -> None:
         engine = create_database_engine(f"sqlite:///{tmp_path / 'recover.sqlite3'}")
         create_schema(engine)
@@ -160,7 +161,7 @@ def test_monitoring_lifecycle_continues_after_tick_exception(tmp_path: Path):
         ticker = CountingTicker()
 
         @contextmanager
-        def session_factory():
+        def session_factory() -> Iterator[Session]:
             with session_scope(engine) as db_session:
                 yield db_session
 

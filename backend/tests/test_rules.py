@@ -7,9 +7,16 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
-from wavemonitor_backend.models import AlertEvent, AlertKind, Instrument, MarketType, Provider, SourceMapping
-from wavemonitor_backend.rules import RuleState, evaluate_and_persist_rules, evaluate_rules
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    MarketType,
+    Provider,
+    SourceMapping,
+)
 from wavemonitor_backend.rule_types import InvalidRuleState
+from wavemonitor_backend.rules import RuleState, evaluate_and_persist_rules, evaluate_rules
 
 OBSERVED_AT = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
@@ -235,7 +242,7 @@ def test_active_near_support_never_re_alerts_while_condition_stays_true():
 
 
 def test_rule_state_is_source_specific():
-    # Given: one source has an active near-support state with a prior alert time; another is inactive.
+    # Given: one source has prior near-support state; another is inactive.
     active_source_state = RuleState(
         last_price=Decimal("100"),
         near_support_active=True,
@@ -270,7 +277,9 @@ def test_rule_state_is_source_specific():
 
 def test_persistence_integration_records_alert_and_suppresses_duplicate(tmp_path: Path):
     # Given: a persisted instrument/source with no previous LastRuleState.
-    engine = create_engine(f"sqlite:///{tmp_path / 'rules.sqlite3'}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'rules.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument = Instrument(
@@ -297,7 +306,11 @@ def test_persistence_integration_records_alert_and_suppresses_duplicate(tmp_path
 
         # When: the same near-support observation is evaluated twice through persistence.
         first = evaluate_and_persist_rules(
-            session=session, instrument=instrument, source_mapping=source, price=Decimal("100"), observed_at=OBSERVED_AT
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT,
         )
         repeated = evaluate_and_persist_rules(
             session=session,

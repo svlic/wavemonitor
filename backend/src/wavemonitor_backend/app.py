@@ -22,7 +22,6 @@ from wavemonitor_backend.api import (
     list_instruments,
     list_recent_alerts,
     patch_instrument_enabled,
-    record_telegram_delivery,
     update_instrument,
 )
 from wavemonitor_backend.db import (
@@ -61,6 +60,7 @@ from wavemonitor_backend.schemas import (
 )
 from wavemonitor_backend.settings import Settings
 from wavemonitor_backend.symbol_catalog import SymbolCatalog
+from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
 class HealthResponse(BaseModel):
@@ -206,6 +206,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         if app_runtime.symbol_catalog is not None:
             return app_runtime.symbol_catalog
         return build_symbol_catalog()
+
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
     telegram_notifier = TelegramNotifier(runtime_settings, app_runtime.telegram_transport)

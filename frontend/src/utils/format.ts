@@ -1,14 +1,9 @@
+import { marketTypeLabel } from "./marketTypes";
+
 const PROVIDER_LABELS: Record<string, string> = {
   yfinance: "Yahoo Finance",
   binance: "Binance",
   hyperliquid: "Hyperliquid",
-};
-
-const MARKET_TYPE_LABELS: Record<string, string> = {
-  equity: "股票",
-  usd_m_futures: "USD-M 合约",
-  coin_m_futures: "COIN-M 合约",
-  perpetual: "永续合约",
 };
 
 const ALERT_KIND_LABELS: Record<string, string> = {
@@ -22,7 +17,7 @@ export function formatProviderLabel(provider: string): string {
 }
 
 export function formatMarketTypeLabel(marketType: string): string {
-  return MARKET_TYPE_LABELS[marketType] ?? marketType;
+  return marketTypeLabel(marketType);
 }
 
 export function formatSourceLabel(provider: string, marketType: string, symbol: string): string {

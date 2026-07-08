@@ -360,7 +360,6 @@ def test_hyperliquid_adapter_looks_up_dex_prefixed_hip3_symbols():
     assert info.calls == ["xyz"]
 
 
-
 def test_hyperliquid_adapter_returns_missing_symbol_for_absent_coin():
     # Given: Hyperliquid all_mids lacks DOGE.
     adapter = HyperliquidAdapter(info_client=FakeHyperliquidInfo({"BTC": "60324.125"}))
@@ -403,4 +402,7 @@ def test_adapters_do_not_create_default_clients_during_mocked_tests():
     # Then: tests stay offline and yfinance network factories are not invoked implicitly.
     assert isinstance(binance_result, PriceResult)
     assert isinstance(hyperliquid_result, PriceResult)
-    assert yfinance_adapter.get_latest_price("AAPL", MarketType.EQUITY).kind == AdapterErrorKind.PROVIDER_ERROR
+    assert (
+        yfinance_adapter.get_latest_price("AAPL", MarketType.EQUITY).kind
+        == AdapterErrorKind.PROVIDER_ERROR
+    )

@@ -7,7 +7,15 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel, select
 
-from wavemonitor_backend.models import AlertEvent, AlertKind, Instrument, LastRuleState, MarketType, Provider, SourceMapping
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    LastRuleState,
+    MarketType,
+    Provider,
+    SourceMapping,
+)
 from wavemonitor_backend.rule_types import InvalidRuleState, RuleEvaluation
 from wavemonitor_backend.rules import (
     AlertDecision,
@@ -46,7 +54,9 @@ def persisted_instrument_and_source(session: Session) -> tuple[Instrument, Sourc
 
 def test_persistence_creates_alert_event_and_updates_last_rule_state(tmp_path: Path):
     # Given: a persisted instrument/source and an evaluation that emits near-support.
-    engine = create_engine(f"sqlite:///{tmp_path / 'rules.sqlite3'}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'rules.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)
@@ -97,7 +107,9 @@ def test_persistence_creates_alert_event_and_updates_last_rule_state(tmp_path: P
 
 
 def test_persist_invalid_state_without_alerts(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'invalid.sqlite3'}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'invalid.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)
@@ -121,7 +133,9 @@ def test_persist_invalid_state_without_alerts(tmp_path: Path):
 
 def test_evaluate_and_persist_uses_last_rule_state_for_dedupe(tmp_path: Path):
     # Given: a persisted source with no previous rule state.
-    engine = create_engine(f"sqlite:///{tmp_path / 'dedupe.sqlite3'}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'dedupe.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)
@@ -150,8 +164,10 @@ def test_evaluate_and_persist_uses_last_rule_state_for_dedupe(tmp_path: Path):
 
 
 def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: Path):
-    # Given: a persisted source whose near-support condition becomes active, stays active, then resets.
-    engine = create_engine(f"sqlite:///{tmp_path / 'edge.sqlite3'}", connect_args={"check_same_thread": False})
+    # Given: near-support becomes active, stays active, resets, then triggers again.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'edge.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)
@@ -171,7 +187,7 @@ def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: 
             price=Decimal("100"),
             observed_at=OBSERVED_AT + timedelta(hours=1),
         )
-        reset = evaluate_and_persist_rules(
+        evaluate_and_persist_rules(
             session=session,
             instrument=instrument,
             source_mapping=source,
@@ -185,7 +201,9 @@ def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: 
             price=Decimal("100"),
             observed_at=OBSERVED_AT + timedelta(hours=3),
         )
-        stored_events = session.exec(select(AlertEvent).where(AlertEvent.source_mapping_id == source.id)).all()
+        stored_events = session.exec(
+            select(AlertEvent).where(AlertEvent.source_mapping_id == source.id)
+        ).all()
 
         # Then: only edge transitions persist new AlertEvent rows.
         assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
@@ -195,7 +213,9 @@ def test_persisted_near_support_re_alerts_only_after_condition_resets(tmp_path: 
 
 
 def test_no_alert_evaluation_updates_last_rule_state_timestamp(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'tick.sqlite3'}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'tick.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         instrument, source = persisted_instrument_and_source(session)

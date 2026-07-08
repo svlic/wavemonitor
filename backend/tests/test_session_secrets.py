@@ -13,7 +13,9 @@ from wavemonitor_backend.session_secrets import (
 
 def test_session_secret_path_next_to_sqlite_file(tmp_path: Path) -> None:
     database_url = f"sqlite:///{tmp_path / 'nested' / 'wavemonitor.sqlite3'}"
-    assert session_secret_path_for_database_url(database_url) == tmp_path / "nested" / "session_secret"
+    assert (
+        session_secret_path_for_database_url(database_url) == tmp_path / "nested" / "session_secret"
+    )
 
 
 def test_session_secret_path_for_docker_sqlite() -> None:

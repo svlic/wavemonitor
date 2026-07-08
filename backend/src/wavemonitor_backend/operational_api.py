@@ -54,7 +54,9 @@ def latest_price_response(
         provider=source.provider,
         market_type=source.market_type,
         symbol=source.symbol,
-        last_price=decimal_to_api_string(observation.price) if observation.price is not None else "",
+        last_price=decimal_to_api_string(observation.price)
+        if observation.price is not None
+        else "",
         last_observed_at=observation.observed_at,
         last_error=observation.error,
     )
@@ -67,7 +69,10 @@ def source_error_response(
 ) -> SourceErrorResponse:
     error = observation.error
     if error is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Source error row is missing error text")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Source error row is missing error text",
+        )
     return SourceErrorResponse(
         instrument_id=require_id(instrument.id),
         instrument_name=instrument.name,

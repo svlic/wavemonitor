@@ -13,7 +13,15 @@ from sqlmodel import Session, select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
-from wavemonitor_backend.models import AlertEvent, AlertKind, Instrument, MarketType, PriceObservation, Provider, SourceMapping
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    MarketType,
+    PriceObservation,
+    Provider,
+    SourceMapping,
+)
 from wavemonitor_backend.monitoring import RuntimeMetrics, RuntimeMetricsStore
 from wavemonitor_backend.settings import Settings
 
@@ -35,7 +43,9 @@ def session(tmp_path: Path) -> Iterator[Session]:
 def client(tmp_path: Path) -> Iterator[TestClient]:
     # Given: the API runs against an isolated empty SQLite database.
     database_url = f"sqlite:///{tmp_path / 'status-api-client.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         yield test_client
 
 
@@ -101,7 +111,9 @@ def seed_operational_rows(session: Session) -> None:
     session.commit()
 
 
-def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp_path: Path, session: Session):
+def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
+    tmp_path: Path, session: Session
+):
     # Given: scheduler metrics and operational persistence rows exist.
     seed_operational_rows(session)
     metrics_store = RuntimeMetricsStore()
@@ -121,7 +133,9 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp
     )
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url, metrics_store=metrics_store))
+        create_app(
+            AppRuntime(settings=Settings(), database_url=database_url, metrics_store=metrics_store)
+        )
     ) as test_client:
         # When: operational read endpoints are queried.
         health_response = test_client.get("/health")
@@ -150,7 +164,10 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp
         }
     ]
     assert alerts_response.status_code == 200
-    assert alerts_response.json()[0]["message"] == "Bitcoin is near support on binance:usd_m_futures:BTCUSDT"
+    assert (
+        alerts_response.json()[0]["message"]
+        == "Bitcoin is near support on binance:usd_m_futures:BTCUSDT"
+    )
     assert errors_response.status_code == 200
     assert errors_response.json() == [
         {
@@ -169,14 +186,18 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(tmp
 def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, session: Session):
     seed_operational_rows(session)
     failing_source = session.exec(
-        select(SourceMapping).where(SourceMapping.symbol == "BTC", SourceMapping.provider == Provider.YFINANCE)
+        select(SourceMapping).where(
+            SourceMapping.symbol == "BTC", SourceMapping.provider == Provider.YFINANCE
+        )
     ).one()
     failing_source.enabled = False
     session.add(failing_source)
     session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         errors_response = test_client.get("/api/source-errors")
 
     assert errors_response.status_code == 200
@@ -224,7 +245,9 @@ def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Se
     session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         response = test_client.get("/api/prices/latest")
 
     assert response.status_code == 200
@@ -274,7 +297,9 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
     session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         response = test_client.get("/api/prices/latest")
 
     # Then: the latest prices endpoint reports the last successful price, not the newer error row.
@@ -294,7 +319,9 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
     ]
 
 
-def test_instrument_status_keeps_last_success_after_newer_source_error(tmp_path: Path, session: Session):
+def test_instrument_status_keeps_last_success_after_newer_source_error(
+    tmp_path: Path, session: Session
+):
     # Given: one enabled source has an older successful price and a newer provider error.
     instrument = Instrument(
         name="Bitcoin",
@@ -336,7 +363,9 @@ def test_instrument_status_keeps_last_success_after_newer_source_error(tmp_path:
     session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         response = test_client.get(f"/api/instruments/{instrument.id}/status")
 
     # Then: source status preserves the last successful price while also exposing the latest error.
@@ -417,7 +446,9 @@ def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, ses
     session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url))) as test_client:
+    with TestClient(
+        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+    ) as test_client:
         response = test_client.get("/api/prices/latest")
 
     assert response.status_code == 200

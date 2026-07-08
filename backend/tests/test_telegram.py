@@ -13,7 +13,13 @@ from sqlmodel import Session, select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
-from wavemonitor_backend.models import AlertKind, DeliveryStatus, Instrument, SourceMapping, TelegramDelivery
+from wavemonitor_backend.models import (
+    AlertKind,
+    DeliveryStatus,
+    Instrument,
+    SourceMapping,
+    TelegramDelivery,
+)
 from wavemonitor_backend.notifier import (
     TelegramAlert,
     TelegramHttpFailure,
@@ -37,7 +43,9 @@ class CapturedPost:
 class FakeTelegramTransport:
     def __init__(
         self,
-        response: TelegramSendSuccess | TelegramHttpFailure | list[TelegramSendSuccess | TelegramHttpFailure],
+        response: TelegramSendSuccess
+        | TelegramHttpFailure
+        | list[TelegramSendSuccess | TelegramHttpFailure],
     ) -> None:
         if isinstance(response, list):
             self._responses = response
@@ -45,7 +53,9 @@ class FakeTelegramTransport:
             self._responses = [response]
         self.posts: list[CapturedPost] = []
 
-    def post_json(self, url: str, payload: dict[str, str]) -> TelegramSendSuccess | TelegramHttpFailure:
+    def post_json(
+        self, url: str, payload: dict[str, str]
+    ) -> TelegramSendSuccess | TelegramHttpFailure:
         self.posts.append(CapturedPost(url=url, json=payload))
         index = min(len(self.posts) - 1, len(self._responses) - 1)
         return self._responses[index]
@@ -85,7 +95,9 @@ def test_send_text_retries_transient_http_failure_then_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ):
     sleeps: list[float] = []
-    monkeypatch.setattr("wavemonitor_backend.notifier.time.sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(
+        "wavemonitor_backend.notifier.time.sleep", lambda seconds: sleeps.append(seconds)
+    )
     transport = FakeTelegramTransport(
         [
             TelegramHttpFailure(status_code=503, description="unavailable"),
@@ -103,7 +115,9 @@ def test_send_text_retries_transient_http_failure_then_succeeds(
 
 
 def test_send_text_does_not_retry_non_retryable_http_failure(ready_settings: Settings):
-    transport = FakeTelegramTransport(TelegramHttpFailure(status_code=401, description="unauthorized"))
+    transport = FakeTelegramTransport(
+        TelegramHttpFailure(status_code=401, description="unauthorized")
+    )
     notifier = TelegramNotifier(ready_settings, transport=transport)
 
     result = notifier.send_text("WaveMonitor Telegram test message.")
@@ -113,12 +127,19 @@ def test_send_text_does_not_retry_non_retryable_http_failure(ready_settings: Set
     assert len(transport.posts) == 1
 
 
-def test_missing_env_readiness_false_and_no_send_attempt(monkeypatch, database_url: str):
+def test_missing_env_readiness_false_and_no_send_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+):
     # Given: Telegram env vars are missing and a fake transport would fail the test if used.
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
     transport = FakeTelegramTransport(TelegramSendSuccess(message_id="not-used"))
-    with TestClient(create_app(AppRuntime(settings=Settings(), database_url=database_url, telegram_transport=transport))) as client:
+    with TestClient(
+        create_app(
+            AppRuntime(settings=Settings(), database_url=database_url, telegram_transport=transport)
+        )
+    ) as client:
         # When: readiness and test-send endpoints are called.
         readiness_response = client.get("/api/telegram/readiness")
         send_response = client.post("/api/telegram/test")
@@ -146,7 +167,11 @@ def test_successful_mocked_send_persists_delivery_and_logs_safe_metadata(
     caplog.set_level(logging.INFO, logger="wavemonitor_backend.telegram")
     transport = FakeTelegramTransport(TelegramSendSuccess(message_id="777"))
     with TestClient(
-        create_app(AppRuntime(settings=ready_settings, database_url=database_url, telegram_transport=transport)),
+        create_app(
+            AppRuntime(
+                settings=ready_settings, database_url=database_url, telegram_transport=transport
+            )
+        ),
     ) as client:
         # When: the API sends a test message.
         response = client.post("/api/telegram/test")
@@ -201,7 +226,11 @@ def test_telegram_http_failure_persists_redacted_error(
         )
     )
     with TestClient(
-        create_app(AppRuntime(settings=ready_settings, database_url=database_url, telegram_transport=transport)),
+        create_app(
+            AppRuntime(
+                settings=ready_settings, database_url=database_url, telegram_transport=transport
+            )
+        ),
     ) as client:
         # When: the API sends a test message.
         response = client.post("/api/telegram/test")
@@ -274,7 +303,11 @@ def test_send_alert_persists_delivery_result_without_storing_credentials(
     session.refresh(source)
     transport = FakeTelegramTransport(TelegramSendSuccess(message_id="888"))
     with TestClient(
-        create_app(AppRuntime(settings=ready_settings, database_url=database_url, telegram_transport=transport)),
+        create_app(
+            AppRuntime(
+                settings=ready_settings, database_url=database_url, telegram_transport=transport
+            )
+        ),
     ) as client:
         # When: a scoped alert delivery request is sent through the API.
         response = client.post(
@@ -306,9 +339,30 @@ def test_send_alert_persists_delivery_result_without_storing_credentials(
 @pytest.mark.parametrize(
     "payload",
     [
-        {"instrument": "", "source": "binance", "rule": "near_support", "price": "1", "support": "1", "resistance": "2"},
-        {"instrument": "Bitcoin", "source": "binance", "rule": "unknown", "price": "1", "support": "1", "resistance": "2"},
-        {"instrument": "Bitcoin", "source": "binance", "rule": "near_support", "price": "bad", "support": "1", "resistance": "2"},
+        {
+            "instrument": "",
+            "source": "binance",
+            "rule": "near_support",
+            "price": "1",
+            "support": "1",
+            "resistance": "2",
+        },
+        {
+            "instrument": "Bitcoin",
+            "source": "binance",
+            "rule": "unknown",
+            "price": "1",
+            "support": "1",
+            "resistance": "2",
+        },
+        {
+            "instrument": "Bitcoin",
+            "source": "binance",
+            "rule": "near_support",
+            "price": "bad",
+            "support": "1",
+            "resistance": "2",
+        },
     ],
 )
 def test_test_send_endpoint_rejects_malformed_input_without_success_output(
@@ -319,7 +373,11 @@ def test_test_send_endpoint_rejects_malformed_input_without_success_output(
     # Given: malformed alert test-send input crosses the API boundary.
     transport = FakeTelegramTransport(TelegramSendSuccess(message_id="not-used"))
     with TestClient(
-        create_app(AppRuntime(settings=ready_settings, database_url=database_url, telegram_transport=transport)),
+        create_app(
+            AppRuntime(
+                settings=ready_settings, database_url=database_url, telegram_transport=transport
+            )
+        ),
     ) as client:
         # When: the malformed request is submitted.
         response = client.post("/api/telegram/test", json=payload)

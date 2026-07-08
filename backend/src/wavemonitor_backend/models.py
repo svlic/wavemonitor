@@ -9,7 +9,10 @@ from pydantic import ConfigDict, field_validator, model_validator
 from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
-from wavemonitor_backend.support_resistance import normalize_optional_level, validate_instrument_levels
+from wavemonitor_backend.support_resistance import (
+    normalize_optional_level,
+    validate_instrument_levels,
+)
 
 DECIMAL_MAX_DIGITS: Final[int] = 24
 DECIMAL_PLACES: Final[int] = 10
@@ -116,8 +119,10 @@ class Instrument(RuleDecimalMixin, table=True):
 
     def _needs_rule_field_coercion(self) -> bool:
         return (
-            self.support is not None and not isinstance(self.support, Decimal)
-            or self.resistance is not None and not isinstance(self.resistance, Decimal)
+            self.support is not None
+            and not isinstance(self.support, Decimal)
+            or self.resistance is not None
+            and not isinstance(self.resistance, Decimal)
             or not isinstance(self.near_support_threshold, Decimal)
             or not isinstance(self.risk_reward_threshold, Decimal)
         )
