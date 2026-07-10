@@ -18,9 +18,11 @@ class RuleState:
     near_support_active: bool = False
     risk_reward_active: bool = False
     above_resistance_active: bool = False
+    support_breach_active: bool = False
     near_support_last_alert_at: datetime | None = None
     risk_reward_last_alert_at: datetime | None = None
     breakout_last_alert_at: datetime | None = None
+    support_breach_last_alert_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -22,8 +22,8 @@ def decimal_column(*, nullable: bool = False) -> Column[Decimal]:
     return Column(Numeric(DECIMAL_MAX_DIGITS, DECIMAL_PLACES, asdecimal=True), nullable=nullable)
 
 
-def timestamp_column(*, nullable: bool = False) -> Column[datetime]:
-    return Column(DateTime(timezone=True), nullable=nullable)
+def timestamp_column(*, nullable: bool = False, index: bool = False) -> Column[datetime]:
+    return Column(DateTime(timezone=True), nullable=nullable, index=index)
 
 
 def normalize_market_symbol(value: str) -> str:
@@ -53,6 +53,7 @@ class AlertKind(StrEnum):
     NEAR_SUPPORT = "near_support"
     RISK_REWARD = "risk_reward"
     RESISTANCE_BREAKOUT = "resistance_breakout"
+    SUPPORT_BREACH = "support_breach"
 
 
 class DeliveryStatus(StrEnum):
@@ -180,7 +181,7 @@ class PriceObservation(RuleDecimalMixin, table=True):
     id: int | None = Field(default=None, primary_key=True)
     source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
     price: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
-    observed_at: datetime = Field(sa_column=timestamp_column())
+    observed_at: datetime = Field(sa_column=timestamp_column(index=True))
     raw_path: str | None = Field(default=None, max_length=120)
     error: str | None = Field(default=None, max_length=500)
 
@@ -213,6 +214,7 @@ class LastRuleState(RuleDecimalMixin, table=True):
     near_support_active: bool = Field(default=False)
     risk_reward_active: bool = Field(default=False)
     above_resistance_active: bool = Field(default=False)
+    support_breach_active: bool = Field(default=False)
     near_support_last_alert_at: datetime | None = Field(
         default=None,
         sa_column=timestamp_column(nullable=True),
@@ -222,6 +224,10 @@ class LastRuleState(RuleDecimalMixin, table=True):
         sa_column=timestamp_column(nullable=True),
     )
     breakout_last_alert_at: datetime | None = Field(
+        default=None,
+        sa_column=timestamp_column(nullable=True),
+    )
+    support_breach_last_alert_at: datetime | None = Field(
         default=None,
         sa_column=timestamp_column(nullable=True),
     )
