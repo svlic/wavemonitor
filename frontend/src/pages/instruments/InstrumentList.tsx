@@ -91,7 +91,6 @@ export function InstrumentList() {
     <div className="panel">
       <div className="header-row">
         <div>
-          <p className="eyebrow">配置</p>
           <h2 className="section-title">已配置标的</h2>
           <p className="summary">
             {instruments.length === 0

@@ -127,8 +127,9 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="panel form-panel">
-      <h2>{initialData ? "编辑标的" : "新增标的"}</h2>
-      
+      <p className="eyebrow">配置</p>
+      <h2 className="section-title">{initialData ? "编辑标的" : "新增标的"}</h2>
+
       {error && <div className="error-banner" role="alert">{error}</div>}
 
       <div className="form-group">

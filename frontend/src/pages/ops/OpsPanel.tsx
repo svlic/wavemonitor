@@ -116,6 +116,9 @@ export function OpsPanel() {
         <div role="status" aria-live="polite" className="muted-text">
           正在加载...
         </div>
+        <div className="skeleton skeleton-line skeleton-line--medium" aria-hidden="true" />
+        <div className="skeleton skeleton-line" aria-hidden="true" />
+        <div className="skeleton skeleton-block" aria-hidden="true" />
       </section>
     );
   }
