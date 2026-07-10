@@ -10,18 +10,15 @@ const ALERT_KIND_LABELS: Record<string, string> = {
   near_support: "接近支撑",
   risk_reward: "风险回报",
   resistance_breakout: "突破阻力",
+  support_breach: "跌破支撑",
 };
 
-export function formatProviderLabel(provider: string): string {
+function formatProviderLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider;
 }
 
-export function formatMarketTypeLabel(marketType: string): string {
-  return marketTypeLabel(marketType);
-}
-
 export function formatSourceLabel(provider: string, marketType: string, symbol: string): string {
-  return `${formatProviderLabel(provider)} · ${formatMarketTypeLabel(marketType)} · ${symbol}`;
+  return `${formatProviderLabel(provider)} · ${marketTypeLabel(marketType)} · ${symbol}`;
 }
 
 export function formatAlertKindLabel(kind: string): string {
