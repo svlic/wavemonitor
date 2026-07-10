@@ -26,7 +26,6 @@ import type {
 
 export type {
   AuthStatusResponse,
-  CreateInstrumentApiPayload,
   CreateInstrumentRequest,
   InstrumentWithMappings,
   LatestPrice,
@@ -203,9 +202,8 @@ export class ApiClient {
     data: CreateInstrumentRequest,
     signal?: AbortSignal,
   ): Promise<InstrumentWithMappings> {
-    const pathId = typeof id === "string" ? id : String(id);
     return this.fetch(
-      `/api/instruments/${pathId}`,
+      `/api/instruments/${id}`,
       InstrumentWithMappingsSchema,
       this.requestInit(signal, {
         method: "PUT",
@@ -219,17 +217,15 @@ export class ApiClient {
     enabled: boolean,
     signal?: AbortSignal,
   ): Promise<InstrumentWithMappings> {
-    const pathId = typeof id === "string" ? id : String(id);
     return this.fetch(
-      `/api/instruments/${pathId}`,
+      `/api/instruments/${id}`,
       InstrumentWithMappingsSchema,
       this.requestInit(signal, { method: "PATCH", body: JSON.stringify({ enabled }) }),
     );
   }
 
   async deleteInstrument(id: number | string, signal?: AbortSignal): Promise<void> {
-    const pathId = typeof id === "string" ? id : String(id);
-    await this.fetch(`/api/instruments/${pathId}`, EmptyResponseSchema, this.requestInit(signal, { method: "DELETE" }));
+    await this.fetch(`/api/instruments/${id}`, EmptyResponseSchema, this.requestInit(signal, { method: "DELETE" }));
   }
 }
 

@@ -135,13 +135,10 @@ export type CreateInstrumentApiPayload = Omit<CreateInstrumentRequest, "support"
 };
 
 export function serializeInstrumentLevelsForApi(data: CreateInstrumentRequest): CreateInstrumentApiPayload {
-  const supportTrimmed = data.support.trim();
-  const resistanceTrimmed = data.resistance.trim();
-  const { support: _support, resistance: _resistance, ...rest } = data;
   return {
-    ...rest,
-    support: supportTrimmed === "" ? null : supportTrimmed,
-    resistance: resistanceTrimmed === "" ? null : resistanceTrimmed,
+    ...data,
+    support: data.support.trim() || null,
+    resistance: data.resistance.trim() || null,
   };
 }
 
