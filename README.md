@@ -80,11 +80,6 @@ WAVEMONITOR_WEB_PASSWORD=change-me
 # WAVEMONITOR_SESSION_SECRET=
 
 # ---------- 本地开发常用（Docker Compose 默认不读取下列变量，见下文说明）----------
-# 后端监听（本地 uvicorn 时使用）
-BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8000
-# 前端开发服务器端口
-FRONTEND_PORT=5173
 # 本地 SQLite（相对路径，文件落在项目根目录）
 DATABASE_URL=sqlite:///./wavemonitor.sqlite3
 # 本地前端请求后端的根地址；生产 Docker 前端走同源 /api，无需设置
@@ -207,8 +202,6 @@ docker compose up --build -d
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
 | `RUN_LIVE_SMOKE` | 未设置 | 设为 `1` 时执行 `backend/scripts/live_smoke.py` 实网探测 |
 | `VITE_API_BASE_URL` | 空字符串 | **仅本地前端构建/开发**：API 根地址；Docker 生产构建留空，使用同源 `/api` |
-| `BACKEND_HOST` / `BACKEND_PORT` | 文档示例用 | 本地启动说明用；镜像内后端固定 `0.0.0.0:8000` |
-| `FRONTEND_PORT` | `5173` | 文档示例用；`npx vite` 默认端口 |
 
 ---
 
