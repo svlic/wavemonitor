@@ -6,6 +6,7 @@ describe("ApiClient", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("throws ApiError on non-200 response", async () => {
@@ -141,6 +142,49 @@ describe("ApiClient", () => {
     expect(fetch).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: "/api/instruments" }),
       expect.any(Object),
+    );
+  });
+
+  it("uses same-origin API paths when no base URL is configured", async () => {
+    const runtimeResponse = {
+      scheduler_ready: false,
+      providers_ready: false,
+      telegram_ready: false,
+      enabled_sources: 0,
+      polled_sources: 0,
+      observations_written: 0,
+      source_errors: 0,
+      alert_events_created: 0,
+      telegram_deliveries_attempted: 0,
+      last_tick_started_at: null,
+      last_tick_finished_at: null,
+    };
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(runtimeResponse), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const sameOriginClient = new ApiClient("");
+
+    await sameOriginClient.getRuntime();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runtime",
+      expect.objectContaining({
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+
+  it("surfaces backend error detail for failed telegram test requests", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Telegram delivery failed with HTTP 401." }), {
+        status: 502,
+        statusText: "Bad Gateway",
+      }),
+    );
+    const sameOriginClient = new ApiClient("");
+
+    await expect(sameOriginClient.testTelegram()).rejects.toEqual(
+      new ApiError(502, "Telegram delivery failed with HTTP 401."),
     );
   });
 });
