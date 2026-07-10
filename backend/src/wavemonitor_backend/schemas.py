@@ -46,9 +46,7 @@ class DecimalStringMixin(BaseModel):
     def parse_decimal_string(cls, value: Decimal | str | int | float) -> Decimal:
         if isinstance(value, Decimal):
             return value
-        if isinstance(value, str):
-            return Decimal(value)
-        if isinstance(value, int):
+        if isinstance(value, str | int):
             return Decimal(value)
         raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
 
