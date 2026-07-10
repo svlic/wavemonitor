@@ -18,11 +18,12 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(false);
   const trimmedValue = value.trim();
-  const listVisible = options.length > 0;
+  const listVisible = isActive && options.length > 0;
 
   useEffect(() => {
-    if (trimmedValue.length === 0 || trimmedValue === selectedSymbol) {
+    if (!isActive || trimmedValue.length === 0 || trimmedValue === selectedSymbol) {
       setOptions([]);
       setState("idle");
       setMessage(null);
@@ -56,7 +57,7 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
 
     query();
     return () => controller.abort();
-  }, [marketType, provider, selectedSymbol, trimmedValue]);
+  }, [isActive, marketType, provider, selectedSymbol, trimmedValue]);
 
   function selectOption(symbol: string) {
     suppressListRef.current = true;
@@ -67,6 +68,7 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
 
   function handleBlur(event: FocusEvent<HTMLDivElement>) {
     if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsActive(false);
       setOptions([]);
     }
   }
@@ -80,9 +82,11 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
         id={id}
         type="text"
         value={value}
+        onFocus={() => setIsActive(true)}
         onChange={(event) => {
           suppressListRef.current = false;
           setSelectedSymbol(null);
+          setIsActive(true);
           onChange(event.target.value);
         }}
         placeholder="例如 BTCUSDT"
