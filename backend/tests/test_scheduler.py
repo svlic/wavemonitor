@@ -19,6 +19,7 @@ from wavemonitor_backend.adapter_types import (
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
 from wavemonitor_backend.models import (
     AlertEvent,
+    AlertKind,
     DeliveryStatus,
     Instrument,
     LastRuleState,
@@ -29,12 +30,17 @@ from wavemonitor_backend.models import (
     TelegramDelivery,
 )
 from wavemonitor_backend.monitoring import (
+    OBSERVATION_RETENTION,
     AdapterRegistry,
     MonitoringScheduler,
     RuntimeMetrics,
     SourcePoller,
 )
-from wavemonitor_backend.notifier import TelegramSendSuccess
+from wavemonitor_backend.notifier import (
+    TelegramHttpFailure,
+    TelegramSendResult,
+    TelegramSendSuccess,
+)
 
 BASE_TIME: Final[datetime] = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
@@ -64,6 +70,19 @@ class FakeNotifier:
 
     def send_text(self, text: str) -> TelegramSendSuccess:
         self.messages.append(text)
+        return TelegramSendSuccess(message_id=f"fake-{len(self.messages)}")
+
+
+class FailingThenSucceedingNotifier:
+    def __init__(self, failures_before_success: int) -> None:
+        self.messages: list[str] = []
+        self._remaining_failures = failures_before_success
+
+    def send_text(self, text: str) -> TelegramSendResult:
+        self.messages.append(text)
+        if self._remaining_failures > 0:
+            self._remaining_failures -= 1
+            return TelegramHttpFailure(status_code=500, description="temporary outage")
         return TelegramSendSuccess(message_id=f"fake-{len(self.messages)}")
 
 
@@ -186,7 +205,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     assert [state.risk_reward_active for state in states] == [True, True, True]
 
 
-def test_poll_tick_dedupes_source_rule_after_reset(session: Session):
+def test_poll_tick_dedupes_while_active_and_rearms_after_reset(session: Session):
     # Given: a first tick already emitted near-support alerts for all three sources.
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
@@ -229,7 +248,7 @@ def test_poll_tick_dedupes_source_rule_after_reset(session: Session):
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
 
-    # Then: price monitoring continues, but each source/rule delivers only its first alert.
+    # Then: active duplicates are suppressed; Binance re-fires after edge re-arm.
     alerts = session.exec(
         select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
     ).all()
@@ -237,15 +256,16 @@ def test_poll_tick_dedupes_source_rule_after_reset(session: Session):
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
-    assert retrigger.alert_events_created == 0
-    assert len(alerts) == 3
+    assert retrigger.alert_events_created == 1
+    assert len(alerts) == 4
     assert len(observations) == 12
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
+        DeliveryStatus.SENT,
     ]
-    assert len(notifier.messages) == 3
+    assert len(notifier.messages) == 4
 
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):
@@ -334,3 +354,93 @@ def test_poll_tick_does_not_poll_disabled_instrument(session: Session):
     assert metrics.observations_written == 0
     assert metrics.alert_events_created == 0
     assert metrics.telegram_deliveries_attempted == 0
+
+
+def test_poll_tick_prunes_observations_older_than_retention(session: Session):
+    # Given: one stale observation older than retention and one recent observation.
+    instrument, sources = seed_instrument(session)
+    source = sources[0]
+    stale_at = BASE_TIME - OBSERVATION_RETENTION - timedelta(hours=1)
+    recent_at = BASE_TIME - timedelta(hours=1)
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("90"),
+            observed_at=stale_at,
+        )
+    )
+    session.add(
+        PriceObservation(
+            source_mapping_id=source.id,
+            price=Decimal("95"),
+            observed_at=recent_at,
+        )
+    )
+    session.commit()
+    clock = FakeClock(BASE_TIME)
+    registry = AdapterRegistry(
+        adapters={
+            (Provider.YFINANCE, MarketType.EQUITY): FakePriceAdapter(
+                price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "120", BASE_TIME)
+            ),
+            (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
+                price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", BASE_TIME)
+            ),
+            (Provider.HYPERLIQUID, MarketType.PERPETUAL): FakePriceAdapter(
+                price(Provider.HYPERLIQUID, MarketType.PERPETUAL, "BTC", "120", BASE_TIME)
+            ),
+        }
+    )
+    scheduler = MonitoringScheduler(SourcePoller(registry), FakeNotifier(), clock=clock)
+
+    # When: a tick runs with the retention window relative to the clock.
+    scheduler.run_tick(session)
+
+    # Then: only the stale row is removed; recent and new observations remain.
+    observed_ats = sorted(
+        observation.observed_at for observation in session.exec(select(PriceObservation)).all()
+    )
+    assert stale_at.replace(tzinfo=None) not in observed_ats
+    assert recent_at.replace(tzinfo=None) in observed_ats
+    assert BASE_TIME.replace(tzinfo=None) in observed_ats
+    assert instrument.id is not None
+
+
+def test_failed_telegram_delivery_rearms_alert_for_next_tick(session: Session):
+    # Given: one source near support and a notifier that fails once then succeeds.
+    seed_instrument(session)
+    clock = FakeClock(BASE_TIME)
+    notifier = FailingThenSucceedingNotifier(failures_before_success=3)
+    registry = AdapterRegistry(
+        adapters={
+            (Provider.YFINANCE, MarketType.EQUITY): FakePriceAdapter(
+                price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "100", BASE_TIME)
+            ),
+            (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
+                price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", BASE_TIME)
+            ),
+            (Provider.HYPERLIQUID, MarketType.PERPETUAL): FakePriceAdapter(
+                price(Provider.HYPERLIQUID, MarketType.PERPETUAL, "BTC", "100", BASE_TIME)
+            ),
+        }
+    )
+    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+
+    # When: the first tick fails delivery; the second tick still sees the active condition.
+    first = scheduler.run_tick(session)
+    clock.set(BASE_TIME + timedelta(minutes=1))
+    second = scheduler.run_tick(session)
+
+    # Then: stamps re-arm after failure so the next tick re-emits and delivers.
+    alerts = session.exec(select(AlertEvent).order_by(AlertEvent.triggered_at)).all()
+    deliveries = session.exec(select(TelegramDelivery).order_by(TelegramDelivery.id)).all()
+    states = session.exec(select(LastRuleState)).all()
+    assert first.alert_events_created == 3
+    assert second.alert_events_created == 3
+    assert len(alerts) == 6
+    assert all(alert.alert_kind == AlertKind.NEAR_SUPPORT for alert in alerts)
+    assert [delivery.status for delivery in deliveries] == (
+        [DeliveryStatus.FAILED] * 3 + [DeliveryStatus.SENT] * 3
+    )
+    assert all(state.near_support_last_alert_at is not None for state in states)
+    assert len(notifier.messages) == 6

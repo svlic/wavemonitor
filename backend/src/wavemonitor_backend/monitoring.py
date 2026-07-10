@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Protocol, assert_never
+from datetime import UTC, datetime, timedelta
+from typing import Final, Protocol, assert_never
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from wavemonitor_backend.adapter_types import (
     AdapterError,
@@ -23,11 +23,18 @@ from wavemonitor_backend.models import (
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
+    TelegramHttpFailure,
     TelegramSendResult,
     message_for_kind,
 )
-from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, require_id
+from wavemonitor_backend.rule_persistence import (
+    evaluate_and_persist_rules,
+    rearm_alert_after_delivery_failure,
+    require_id,
+)
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
+
+OBSERVATION_RETENTION: Final[timedelta] = timedelta(days=3)
 
 
 class PollingPriceAdapter(Protocol):
@@ -133,6 +140,7 @@ class MonitoringScheduler:
 
     def run_tick(self, session: Session) -> RuntimeMetrics:
         started_at = self._clock()
+        prune_old_observations(session, older_than=started_at - OBSERVATION_RETENTION)
         sources = enabled_sources(session)
         counts = TickCounts(enabled_sources=len(sources))
         for instrument, source in sources:
@@ -207,6 +215,8 @@ class MonitoringScheduler:
             observed_at=result.timestamp,
         )
         deliveries = 0
+        instrument_id = require_id(instrument.id)
+        source_mapping_id = require_id(source.id)
         for alert in evaluation.alerts:
             message = message_for_kind(
                 MessageKind.ALERT,
@@ -220,14 +230,22 @@ class MonitoringScheduler:
                 ),
             )
             send_result = self._notifier.send_text(message)
-            if send_result is not None:
-                record_telegram_delivery(
+            if send_result is None:
+                continue
+            record_telegram_delivery(
+                session,
+                message_kind=MessageKind.ALERT.value,
+                message_text=message,
+                result=send_result,
+            )
+            deliveries += 1
+            if isinstance(send_result, TelegramHttpFailure):
+                rearm_alert_after_delivery_failure(
                     session,
-                    message_kind=MessageKind.ALERT.value,
-                    message_text=message,
-                    result=send_result,
+                    instrument_id=instrument_id,
+                    source_mapping_id=source_mapping_id,
+                    kind=alert.kind,
                 )
-                deliveries += 1
         return counts.with_success(len(evaluation.alerts), deliveries)
 
 
@@ -302,6 +320,7 @@ def record_price_observation(session: Session, source: SourceMapping, result: Pr
             raw_path=path if isinstance(path, str) else None,
         )
     )
+    session.commit()
 
 
 def record_source_error(
@@ -316,3 +335,17 @@ def record_source_error(
         )
     )
     session.commit()
+
+
+def prune_old_observations(session: Session, *, older_than: datetime) -> int:
+    cutoff = older_than if older_than.tzinfo is not None else older_than.replace(tzinfo=UTC)
+    stale = session.exec(
+        select(PriceObservation).where(col(PriceObservation.observed_at) < cutoff)
+    ).all()
+    deleted = 0
+    for observation in stale:
+        session.delete(observation)
+        deleted += 1
+    if deleted:
+        session.commit()
+    return deleted
