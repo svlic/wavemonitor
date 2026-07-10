@@ -204,7 +204,7 @@ describe("InstrumentForm", () => {
     });
     const option = await screen.findByRole("option", { name: "AAPL — Apple Inc." });
     await act(async () => {
-      fireEvent.mouseDown(option);
+      fireEvent.pointerDown(option);
     });
 
     await waitFor(() => {

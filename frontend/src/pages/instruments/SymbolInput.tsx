@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { FocusEvent, SyntheticEvent } from "react";
+import type { FocusEvent } from "react";
 import { apiClient, ApiError } from "../../api/client";
 import type { SymbolOption } from "../../api/client";
 
@@ -65,12 +65,6 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
     setOptions([]);
   }
 
-  function handleOptionInteraction(event: SyntheticEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    selectOption(event.currentTarget.dataset.symbol ?? event.currentTarget.textContent ?? "");
-  }
-
   function handleBlur(event: FocusEvent<HTMLDivElement>) {
     if (!event.currentTarget.contains(event.relatedTarget)) {
       setOptions([]);
@@ -108,11 +102,10 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
                 type="button"
                 role="option"
                 className="symbol-option"
-                data-symbol={option.symbol}
-                onMouseDown={handleOptionInteraction}
-                onPointerDown={handleOptionInteraction}
-                onTouchStart={handleOptionInteraction}
-                onClick={handleOptionInteraction}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  selectOption(option.symbol);
+                }}
               >
                 {option.label}
               </button>
