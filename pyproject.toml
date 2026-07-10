@@ -14,8 +14,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "httpx2>=2.5.0",
+    "httpx>=0.27.0",
     "pytest>=8.0.0",
+    "vulture>=2.11",
 ]
 
 [build-system]
@@ -44,3 +45,8 @@ ignore = ["ANN201"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.vulture]
+paths = ["backend/src", "backend/vulture_whitelist.py"]
+min_confidence = 80
+exclude = ["*/.venv/*"]
