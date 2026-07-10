@@ -14,8 +14,9 @@ from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, session_scope
 from wavemonitor_backend.models import LastRuleState
 from wavemonitor_backend.notifier import TelegramSendSuccess
+from wavemonitor_backend.rule_persistence import persist_rule_evaluation
 from wavemonitor_backend.rule_types import RuleEvaluation
-from wavemonitor_backend.rules import RuleState, persist_rule_evaluation
+from wavemonitor_backend.rules import RuleState
 from wavemonitor_backend.settings import Settings
 
 

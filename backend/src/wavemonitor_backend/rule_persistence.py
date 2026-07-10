@@ -5,7 +5,13 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
-from wavemonitor_backend.models import AlertEvent, Instrument, LastRuleState, SourceMapping
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    LastRuleState,
+    SourceMapping,
+)
 from wavemonitor_backend.rule_types import RuleEvaluation, RuleState
 
 
@@ -77,9 +83,11 @@ def persist_rule_evaluation(
     state.near_support_active = evaluation.next_state.near_support_active
     state.risk_reward_active = evaluation.next_state.risk_reward_active
     state.above_resistance_active = evaluation.next_state.above_resistance_active
+    state.support_breach_active = evaluation.next_state.support_breach_active
     state.near_support_last_alert_at = evaluation.next_state.near_support_last_alert_at
     state.risk_reward_last_alert_at = evaluation.next_state.risk_reward_last_alert_at
     state.breakout_last_alert_at = evaluation.next_state.breakout_last_alert_at
+    state.support_breach_last_alert_at = evaluation.next_state.support_breach_last_alert_at
     state.last_invalid_state = (
         None if evaluation.invalid_state is None else evaluation.invalid_state.value
     )
@@ -103,9 +111,11 @@ def rule_state_from_persisted(state: LastRuleState) -> RuleState:
         near_support_active=state.near_support_active,
         risk_reward_active=state.risk_reward_active,
         above_resistance_active=state.above_resistance_active,
+        support_breach_active=state.support_breach_active,
         near_support_last_alert_at=utc_timestamp(state.near_support_last_alert_at),
         risk_reward_last_alert_at=utc_timestamp(state.risk_reward_last_alert_at),
         breakout_last_alert_at=utc_timestamp(state.breakout_last_alert_at),
+        support_breach_last_alert_at=utc_timestamp(state.support_breach_last_alert_at),
     )
 
 
@@ -136,6 +146,31 @@ def require_id(value: int | None) -> int:
     if value is None:
         raise MissingPersistedIdError
     return value
+
+
+def rearm_alert_after_delivery_failure(
+    session: Session,
+    *,
+    instrument_id: int,
+    source_mapping_id: int,
+    kind: AlertKind,
+) -> None:
+    state = load_or_create_state(
+        session=session,
+        instrument_id=instrument_id,
+        source_mapping_id=source_mapping_id,
+    )
+    match kind:
+        case AlertKind.NEAR_SUPPORT:
+            state.near_support_last_alert_at = None
+        case AlertKind.RISK_REWARD:
+            state.risk_reward_last_alert_at = None
+        case AlertKind.RESISTANCE_BREAKOUT:
+            state.breakout_last_alert_at = None
+        case AlertKind.SUPPORT_BREACH:
+            state.support_breach_last_alert_at = None
+    session.add(state)
+    session.commit()
 
 
 class MissingPersistedIdError(RuntimeError):
