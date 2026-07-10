@@ -90,14 +90,19 @@ class MonitoringLifecycle:
     async def run(self) -> None:
         while True:
             try:
-                with self._session_factory() as session:
-                    self._runner.run_tick(session)
+                # Whole sync tick (urlopen/sleep/SQLite) off the event loop.
+                # Session is created inside the worker thread for SQLite safety.
+                await anyio.to_thread.run_sync(self._run_tick_in_worker)
             except Exception:
                 LOGGER.exception("monitoring scheduler tick failed; continuing after interval")
                 record_failure = getattr(self._runner, "record_tick_failure", None)
                 if callable(record_failure):
                     record_failure()
             await self._ticker.wait()
+
+    def _run_tick_in_worker(self) -> None:
+        with self._session_factory() as session:
+            self._runner.run_tick(session)
 
     def request_tick(self) -> None:
         if isinstance(self._ticker, ImmediateTickRequester):

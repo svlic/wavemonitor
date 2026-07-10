@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from threading import Event
+from threading import Event, get_ident
 
 import anyio
 from fastapi.testclient import TestClient
@@ -38,9 +38,12 @@ class FakeAppLifecycle:
 @dataclass(slots=True)
 class FakeTickRunner:
     ticks: int = 0
+    tick_thread_ids: list[int] | None = None
 
     def run_tick(self, session: Session) -> RuntimeMetrics:
         self.ticks += 1
+        if self.tick_thread_ids is not None:
+            self.tick_thread_ids.append(get_ident())
         return RuntimeMetrics(
             scheduler_ready=True,
             providers_ready=True,
@@ -126,8 +129,10 @@ def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path:
     async def scenario() -> None:
         engine = create_database_engine(f"sqlite:///{tmp_path / 'loop.sqlite3'}")
         create_schema(engine)
-        runner = FakeTickRunner()
+        tick_thread_ids: list[int] = []
+        runner = FakeTickRunner(tick_thread_ids=tick_thread_ids)
         ticker = BlockingTicker()
+        event_loop_thread_id = get_ident()
 
         @contextmanager
         def session_factory() -> Iterator[Session]:
@@ -146,8 +151,10 @@ def test_monitoring_lifecycle_runs_tick_then_cleans_up_on_cancellation(tmp_path:
             await ticker.wait_started.wait()
             task_group.cancel_scope.cancel()
 
-        # Then: the loop exits cleanly and no second tick runs after cancellation.
+        # Then: the loop exits cleanly and the sync tick ran off the event-loop thread.
         assert runner.ticks == 1
+        assert tick_thread_ids == [tick_thread_ids[0]]
+        assert tick_thread_ids[0] != event_loop_thread_id
 
     anyio.run(scenario)
 
