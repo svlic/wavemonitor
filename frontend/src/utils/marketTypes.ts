@@ -1,4 +1,4 @@
-export type ProviderId = "yfinance" | "binance" | "hyperliquid";
+type ProviderId = "yfinance" | "binance" | "hyperliquid";
 
 export type MarketTypeId = "equity" | "usd_m_futures" | "coin_m_futures" | "perpetual";
 
