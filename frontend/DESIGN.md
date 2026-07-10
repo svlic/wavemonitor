@@ -42,7 +42,26 @@
 
 - 导航：当前路由 `.nav-link--active`
 - 按钮：hover 提亮、`:focus-visible` 2px accent 描边
-- 加载：`.skeleton` 脉冲占位
+- 加载：`.loading-panel` + `.skeleton` 脉冲占位（仪表盘 / 运维 / 标的列表一致）
+- 空态：`.empty-state`（虚线边框 + 居中）；带操作时用 `.empty-state--action`
+- 状态胶囊：`.status-pill--ready` / `--idle`
+
+## 布局补充
+
+- 桌面侧栏：`position: sticky; height: 100dvh`；品牌区 `.sidebar-header` 为纵向 flex（窄屏改为横向）
+- 主区垂直节奏：页面块间距用 `--space-panel`（1.25rem）
+- 数字字体 token：`--font-mono`；`input[type=number]` 使用等宽 + `tabular-nums`
+
+## 表格
+
+- 通用：`.data-table`（告警、错误、标的列表）— 表头 uppercase muted、首列 `font-weight: 600`、行 hover 淡青绿
+- 价格：`.price-monitor-table` — 与 data-table 同款表头；价格列 accent mono；指标列右对齐 mono
+
+## 表单
+
+- `.form-panel`：eyebrow + `.section-title` 标题层级
+- 映射行：`.mapping-row` 五列 grid，`align-items: end`；窄屏单列
+- 行内删除确认：`.inline-confirm` 浅红底区分危险操作
 
 ## 仪表盘 · 价格监控
 
