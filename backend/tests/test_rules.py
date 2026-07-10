@@ -15,8 +15,9 @@ from wavemonitor_backend.models import (
     Provider,
     SourceMapping,
 )
+from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules
 from wavemonitor_backend.rule_types import InvalidRuleState
-from wavemonitor_backend.rules import RuleState, evaluate_and_persist_rules, evaluate_rules
+from wavemonitor_backend.rules import RuleState, evaluate_rules
 
 OBSERVED_AT = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
@@ -117,7 +118,7 @@ def test_breakout_requires_crossing_from_at_or_below_resistance():
     assert already_above.alerts == ()
 
 
-def test_price_at_or_below_support_returns_invalid_non_alert_without_division():
+def test_price_at_or_below_support_emits_support_breach_and_invalid_state():
     # Given: prices at and below support make the long risk denominator zero or negative.
     state = RuleState(
         last_price=Decimal("101"),
@@ -140,17 +141,60 @@ def test_price_at_or_below_support_returns_invalid_non_alert_without_division():
         resistance=Decimal("130"),
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("3"),
-        previous_state=state,
+        previous_state=equal_support.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=30),
+    )
+
+    # Then: support-breach emits once, other stamps re-arm, no divide-by-zero.
+    assert [alert.kind for alert in equal_support.alerts] == [AlertKind.SUPPORT_BREACH]
+    assert equal_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
+    assert equal_support.next_state.support_breach_active is True
+    assert equal_support.next_state.support_breach_last_alert_at == OBSERVED_AT
+    assert equal_support.next_state.near_support_last_alert_at is None
+    assert equal_support.next_state.risk_reward_last_alert_at is None
+    assert equal_support.next_state.breakout_last_alert_at is None
+    assert below_support.alerts == ()
+    assert below_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
+    assert below_support.next_state.support_breach_last_alert_at == OBSERVED_AT
+
+
+def test_support_breach_rearms_after_price_recovers_above_support():
+    # Given: a prior support breach already stamped an alert.
+    breached = evaluate_rules(
+        price=Decimal("99"),
+        support=Decimal("100"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=RuleState(last_price=Decimal("101")),
         observed_at=OBSERVED_AT,
     )
 
-    # Then: both are explicit invalid rule states, never alert events or divide-by-zero crashes.
-    assert equal_support.alerts == ()
-    assert equal_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
-    assert equal_support.next_state.near_support_active is False
-    assert equal_support.next_state.near_support_last_alert_at == OBSERVED_AT - timedelta(minutes=1)
-    assert below_support.alerts == ()
-    assert below_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
+    # When: price recovers above support, then breaches again.
+    recovered = evaluate_rules(
+        price=Decimal("105"),
+        support=Decimal("100"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("20"),
+        previous_state=breached.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=30),
+    )
+    rebreached = evaluate_rules(
+        price=Decimal("98"),
+        support=Decimal("100"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.02"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=recovered.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=60),
+    )
+
+    # Then: the second breach re-fires after the rising edge re-arm.
+    assert [alert.kind for alert in breached.alerts] == [AlertKind.SUPPORT_BREACH]
+    assert recovered.next_state.support_breach_active is False
+    assert recovered.next_state.support_breach_last_alert_at is None
+    assert [alert.kind for alert in rebreached.alerts] == [AlertKind.SUPPORT_BREACH]
 
 
 def test_resistance_at_or_below_price_resets_long_setup_without_risk_reward_alert():
@@ -173,7 +217,7 @@ def test_resistance_at_or_below_price_resets_long_setup_without_risk_reward_aler
     assert evaluation.next_state.risk_reward_active is False
 
 
-def test_repeated_near_support_suppressed_after_condition_resets():
+def test_repeated_near_support_suppressed_until_condition_resets():
     # Given: a first near-support observation has activated that rule.
     first = evaluate_rules(
         price=Decimal("100"),
@@ -214,11 +258,12 @@ def test_repeated_near_support_suppressed_after_condition_resets():
         observed_at=OBSERVED_AT + timedelta(seconds=90),
     )
 
-    # Then: a source/rule that alerted once never emits that rule again.
+    # Then: duplicates while active are suppressed; re-entry after reset re-fires.
     assert [alert.kind for alert in first.alerts] == [AlertKind.NEAR_SUPPORT]
     assert repeated.alerts == ()
     assert reset.next_state.near_support_active is False
-    assert retriggered.alerts == ()
+    assert reset.next_state.near_support_last_alert_at is None
+    assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
 
 
 def test_active_near_support_never_re_alerts_while_condition_stays_true():

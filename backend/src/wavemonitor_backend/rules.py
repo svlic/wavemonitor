@@ -31,13 +31,31 @@ def evaluate_rules(
     )
 
     if support is not None and price <= support:
+        support_breach_active = True
+        breach_alert = support_breach_alert(
+            active=support_breach_active,
+            previous_state=previous_state,
+            observed_at=observed_at,
+            price=price,
+            support=alert_support,
+            resistance=alert_resistance,
+        )
+        alerts = (breach_alert,) if breach_alert is not None else ()
         return RuleEvaluation(
-            alerts=(),
+            alerts=alerts,
             next_state=RuleState(
                 last_price=price,
-                near_support_last_alert_at=previous_state.near_support_last_alert_at,
-                risk_reward_last_alert_at=previous_state.risk_reward_last_alert_at,
-                breakout_last_alert_at=previous_state.breakout_last_alert_at,
+                support_breach_active=support_breach_active,
+                # Other conditions are inactive while price is at/below support → re-arm.
+                near_support_last_alert_at=None,
+                risk_reward_last_alert_at=None,
+                breakout_last_alert_at=None,
+                support_breach_last_alert_at=next_alert_time(
+                    active=support_breach_active,
+                    alerts=alerts,
+                    kind=AlertKind.SUPPORT_BREACH,
+                    previous=previous_state.support_breach_last_alert_at,
+                ),
             ),
             invalid_state=InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT,
         )
@@ -106,21 +124,26 @@ def evaluate_rules(
             near_support_active=near_support_active,
             risk_reward_active=risk_reward_active,
             above_resistance_active=above_resistance_active,
+            support_breach_active=False,
             near_support_last_alert_at=next_alert_time(
+                active=near_support_active,
                 alerts=alerts,
                 kind=AlertKind.NEAR_SUPPORT,
                 previous=previous_state.near_support_last_alert_at,
             ),
             risk_reward_last_alert_at=next_alert_time(
+                active=risk_reward_active,
                 alerts=alerts,
                 kind=AlertKind.RISK_REWARD,
                 previous=previous_state.risk_reward_last_alert_at,
             ),
             breakout_last_alert_at=next_alert_time(
+                active=above_resistance_active,
                 alerts=alerts,
                 kind=AlertKind.RESISTANCE_BREAKOUT,
                 previous=previous_state.breakout_last_alert_at,
             ),
+            support_breach_last_alert_at=None,
         ),
         invalid_state=None,
     )
@@ -225,24 +248,51 @@ def breakout_alert(
     )
 
 
+def support_breach_alert(
+    *,
+    active: bool,
+    previous_state: RuleState,
+    observed_at: datetime,
+    price: Decimal,
+    support: Decimal,
+    resistance: Decimal,
+) -> AlertDecision | None:
+    can_emit = should_emit(
+        active=active,
+        last_alert_at=previous_state.support_breach_last_alert_at,
+    )
+    if not can_emit:
+        return None
+    return AlertDecision(
+        kind=AlertKind.SUPPORT_BREACH,
+        price=price,
+        support=support,
+        resistance=resistance,
+        threshold=support,
+        metric=price,
+        triggered_at=observed_at,
+        message=f"price {price} breached support {support}",
+    )
+
+
 def should_emit(*, active: bool, last_alert_at: datetime | None) -> bool:
+    """Emit while condition is active only if not yet stamped (edge / re-arm / retry)."""
     if not active:
         return False
     return last_alert_at is None
 
 
 def next_alert_time(
-    *, alerts: tuple[AlertDecision, ...], kind: AlertKind, previous: datetime | None
+    *,
+    active: bool,
+    alerts: tuple[AlertDecision, ...],
+    kind: AlertKind,
+    previous: datetime | None,
 ) -> datetime | None:
+    """Stamp on emit; clear when inactive so the next rising edge can re-fire."""
+    if not active:
+        return None
     for alert in alerts:
         if alert.kind == kind:
             return alert.triggered_at
     return previous
-
-
-from wavemonitor_backend.rule_persistence import (  # noqa: E402
-    evaluate_and_persist_rules as evaluate_and_persist_rules,
-)
-from wavemonitor_backend.rule_persistence import (  # noqa: E402
-    persist_rule_evaluation as persist_rule_evaluation,
-)
