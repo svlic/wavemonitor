@@ -48,6 +48,23 @@ def migrate_sqlite_schema(connection: Connection) -> None:
         or "uq_source_mapping_per_instrument" not in source_mapping_sql
     ):
         _rebuild_sqlite_source_mapping_table(connection)
+    if _sqlite_table_sql(connection, "lastrulestate") is not None:
+        if not _sqlite_column_exists(connection, "lastrulestate", "support_breach_active"):
+            connection.exec_driver_sql(
+                "ALTER TABLE lastrulestate "
+                "ADD COLUMN support_breach_active BOOLEAN NOT NULL DEFAULT 0"
+            )
+        if not _sqlite_column_exists(
+            connection, "lastrulestate", "support_breach_last_alert_at"
+        ):
+            connection.exec_driver_sql(
+                "ALTER TABLE lastrulestate ADD COLUMN support_breach_last_alert_at DATETIME"
+            )
+    if _sqlite_table_sql(connection, "priceobservation") is not None:
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_priceobservation_observed_at "
+            "ON priceobservation (observed_at)"
+        )
 
 
 def _sqlite_table_sql(connection: Connection, table_name: str) -> str | None:
@@ -56,6 +73,11 @@ def _sqlite_table_sql(connection: Connection, table_name: str) -> str | None:
         (table_name,),
     ).fetchone()
     return None if row is None else str(row[0])
+
+
+def _sqlite_column_exists(connection: Connection, table_name: str, column_name: str) -> bool:
+    rows = connection.exec_driver_sql(f"PRAGMA table_info({table_name})").fetchall()
+    return any(str(row[1]) == column_name for row in rows)
 
 
 def _sqlite_column_is_not_null(connection: Connection, table_name: str, column_name: str) -> bool:
