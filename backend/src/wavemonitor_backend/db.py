@@ -65,6 +65,16 @@ def migrate_sqlite_schema(connection: Connection) -> None:
             "CREATE INDEX IF NOT EXISTS ix_priceobservation_observed_at "
             "ON priceobservation (observed_at)"
         )
+    if _sqlite_table_sql(connection, "alertevent") is not None:
+        connection.exec_driver_sql(
+            "DELETE FROM alertevent WHERE id NOT IN ("
+            "SELECT MIN(id) FROM alertevent "
+            "GROUP BY instrument_id, source_mapping_id, alert_kind)"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_alert_event_source_rule "
+            "ON alertevent (instrument_id, source_mapping_id, alert_kind)"
+        )
 
 
 def _sqlite_table_sql(connection: Connection, table_name: str) -> str | None:

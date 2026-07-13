@@ -205,7 +205,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     assert [state.risk_reward_active for state in states] == [True, True, True]
 
 
-def test_poll_tick_dedupes_while_active_and_rearms_after_reset(session: Session):
+def test_poll_tick_sends_each_source_rule_only_once_after_condition_resets(session: Session):
     # Given: a first tick already emitted near-support alerts for all three sources.
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
@@ -248,7 +248,7 @@ def test_poll_tick_dedupes_while_active_and_rearms_after_reset(session: Session)
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
 
-    # Then: active duplicates are suppressed; Binance re-fires after edge re-arm.
+    # Then: each source/rule tuple sends only once, even after the condition resets.
     alerts = session.exec(
         select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
     ).all()
@@ -256,16 +256,15 @@ def test_poll_tick_dedupes_while_active_and_rearms_after_reset(session: Session)
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
-    assert retrigger.alert_events_created == 1
-    assert len(alerts) == 4
+    assert retrigger.alert_events_created == 0
+    assert len(alerts) == 3
     assert len(observations) == 12
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
-        DeliveryStatus.SENT,
     ]
-    assert len(notifier.messages) == 4
+    assert len(notifier.messages) == 3
 
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):
@@ -406,7 +405,7 @@ def test_poll_tick_prunes_observations_older_than_retention(session: Session):
     assert instrument.id is not None
 
 
-def test_failed_telegram_delivery_rearms_alert_for_next_tick(session: Session):
+def test_failed_telegram_delivery_does_not_repeat_alert_next_tick(session: Session):
     # Given: one source near support and a notifier that fails once then succeeds.
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
@@ -431,16 +430,14 @@ def test_failed_telegram_delivery_rearms_alert_for_next_tick(session: Session):
     clock.set(BASE_TIME + timedelta(minutes=1))
     second = scheduler.run_tick(session)
 
-    # Then: stamps re-arm after failure so the next tick re-emits and delivers.
+    # Then: a failed attempt still consumes the tuple and the next tick does not resend it.
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.triggered_at)).all()
     deliveries = session.exec(select(TelegramDelivery).order_by(TelegramDelivery.id)).all()
     states = session.exec(select(LastRuleState)).all()
     assert first.alert_events_created == 3
-    assert second.alert_events_created == 3
-    assert len(alerts) == 6
+    assert second.alert_events_created == 0
+    assert len(alerts) == 3
     assert all(alert.alert_kind == AlertKind.NEAR_SUPPORT for alert in alerts)
-    assert [delivery.status for delivery in deliveries] == (
-        [DeliveryStatus.FAILED] * 3 + [DeliveryStatus.SENT] * 3
-    )
+    assert [delivery.status for delivery in deliveries] == [DeliveryStatus.FAILED] * 3
     assert all(state.near_support_last_alert_at is not None for state in states)
-    assert len(notifier.messages) == 6
+    assert len(notifier.messages) == 3

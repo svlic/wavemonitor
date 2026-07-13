@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from wavemonitor_backend.db import create_database_engine, create_schema
 
 
@@ -137,3 +139,45 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
     assert {"support_breach_active", "support_breach_last_alert_at"} <= columns
     assert state == (0, None)
     assert "ix_priceobservation_observed_at" in observation_indexes
+
+
+def test_create_schema_deduplicates_alerts_and_adds_once_only_index(tmp_path: Path):
+    # Given: a historical alert table containing duplicate source/rule rows.
+    database_path = tmp_path / "legacy-alerts.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE alertevent (
+                id INTEGER NOT NULL PRIMARY KEY,
+                instrument_id INTEGER NOT NULL,
+                source_mapping_id INTEGER NOT NULL,
+                alert_kind VARCHAR(19) NOT NULL,
+                price NUMERIC(24, 10) NOT NULL,
+                support NUMERIC(24, 10) NOT NULL,
+                resistance NUMERIC(24, 10) NOT NULL,
+                threshold NUMERIC(24, 10),
+                message VARCHAR(1000) NOT NULL,
+                triggered_at DATETIME NOT NULL
+            );
+            INSERT INTO alertevent VALUES
+                (1, 1, 1, 'near_support', 101, 100, 120, 0.02, 'first', '2026-01-01'),
+                (2, 1, 1, 'near_support', 102, 100, 120, 0.02, 'duplicate', '2026-01-02');
+            """
+        )
+
+    # When: application startup migrates the existing database.
+    create_schema(create_database_engine(f"sqlite:///{database_path}"))
+
+    # Then: one durable claim remains and the database rejects another duplicate claim.
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute("SELECT id, message FROM alertevent").fetchall()
+        indexes = {row[1] for row in connection.execute("PRAGMA index_list(alertevent)")}
+        assert rows == [(1, "first")]
+        assert "uq_alert_event_source_rule" in indexes
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO alertevent VALUES
+                    (3, 1, 1, 'near_support', 103, 100, 120, 0.02, 'third', '2026-01-03')
+                """
+            )

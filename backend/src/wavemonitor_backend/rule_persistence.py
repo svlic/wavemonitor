@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from wavemonitor_backend.models import (
@@ -42,14 +44,18 @@ def evaluate_and_persist_rules(
         ),
         observed_at=observed_at,
     )
-    persist_rule_evaluation(
+    events = persist_rule_evaluation(
         session=session,
         instrument_id=instrument_id,
         source_mapping_id=source_mapping_id,
         evaluation=evaluation,
         observed_at=observed_at,
     )
-    return evaluation
+    claimed_kinds = {event.alert_kind for event in events}
+    return replace(
+        evaluation,
+        alerts=tuple(alert for alert in evaluation.alerts if alert.kind in claimed_kinds),
+    )
 
 
 def persist_rule_evaluation(
@@ -60,8 +66,9 @@ def persist_rule_evaluation(
     evaluation: RuleEvaluation,
     observed_at: datetime,
 ) -> list[AlertEvent]:
-    events = [
-        AlertEvent(
+    events: list[AlertEvent] = []
+    for alert in evaluation.alerts:
+        event = AlertEvent(
             instrument_id=instrument_id,
             source_mapping_id=source_mapping_id,
             alert_kind=alert.kind,
@@ -72,10 +79,13 @@ def persist_rule_evaluation(
             message=alert.message,
             triggered_at=alert.triggered_at,
         )
-        for alert in evaluation.alerts
-    ]
-    for event in events:
-        session.add(event)
+        try:
+            with session.begin_nested():
+                session.add(event)
+                session.flush()
+        except IntegrityError:
+            continue
+        events.append(event)
     state = load_or_create_state(
         session=session, instrument_id=instrument_id, source_mapping_id=source_mapping_id
     )

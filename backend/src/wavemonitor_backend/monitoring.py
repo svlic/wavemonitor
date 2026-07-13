@@ -23,15 +23,10 @@ from wavemonitor_backend.models import (
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
-    TelegramHttpFailure,
     TelegramSendResult,
     message_for_kind,
 )
-from wavemonitor_backend.rule_persistence import (
-    evaluate_and_persist_rules,
-    rearm_alert_after_delivery_failure,
-    require_id,
-)
+from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, require_id
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 OBSERVATION_RETENTION: Final[timedelta] = timedelta(days=3)
@@ -215,8 +210,6 @@ class MonitoringScheduler:
             observed_at=result.timestamp,
         )
         deliveries = 0
-        instrument_id = require_id(instrument.id)
-        source_mapping_id = require_id(source.id)
         for alert in evaluation.alerts:
             message = message_for_kind(
                 MessageKind.ALERT,
@@ -239,13 +232,6 @@ class MonitoringScheduler:
                 result=send_result,
             )
             deliveries += 1
-            if isinstance(send_result, TelegramHttpFailure):
-                rearm_alert_after_delivery_failure(
-                    session,
-                    instrument_id=instrument_id,
-                    source_mapping_id=source_mapping_id,
-                    kind=alert.kind,
-                )
         return counts.with_success(len(evaluation.alerts), deliveries)
 
 
