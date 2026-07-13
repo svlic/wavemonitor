@@ -45,7 +45,7 @@ export function formatOptionalLevel(value: string | null | undefined): string {
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("zh-CN", {
+  const formatted = date.toLocaleString("zh-CN", {
     timeZone: DISPLAY_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
@@ -55,4 +55,5 @@ export function formatDateTime(iso: string): string {
     second: "2-digit",
     hour12: false,
   });
+  return `${formatted} UTC+8`;
 }

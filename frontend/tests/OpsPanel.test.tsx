@@ -114,6 +114,31 @@ describe("OpsPanel", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Connection timed out")).toBeInTheDocument();
+      expect(screen.getByText("2026/06/30 18:00:00 UTC+8")).toBeInTheDocument();
+    });
+  });
+
+  it("formats alert times in UTC+8 and prices with two decimal places", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
+    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([
+      {
+        id: 1,
+        instrument_id: 1,
+        source_mapping_id: 1,
+        alert_kind: "near_support",
+        price: "95000.5",
+        message: "Bitcoin is near support",
+        triggered_at: "2026-06-30T12:00:00Z",
+      },
+    ]);
+
+    render(<OpsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("2026/06/30 20:00:00 UTC+8")).toBeInTheDocument();
+      expect(screen.getByText("95000.50")).toBeInTheDocument();
     });
   });
 });

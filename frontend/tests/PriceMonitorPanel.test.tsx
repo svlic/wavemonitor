@@ -117,4 +117,10 @@ describe("PriceMonitorPanel", () => {
     expect(screen.getByText("90000.00")).toBeInTheDocument();
     expect(screen.getByText("100000.00")).toBeInTheDocument();
   });
+
+  it("formats observation times in UTC+8", () => {
+    render(<PriceMonitorPanel prices={prices} instruments={instruments} />);
+
+    expect(screen.getByText("2026/06/30 20:01:00 UTC+8")).toBeInTheDocument();
+  });
 });

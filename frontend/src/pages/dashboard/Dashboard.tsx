@@ -151,7 +151,7 @@ export function Dashboard() {
   ];
 
   const tickMeta = runtime?.last_tick_finished_at
-    ? `最近轮询：${formatDateTime(runtime.last_tick_finished_at)}（UTC+8）`
+    ? `最近轮询：${formatDateTime(runtime.last_tick_finished_at)}`
     : "尚未完成轮询周期";
 
   return (
