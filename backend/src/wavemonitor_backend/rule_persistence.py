@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -28,25 +29,43 @@ def evaluate_and_persist_rules(
 
     instrument_id = require_id(instrument.id)
     source_mapping_id = require_id(source_mapping.id)
+    evaluation_cycle_started_at = instrument.rule_cycle_started_at
+    cycle_started_at = utc_timestamp(evaluation_cycle_started_at)
+    observed_stamp = utc_timestamp(observed_at)
+    if (
+        observed_stamp is not None
+        and cycle_started_at is not None
+        and observed_stamp < cycle_started_at
+    ):
+        return RuleEvaluation(alerts=(), next_state=RuleState(), invalid_state=None)
+
+    persisted_state = load_or_create_state(
+        session=session,
+        instrument_id=instrument_id,
+        source_mapping_id=source_mapping_id,
+    )
+    state_updated_at = utc_timestamp(persisted_state.updated_at)
+    previous_state = (
+        RuleState()
+        if cycle_started_at is not None
+        and state_updated_at is not None
+        and state_updated_at < cycle_started_at
+        else rule_state_from_persisted(persisted_state)
+    )
     evaluation = evaluate_rules(
         price=price,
         support=instrument.support,
         resistance=instrument.resistance,
         near_support_threshold=instrument.near_support_threshold,
         risk_reward_threshold=instrument.risk_reward_threshold,
-        previous_state=rule_state_from_persisted(
-            load_or_create_state(
-                session=session,
-                instrument_id=instrument_id,
-                source_mapping_id=source_mapping_id,
-            )
-        ),
+        previous_state=previous_state,
         observed_at=observed_at,
     )
     events = persist_rule_evaluation(
         session=session,
         instrument_id=instrument_id,
         source_mapping_id=source_mapping_id,
+        rule_cycle_started_at=evaluation_cycle_started_at,
         evaluation=evaluation,
         observed_at=observed_at,
     )
@@ -64,7 +83,24 @@ def persist_rule_evaluation(
     source_mapping_id: int,
     evaluation: RuleEvaluation,
     observed_at: datetime,
+    rule_cycle_started_at: datetime | None = None,
 ) -> list[AlertEvent]:
+    instrument = session.get(Instrument, instrument_id)
+    if instrument is None:
+        raise MissingPersistedIdError
+    if rule_cycle_started_at is not None:
+        cycle_claim = session.execute(
+            update(Instrument)
+            .where(
+                Instrument.id == instrument_id,
+                Instrument.rule_cycle_started_at == rule_cycle_started_at,
+            )
+            .values(rule_cycle_started_at=Instrument.rule_cycle_started_at)
+        )
+        if cycle_claim.rowcount != 1:
+            session.rollback()
+            return []
+        session.refresh(instrument)
     events: list[AlertEvent] = []
     for alert in evaluation.alerts:
         event = AlertEvent(
@@ -77,6 +113,7 @@ def persist_rule_evaluation(
             threshold=alert.threshold,
             message=alert.message,
             triggered_at=alert.triggered_at,
+            rule_cycle_started_at=instrument.rule_cycle_started_at,
         )
         try:
             with session.begin_nested():

@@ -103,6 +103,7 @@ def seed_instrument(session: Session) -> tuple[Instrument, list[SourceMapping]]:
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
         updated_at=BASE_TIME,
+        rule_cycle_started_at=BASE_TIME,
     )
     session.add(instrument)
     session.commit()
@@ -403,6 +404,50 @@ def test_poll_tick_prunes_observations_older_than_retention(session: Session):
     assert recent_at.replace(tzinfo=None) in observed_ats
     assert BASE_TIME.replace(tzinfo=None) in observed_ats
     assert instrument.id is not None
+
+
+def test_edit_during_poll_uses_new_rule_cycle(session: Session):
+    # Given: a PUT-equivalent edit commits while one source returns an old-cycle quote.
+    instrument, sources = seed_instrument(session)
+    for source in sources[1:]:
+        source.enabled = False
+        session.add(source)
+    session.commit()
+    instrument_id = instrument.id
+    assert instrument_id is not None
+    new_cycle = BASE_TIME + timedelta(minutes=1)
+    engine = session.get_bind()
+
+    @dataclass(frozen=True, slots=True)
+    class EditingAdapter:
+        def get_latest_price(
+            self, symbol: str, market_type: MarketType
+        ) -> PriceAdapterResult:
+            with Session(engine) as edit_session:
+                current = edit_session.get(Instrument, instrument_id)
+                assert current is not None
+                current.updated_at = new_cycle
+                current.rule_cycle_started_at = new_cycle
+                edit_session.add(current)
+                edit_session.commit()
+            return price(Provider.YFINANCE, market_type, symbol, "90", BASE_TIME)
+
+    notifier = FakeNotifier()
+    registry = AdapterRegistry(
+        adapters={(Provider.YFINANCE, MarketType.EQUITY): EditingAdapter()}
+    )
+    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=FakeClock(new_cycle))
+
+    # When: the scheduler completes the poll that straddled the edit.
+    metrics = scheduler.run_tick(session)
+
+    # Then: the price observation remains, but old-cycle rule side effects are suppressed.
+    assert len(session.exec(select(PriceObservation)).all()) == 1
+    assert session.exec(select(AlertEvent)).all() == []
+    assert session.exec(select(LastRuleState)).all() == []
+    assert metrics.observations_written == 1
+    assert metrics.alert_events_created == 0
+    assert notifier.messages == []
 
 
 def test_failed_telegram_delivery_does_not_repeat_alert_next_tick(session: Session):

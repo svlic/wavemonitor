@@ -35,6 +35,7 @@ def persisted_instrument_and_source(session: Session) -> tuple[Instrument, Sourc
         risk_reward_threshold="20",
         created_at=OBSERVED_AT,
         updated_at=OBSERVED_AT,
+        rule_cycle_started_at=OBSERVED_AT,
     )
     session.add(instrument)
     session.commit()
@@ -103,6 +104,55 @@ def test_persistence_creates_alert_event_and_updates_last_rule_state(tmp_path: P
         assert stored_state.near_support_active is True
         assert stored_state.near_support_last_alert_at == OBSERVED_AT.replace(tzinfo=None)
         assert stored_state.last_invalid_state is None
+
+
+def test_persistence_rejects_evaluation_from_previous_rule_cycle(tmp_path: Path):
+    # Given: an evaluation was computed before another session advanced the rule cycle.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'stale-cycle.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument, source = persisted_instrument_and_source(session)
+        previous_cycle = instrument.rule_cycle_started_at
+        evaluation = RuleEvaluation(
+            alerts=(
+                AlertDecision(
+                    kind=AlertKind.SUPPORT_BREACH,
+                    price=Decimal("90"),
+                    support=Decimal("98"),
+                    resistance=Decimal("130"),
+                    threshold=Decimal("98"),
+                    metric=Decimal("-8"),
+                    triggered_at=OBSERVED_AT,
+                    message="BTCUSDT breached support",
+                ),
+            ),
+            next_state=RuleState(last_price=Decimal("90"), support_breach_active=True),
+            invalid_state=None,
+        )
+        with Session(engine) as edit_session:
+            current = edit_session.get(Instrument, instrument.id)
+            assert current is not None
+            current.rule_cycle_started_at = OBSERVED_AT + timedelta(minutes=1)
+            edit_session.add(current)
+            edit_session.commit()
+
+        # When: persistence receives the now-stale evaluation cycle snapshot.
+        events = persist_rule_evaluation(
+            session=session,
+            instrument_id=instrument.id,
+            source_mapping_id=source.id,
+            rule_cycle_started_at=previous_cycle,
+            evaluation=evaluation,
+            observed_at=OBSERVED_AT,
+        )
+
+        # Then: no event or rule state crosses into the newer cycle.
+        assert events == []
+        assert session.exec(select(AlertEvent)).all() == []
+        assert session.exec(select(LastRuleState)).all() == []
 
 
 def test_persist_invalid_state_without_alerts(tmp_path: Path):
