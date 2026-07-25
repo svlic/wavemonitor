@@ -68,6 +68,7 @@
 - 容器：`.price-monitor-table-wrap` + `.price-monitor-table` 全宽扁平行表（每行 = 标的 × 来源）
 - 列：标的、支撑/阻力、来源、价格、距支撑、距阻力、盈亏比、更新时间
 - 数字：`.price-table-row__price` 使用 `--color-accent`；`.price-monitor__level-value` 用于支撑/阻力
+- 历史突破：标的名下方用紧凑状态标记；`.price-crossing--support` 使用 danger，`.price-crossing--resistance` 使用 accent
 - 窄屏：表格外层横向滚动（`min-width` 保证列可读），避免在卡片内嵌套滚动
 
 ## 告警与诊断 · 最近告警
