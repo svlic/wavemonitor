@@ -116,12 +116,29 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
 
 
 def test_create_instrument_with_support_only(client: TestClient):
-    payload = VALID_PAYLOAD | {"support": "90000.00", "resistance": None}
+    payload = VALID_PAYLOAD | {
+        "support": "90000.00",
+        "resistance": None,
+        "risk_reward_threshold": None,
+    }
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 201
     body = response.json()
     assert body["support"] is not None
     assert body["resistance"] is None
+    assert body["near_support_threshold"] == "0.0200000000"
+    assert body["risk_reward_threshold"] is None
+
+
+def test_create_support_only_instrument_requires_near_support_threshold(client: TestClient):
+    payload = VALID_PAYLOAD | {
+        "support": "90000.00",
+        "resistance": None,
+        "near_support_threshold": None,
+        "risk_reward_threshold": None,
+    }
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 422
 
 
 def test_create_instrument_requests_immediate_monitoring_tick(tmp_path: Path):
@@ -146,12 +163,27 @@ def test_create_instrument_requests_immediate_monitoring_tick(tmp_path: Path):
 
 
 def test_create_instrument_with_resistance_only(client: TestClient):
-    payload = VALID_PAYLOAD | {"support": None, "resistance": "110000.00"}
+    payload = VALID_PAYLOAD | {
+        "support": None,
+        "resistance": "110000.00",
+        "near_support_threshold": None,
+        "risk_reward_threshold": None,
+    }
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 201
     body = response.json()
     assert body["support"] is None
     assert body["resistance"] is not None
+    assert body["near_support_threshold"] is None
+    assert body["risk_reward_threshold"] is None
+
+
+def test_create_instrument_with_both_levels_requires_risk_reward_threshold(
+    client: TestClient,
+):
+    payload = VALID_PAYLOAD | {"risk_reward_threshold": None}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 422
 
 
 def test_create_instrument_rejects_both_levels_null(client: TestClient):
