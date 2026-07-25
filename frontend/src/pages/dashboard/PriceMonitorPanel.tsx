@@ -107,7 +107,19 @@ function PriceTableRow({ row }: PriceTableRowProps) {
 
   return (
     <tr className="price-table-row">
-      <td className="price-table-row__instrument">{instrument.name}</td>
+      <td className="price-table-row__instrument">
+        <span className="price-table-row__instrument-name">{instrument.name}</span>
+        {(price.support_breached || price.resistance_broken) && (
+          <span className="price-table-row__crossings" aria-label="历史价位突破">
+            {price.support_breached && (
+              <span className="price-crossing price-crossing--support">曾跌破支撑</span>
+            )}
+            {price.resistance_broken && (
+              <span className="price-crossing price-crossing--resistance">曾突破阻力</span>
+            )}
+          </span>
+        )}
+      </td>
       <td className="price-table-row__levels muted-text">
         <span className="price-table-row__level-pair">
           <span>

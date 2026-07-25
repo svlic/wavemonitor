@@ -959,6 +959,39 @@ select:focus {
   white-space: nowrap;
 }
 
+.price-table-row__instrument-name {
+  display: block;
+}
+
+.price-table-row__crossings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.price-crossing {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.price-crossing--support {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+.price-crossing--resistance {
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
 .price-table-row__levels {
   min-width: 10rem;
 }
