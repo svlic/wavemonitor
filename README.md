@@ -84,9 +84,6 @@ WAVEMONITOR_WEB_PASSWORD=change-me
 DATABASE_URL=sqlite:///./wavemonitor.sqlite3
 # 本地前端请求后端的根地址；生产 Docker 前端走同源 /api，无需设置
 VITE_API_BASE_URL=http://localhost:8000
-
-# ---------- 可选：实网冒烟脚本（默认不跑）----------
-# RUN_LIVE_SMOKE=1
 ```
 
 **Docker Compose 实际注入后端的变量**（定义在 `docker-compose.yml`）：
@@ -200,7 +197,6 @@ docker compose up --build -d
 | `WAVEMONITOR_SESSION_SECRET` | 无（启用密码时自动生成并持久化） | 可选覆盖；未设置时在数据库文件旁写入 `session_secret` |
 | `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `120` | 行情轮询周期（秒），须 > 0；默认 2 分钟 |
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
-| `RUN_LIVE_SMOKE` | 未设置 | 设为 `1` 时执行 `backend/scripts/live_smoke.py` 实网探测 |
 | `VITE_API_BASE_URL` | 空字符串 | **仅本地前端构建/开发**：API 根地址；Docker 生产构建留空，使用同源 `/api` |
 
 ---
