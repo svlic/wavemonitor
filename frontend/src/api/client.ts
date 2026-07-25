@@ -123,7 +123,11 @@ export class ApiClient {
   }
 
   async logout(signal?: AbortSignal): Promise<AuthStatusResponse> {
-    return this.fetch("/api/auth/logout", AuthStatusResponseSchema, this.requestInit(signal, { method: "POST" }));
+    return this.fetch(
+      "/api/auth/logout",
+      AuthStatusResponseSchema,
+      this.requestInit(signal, { method: "POST" }),
+    );
   }
 
   async getRuntime(signal?: AbortSignal): Promise<RuntimeResponse> {
@@ -220,12 +224,19 @@ export class ApiClient {
     return this.fetch(
       `/api/instruments/${id}`,
       InstrumentWithMappingsSchema,
-      this.requestInit(signal, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+      this.requestInit(signal, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      }),
     );
   }
 
   async deleteInstrument(id: number | string, signal?: AbortSignal): Promise<void> {
-    await this.fetch(`/api/instruments/${id}`, EmptyResponseSchema, this.requestInit(signal, { method: "DELETE" }));
+    await this.fetch(
+      `/api/instruments/${id}`,
+      EmptyResponseSchema,
+      this.requestInit(signal, { method: "DELETE" }),
+    );
   }
 }
 

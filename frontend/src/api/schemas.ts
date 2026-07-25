@@ -112,26 +112,22 @@ export const InstrumentWithMappingsSchema = InstrumentSchema.extend({
 
 export type InstrumentWithMappings = z.infer<typeof InstrumentWithMappingsSchema>;
 
-const CreateInstrumentRequestSchema = z.object({
-  name: z.string(),
-  enabled: z.boolean(),
-  support: z.string(),
-  resistance: z.string(),
-  near_support_threshold: z.string(),
-  risk_reward_threshold: z.string(),
-  source_mappings: z.array(
-    z.object({
-      provider: z.string(),
-      market_type: z.string(),
-      symbol: z.string(),
-      enabled: z.boolean(),
-    }),
-  ),
-});
+export type CreateInstrumentRequest = {
+  name: string;
+  enabled: boolean;
+  support: string;
+  resistance: string;
+  near_support_threshold: string;
+  risk_reward_threshold: string;
+  source_mappings: ReadonlyArray<{
+    provider: string;
+    market_type: string;
+    symbol: string;
+    enabled: boolean;
+  }>;
+};
 
-export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
-
-export type CreateInstrumentApiPayload = Omit<
+type CreateInstrumentApiPayload = Omit<
   CreateInstrumentRequest,
   "support" | "resistance" | "near_support_threshold" | "risk_reward_threshold"
 > & {

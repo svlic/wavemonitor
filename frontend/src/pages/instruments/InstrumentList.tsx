@@ -87,6 +87,9 @@ export function InstrumentList() {
     );
   }
 
+  const enabledCount = instruments.reduce((count, item) => count + (item.enabled ? 1 : 0), 0);
+  const disabledCount = instruments.length - enabledCount;
+
   return (
     <div className="panel">
       <div className="header-row">
@@ -95,7 +98,7 @@ export function InstrumentList() {
           <p className="summary">
             {instruments.length === 0
               ? "创建第一个标的以开始轮询与告警。"
-              : `共 ${instruments.length} 个标的，${instruments.filter((i) => i.enabled).length} 个监控中，${instruments.filter((i) => !i.enabled).length} 个已暂停。`}
+              : `共 ${instruments.length} 个标的，${enabledCount} 个监控中，${disabledCount} 个已暂停。`}
           </p>
         </div>
         <Link href="/instruments/new" className="button primary">

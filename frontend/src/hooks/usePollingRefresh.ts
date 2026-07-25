@@ -7,9 +7,7 @@ export function usePollingRefresh(
   intervalMs: number = DEFAULT_INTERVAL_MS,
 ): void {
   useEffect(() => {
-    const id = window.setInterval(() => {
-      onTick();
-    }, intervalMs);
+    const id = window.setInterval(onTick, intervalMs);
     return () => window.clearInterval(id);
   }, [onTick, intervalMs]);
 }
