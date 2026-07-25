@@ -10,11 +10,28 @@ from wavemonitor_backend.api import (
     require_id,
     source_mappings_for,
 )
-from wavemonitor_backend.models import Instrument, PriceObservation, SourceMapping
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    PriceObservation,
+    SourceMapping,
+)
 from wavemonitor_backend.schemas import LatestPriceResponse, SourceErrorResponse
 
 
 def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
+    crossing_kinds_by_source: dict[int, set[AlertKind]] = {}
+    crossing_events = session.exec(
+        select(AlertEvent.source_mapping_id, AlertEvent.alert_kind).where(
+            AlertEvent.alert_kind.in_(
+                (AlertKind.SUPPORT_BREACH, AlertKind.RESISTANCE_BREAKOUT)
+            )
+        )
+    ).all()
+    for source_mapping_id, alert_kind in crossing_events:
+        crossing_kinds_by_source.setdefault(source_mapping_id, set()).add(alert_kind)
+
     prices: list[LatestPriceResponse] = []
     for instrument in session.exec(select(Instrument).order_by(Instrument.id)).all():
         if not instrument.enabled:
@@ -23,8 +40,27 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
             if not source.enabled:
                 continue
             observation = latest_successful_observation_for(session, source)
-            if observation is not None:
-                prices.append(latest_price_response(instrument, source, observation))
+            if observation is None:
+                continue
+            source_id = require_id(source.id)
+            crossing_kinds = crossing_kinds_by_source.get(source_id, set())
+            prices.append(
+                LatestPriceResponse(
+                    instrument_id=require_id(instrument.id),
+                    instrument_name=instrument.name,
+                    source_mapping_id=source_id,
+                    provider=source.provider,
+                    market_type=source.market_type,
+                    symbol=source.symbol,
+                    last_price=decimal_to_api_string(observation.price)
+                    if observation.price is not None
+                    else "",
+                    last_observed_at=observation.observed_at,
+                    last_error=observation.error,
+                    support_breached=AlertKind.SUPPORT_BREACH in crossing_kinds,
+                    resistance_broken=AlertKind.RESISTANCE_BREAKOUT in crossing_kinds,
+                )
+            )
     return prices
 
 
@@ -40,26 +76,6 @@ def list_source_errors(session: Session) -> list[SourceErrorResponse]:
             if observation is not None and observation.error is not None:
                 errors.append(source_error_response(instrument, source, observation))
     return errors
-
-
-def latest_price_response(
-    instrument: Instrument,
-    source: SourceMapping,
-    observation: PriceObservation,
-) -> LatestPriceResponse:
-    return LatestPriceResponse(
-        instrument_id=require_id(instrument.id),
-        instrument_name=instrument.name,
-        source_mapping_id=require_id(source.id),
-        provider=source.provider,
-        market_type=source.market_type,
-        symbol=source.symbol,
-        last_price=decimal_to_api_string(observation.price)
-        if observation.price is not None
-        else "",
-        last_observed_at=observation.observed_at,
-        last_error=observation.error,
-    )
 
 
 def source_error_response(
