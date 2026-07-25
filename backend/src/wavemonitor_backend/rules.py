@@ -21,11 +21,16 @@ def evaluate_rules(
     price: Decimal,
     support: Decimal | None,
     resistance: Decimal | None,
-    near_support_threshold: Decimal,
-    risk_reward_threshold: Decimal,
+    near_support_threshold: Decimal | None,
+    risk_reward_threshold: Decimal | None,
     previous_state: RuleState,
     observed_at: datetime,
 ) -> RuleEvaluation:
+    if support is not None and near_support_threshold is None:
+        raise ValueError("near_support_threshold is required when support is set")
+    if support is not None and resistance is not None and risk_reward_threshold is None:
+        raise ValueError("risk_reward_threshold is required when support and resistance are set")
+
     alert_support, alert_resistance = levels_for_alerts(
         support=support, resistance=resistance, price=price
     )
@@ -62,13 +67,13 @@ def evaluate_rules(
 
     near_support_active = False
     near_support_metric: Decimal | None = None
-    if support is not None:
+    if support is not None and near_support_threshold is not None:
         near_support_metric = (price - support) / price
         near_support_active = near_support_metric <= near_support_threshold
 
     risk_reward_metric: Decimal | None = None
     risk_reward_active = False
-    if support is not None and resistance is not None:
+    if support is not None and resistance is not None and risk_reward_threshold is not None:
         risk_reward_metric = risk_reward_ratio(price=price, support=support, resistance=resistance)
         risk_reward_active = (
             risk_reward_metric is not None and risk_reward_metric >= risk_reward_threshold
@@ -89,7 +94,7 @@ def evaluate_rules(
                 threshold=near_support_threshold,
                 metric=near_support_metric if near_support_metric is not None else ZERO,
             )
-            if support is not None
+            if support is not None and near_support_threshold is not None
             else None,
             risk_reward_alert(
                 active=risk_reward_active,
@@ -101,7 +106,7 @@ def evaluate_rules(
                 threshold=risk_reward_threshold,
                 metric=risk_reward_metric,
             )
-            if support is not None and resistance is not None
+            if support is not None and resistance is not None and risk_reward_threshold is not None
             else None,
             breakout_alert(
                 active=above_resistance_active,
