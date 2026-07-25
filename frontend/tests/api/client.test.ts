@@ -73,19 +73,21 @@ describe("ApiClient", () => {
     expect(result).toEqual(mockData);
   });
 
-  it("serializeInstrumentLevelsForApi maps blank levels to null", () => {
+  it("serializeInstrumentLevelsForApi removes thresholds whose dependent levels are unavailable", () => {
     const payload = {
       name: "X",
       enabled: true,
       support: "",
       resistance: "200",
-      near_support_threshold: "0.02",
+      near_support_threshold: "invalid stale value",
       risk_reward_threshold: "2",
       source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
     };
     expect(serializeInstrumentLevelsForApi(payload)).toMatchObject({
       support: null,
       resistance: "200",
+      near_support_threshold: null,
+      risk_reward_threshold: null,
     });
   });
 
@@ -96,8 +98,8 @@ describe("ApiClient", () => {
       enabled: true,
       support: null,
       resistance: "200.0000000000",
-      near_support_threshold: "0.02",
-      risk_reward_threshold: "2",
+      near_support_threshold: null,
+      risk_reward_threshold: null,
       source_mappings: [],
     };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -115,9 +117,18 @@ describe("ApiClient", () => {
     });
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    const body = JSON.parse(String(init.body)) as { support: string | null; resistance: string | null };
-    expect(body.support).toBeNull();
-    expect(body.resistance).toBe("200");
+    const body = JSON.parse(String(init.body)) as {
+      support: string | null;
+      resistance: string | null;
+      near_support_threshold: string | null;
+      risk_reward_threshold: string | null;
+    };
+    expect(body).toMatchObject({
+      support: null,
+      resistance: "200",
+      near_support_threshold: null,
+      risk_reward_threshold: null,
+    });
   });
 
   it("getInstrument resolves from list response", async () => {

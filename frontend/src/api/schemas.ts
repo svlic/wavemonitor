@@ -100,8 +100,8 @@ const InstrumentSchema = z.object({
   enabled: z.boolean(),
   support: optionalLevelString,
   resistance: optionalLevelString,
-  near_support_threshold: z.string(),
-  risk_reward_threshold: z.string(),
+  near_support_threshold: optionalLevelString,
+  risk_reward_threshold: optionalLevelString,
 });
 
 export const InstrumentWithMappingsSchema = InstrumentSchema.extend({
@@ -129,16 +129,27 @@ const CreateInstrumentRequestSchema = z.object({
 
 export type CreateInstrumentRequest = z.infer<typeof CreateInstrumentRequestSchema>;
 
-export type CreateInstrumentApiPayload = Omit<CreateInstrumentRequest, "support" | "resistance"> & {
+export type CreateInstrumentApiPayload = Omit<
+  CreateInstrumentRequest,
+  "support" | "resistance" | "near_support_threshold" | "risk_reward_threshold"
+> & {
   readonly support: string | null;
   readonly resistance: string | null;
+  readonly near_support_threshold: string | null;
+  readonly risk_reward_threshold: string | null;
 };
 
 export function serializeInstrumentLevelsForApi(data: CreateInstrumentRequest): CreateInstrumentApiPayload {
+  const support = data.support.trim() || null;
+  const resistance = data.resistance.trim() || null;
+
   return {
     ...data,
-    support: data.support.trim() || null,
-    resistance: data.resistance.trim() || null,
+    support,
+    resistance,
+    near_support_threshold: support === null ? null : data.near_support_threshold.trim() || null,
+    risk_reward_threshold:
+      support === null || resistance === null ? null : data.risk_reward_threshold.trim() || null,
   };
 }
 
