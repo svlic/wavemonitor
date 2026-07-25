@@ -65,16 +65,58 @@ def test_instrument_rejects_support_greater_than_or_equal_to_resistance():
         )
 
 
-def test_instrument_accepts_support_only():
+def test_instrument_accepts_support_only_without_risk_reward_threshold():
     instrument = Instrument(
         name="Resistance TBD",
         support="100",
         resistance=None,
         near_support_threshold="0.02",
-        risk_reward_threshold="2",
+        risk_reward_threshold=None,
     )
     assert instrument.support == Decimal("100")
     assert instrument.resistance is None
+    assert instrument.near_support_threshold == Decimal("0.02")
+    assert instrument.risk_reward_threshold is None
+
+
+def test_instrument_accepts_resistance_only_without_thresholds():
+    instrument = Instrument(
+        name="Support TBD",
+        support=None,
+        resistance="120",
+        near_support_threshold=None,
+        risk_reward_threshold=None,
+    )
+    assert instrument.support is None
+    assert instrument.resistance == Decimal("120")
+    assert instrument.near_support_threshold is None
+    assert instrument.risk_reward_threshold is None
+
+
+def test_instrument_rejects_support_without_near_support_threshold():
+    with pytest.raises(ValidationError, match="near_support_threshold is required"):
+        Instrument.model_validate(
+            {
+                "name": "Missing near threshold",
+                "support": "100",
+                "resistance": None,
+                "near_support_threshold": None,
+                "risk_reward_threshold": None,
+            }
+        )
+
+
+def test_instrument_rejects_both_levels_without_risk_reward_threshold():
+    with pytest.raises(ValidationError, match="risk_reward_threshold is required"):
+        Instrument.model_validate(
+            {
+                "name": "Missing risk threshold",
+                "support": "100",
+                "resistance": "120",
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": None,
+            }
+        )
 
 
 def test_instrument_rejects_both_levels_unset():

@@ -102,8 +102,12 @@ class Instrument(RuleDecimalMixin, table=True):
     enabled: bool = Field(default=True)
     support: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     resistance: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
-    near_support_threshold: Decimal = Field(sa_column=decimal_column())
-    risk_reward_threshold: Decimal = Field(sa_column=decimal_column())
+    near_support_threshold: Decimal | None = Field(
+        default=None, sa_column=decimal_column(nullable=True)
+    )
+    risk_reward_threshold: Decimal | None = Field(
+        default=None, sa_column=decimal_column(nullable=True)
+    )
     created_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
     updated_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
 
@@ -124,25 +128,35 @@ class Instrument(RuleDecimalMixin, table=True):
             and not isinstance(self.support, Decimal)
             or self.resistance is not None
             and not isinstance(self.resistance, Decimal)
-            or not isinstance(self.near_support_threshold, Decimal)
-            or not isinstance(self.risk_reward_threshold, Decimal)
+            or self.near_support_threshold is not None
+            and not isinstance(self.near_support_threshold, Decimal)
+            or self.risk_reward_threshold is not None
+            and not isinstance(self.risk_reward_threshold, Decimal)
         )
 
     def _coerce_rule_fields(self) -> None:
         self.support = normalize_optional_level(self.support)
         self.resistance = normalize_optional_level(self.resistance)
-        near = self.parse_decimal_from_string(self.near_support_threshold)
-        risk = self.parse_decimal_from_string(self.risk_reward_threshold)
-        if near is None or risk is None:
-            raise ValueError("near_support_threshold and risk_reward_threshold are required")
-        self.near_support_threshold = near
-        self.risk_reward_threshold = risk
+        self.near_support_threshold = self.parse_decimal_from_string(
+            self.near_support_threshold
+        )
+        self.risk_reward_threshold = self.parse_decimal_from_string(
+            self.risk_reward_threshold
+        )
 
     def _assert_rule_contract(self) -> None:
         validate_instrument_levels(support=self.support, resistance=self.resistance)
-        if not Decimal("0") < self.near_support_threshold < Decimal("1"):
+        near = self.near_support_threshold
+        risk = self.risk_reward_threshold
+        if self.support is not None and near is None:
+            raise ValueError("near_support_threshold is required when support is set")
+        if near is not None and not Decimal("0") < near < Decimal("1"):
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
-        if self.risk_reward_threshold <= Decimal("0"):
+        if self.support is not None and self.resistance is not None and risk is None:
+            raise ValueError(
+                "risk_reward_threshold is required when support and resistance are set"
+            )
+        if risk is not None and risk <= Decimal("0"):
             raise ValueError("risk_reward_threshold must be greater than 0")
 
 
