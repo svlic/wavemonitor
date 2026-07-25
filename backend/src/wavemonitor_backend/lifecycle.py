@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
 from threading import get_ident
 from typing import Protocol, runtime_checkable
 
@@ -31,14 +30,6 @@ class ImmediateTickRequester(Protocol):
 
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
-
-
-@dataclass(frozen=True, slots=True)
-class FixedIntervalTicker:
-    interval_seconds: float
-
-    async def wait(self) -> None:
-        await anyio.sleep(self.interval_seconds)
 
 
 class WakingTicker:
