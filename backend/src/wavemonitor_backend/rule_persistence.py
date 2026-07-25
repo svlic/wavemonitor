@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 
 from wavemonitor_backend.models import (
     AlertEvent,
-    AlertKind,
     Instrument,
     LastRuleState,
     SourceMapping,
@@ -156,31 +155,6 @@ def require_id(value: int | None) -> int:
     if value is None:
         raise MissingPersistedIdError
     return value
-
-
-def rearm_alert_after_delivery_failure(
-    session: Session,
-    *,
-    instrument_id: int,
-    source_mapping_id: int,
-    kind: AlertKind,
-) -> None:
-    state = load_or_create_state(
-        session=session,
-        instrument_id=instrument_id,
-        source_mapping_id=source_mapping_id,
-    )
-    match kind:
-        case AlertKind.NEAR_SUPPORT:
-            state.near_support_last_alert_at = None
-        case AlertKind.RISK_REWARD:
-            state.risk_reward_last_alert_at = None
-        case AlertKind.RESISTANCE_BREAKOUT:
-            state.breakout_last_alert_at = None
-        case AlertKind.SUPPORT_BREACH:
-            state.support_breach_last_alert_at = None
-    session.add(state)
-    session.commit()
 
 
 class MissingPersistedIdError(RuntimeError):

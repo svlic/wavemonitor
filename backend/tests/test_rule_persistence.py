@@ -19,7 +19,6 @@ from wavemonitor_backend.models import (
 from wavemonitor_backend.rule_persistence import (
     evaluate_and_persist_rules,
     persist_rule_evaluation,
-    rearm_alert_after_delivery_failure,
 )
 from wavemonitor_backend.rule_types import InvalidRuleState, RuleEvaluation
 from wavemonitor_backend.rules import AlertDecision, RuleState
@@ -240,58 +239,3 @@ def test_no_alert_evaluation_updates_last_rule_state_timestamp(tmp_path: Path):
         stored_state = session.exec(select(LastRuleState)).one()
         assert stored_state.last_price == Decimal("120.0000000000")
         assert stored_state.updated_at == tick_at.replace(tzinfo=None)
-
-
-def test_rearm_alert_after_delivery_failure_clears_matching_stamp(tmp_path: Path):
-    # Given: a persisted state with stamps for every alert kind.
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'rearm.sqlite3'}", connect_args={"check_same_thread": False}
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        instrument, source = persisted_instrument_and_source(session)
-        evaluation = RuleEvaluation(
-            alerts=(
-                AlertDecision(
-                    kind=AlertKind.NEAR_SUPPORT,
-                    price=Decimal("100"),
-                    support=Decimal("98"),
-                    resistance=Decimal("130"),
-                    threshold=Decimal("0.02"),
-                    metric=Decimal("0.02"),
-                    triggered_at=OBSERVED_AT,
-                    message="near support",
-                ),
-            ),
-            next_state=RuleState(
-                last_price=Decimal("100"),
-                near_support_active=True,
-                near_support_last_alert_at=OBSERVED_AT,
-                risk_reward_last_alert_at=OBSERVED_AT,
-                breakout_last_alert_at=OBSERVED_AT,
-                support_breach_last_alert_at=OBSERVED_AT,
-            ),
-            invalid_state=None,
-        )
-        persist_rule_evaluation(
-            session=session,
-            instrument_id=instrument.id,
-            source_mapping_id=source.id,
-            evaluation=evaluation,
-            observed_at=OBSERVED_AT,
-        )
-
-        # When: delivery failure re-arms only the near-support stamp.
-        rearm_alert_after_delivery_failure(
-            session,
-            instrument_id=instrument.id,
-            source_mapping_id=source.id,
-            kind=AlertKind.NEAR_SUPPORT,
-        )
-        stored_state = session.exec(select(LastRuleState)).one()
-
-        # Then: only the failed kind is cleared for the next tick.
-        assert stored_state.near_support_last_alert_at is None
-        assert stored_state.risk_reward_last_alert_at == OBSERVED_AT.replace(tzinfo=None)
-        assert stored_state.breakout_last_alert_at == OBSERVED_AT.replace(tzinfo=None)
-        assert stored_state.support_breach_last_alert_at == OBSERVED_AT.replace(tzinfo=None)
