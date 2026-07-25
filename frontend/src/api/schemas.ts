@@ -52,6 +52,8 @@ export const LatestPriceSchema = z.object({
   last_price: z.string(),
   last_observed_at: isoDateTime,
   last_error: z.string().nullable(),
+  support_breached: z.boolean(),
+  resistance_broken: z.boolean(),
 });
 
 export type LatestPrice = z.infer<typeof LatestPriceSchema>;

@@ -50,6 +50,33 @@ describe("ApiClient", () => {
     );
   });
 
+  it("parses historical support and resistance crossing flags", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            instrument_id: 1,
+            instrument_name: "Bitcoin",
+            source_mapping_id: 1,
+            provider: "binance",
+            market_type: "usd_m_futures",
+            symbol: "BTCUSDT",
+            last_price: "100",
+            last_observed_at: "2026-06-30T12:00:00Z",
+            last_error: null,
+            support_breached: true,
+            resistance_broken: false,
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    const result = await client.getLatestPrices();
+
+    expect(result[0]).toMatchObject({ support_breached: true, resistance_broken: false });
+  });
+
   it("returns parsed data on success", async () => {
     const mockData = {
       scheduler_ready: true,

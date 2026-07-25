@@ -113,6 +113,8 @@ describe("Dashboard", () => {
         last_price: "95000.50",
         last_observed_at: "2026-06-30T12:00:00Z",
         last_error: null,
+        support_breached: false,
+        resistance_broken: false,
       },
     ]);
 
@@ -165,6 +167,8 @@ describe("Dashboard", () => {
         last_price: "95000.50",
         last_observed_at: "2026-06-30T12:00:00Z",
         last_error: null,
+        support_breached: false,
+        resistance_broken: false,
       },
       {
         instrument_id: 1,
@@ -176,6 +180,8 @@ describe("Dashboard", () => {
         last_price: "95010.50",
         last_observed_at: "2026-06-30T12:01:00Z",
         last_error: null,
+        support_breached: false,
+        resistance_broken: false,
       },
     ]);
 
@@ -224,6 +230,8 @@ describe("Dashboard", () => {
         last_price: "95000.50",
         last_observed_at: "2026-06-30T12:00:00Z",
         last_error: null,
+        support_breached: false,
+        resistance_broken: false,
       },
     ]);
 
