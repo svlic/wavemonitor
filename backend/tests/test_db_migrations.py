@@ -62,6 +62,8 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
         ).fetchone()[0]
         assert instrument_columns["support"] == 0
         assert instrument_columns["resistance"] == 0
+        assert instrument_columns["near_support_threshold"] == 0
+        assert instrument_columns["risk_reward_threshold"] == 0
         assert "uq_source_mapping_per_instrument" in source_table_sql
         assert "uq_source_mapping_identity" not in source_table_sql
         connection.execute(
@@ -69,7 +71,7 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
             INSERT INTO instrument (
                 id, name, enabled, support, resistance,
                 near_support_threshold, risk_reward_threshold
-            ) VALUES (2, 'Resistance only', 1, NULL, 120000, 0.02, 3.5)
+            ) VALUES (2, 'Resistance only', 1, NULL, 120000, NULL, NULL)
             """
         )
         connection.execute(

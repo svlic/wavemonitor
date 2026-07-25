@@ -38,9 +38,16 @@ def create_schema(engine: Engine) -> None:
 
 
 def migrate_sqlite_schema(connection: Connection) -> None:
-    if _sqlite_column_is_not_null(connection, "instrument", "support"):
-        _rebuild_sqlite_instrument_table(connection)
-    if _sqlite_column_is_not_null(connection, "instrument", "resistance"):
+    instrument_nullable_columns = (
+        "support",
+        "resistance",
+        "near_support_threshold",
+        "risk_reward_threshold",
+    )
+    if any(
+        _sqlite_column_is_not_null(connection, "instrument", column)
+        for column in instrument_nullable_columns
+    ):
         _rebuild_sqlite_instrument_table(connection)
     source_mapping_sql = _sqlite_table_sql(connection, "sourcemapping")
     if source_mapping_sql is not None and (
@@ -105,8 +112,8 @@ def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
             enabled BOOLEAN NOT NULL,
             support NUMERIC(24, 10),
             resistance NUMERIC(24, 10),
-            near_support_threshold NUMERIC(24, 10) NOT NULL,
-            risk_reward_threshold NUMERIC(24, 10) NOT NULL,
+            near_support_threshold NUMERIC(24, 10),
+            risk_reward_threshold NUMERIC(24, 10),
             created_at DATETIME,
             updated_at DATETIME,
             PRIMARY KEY (id)
