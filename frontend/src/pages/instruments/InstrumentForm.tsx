@@ -59,16 +59,20 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       return;
     }
 
-    const nstError = validateThreshold(nearSupportThreshold, "接近支撑阈值");
-    if (nstError) {
-      setError(nstError);
-      return;
+    if (support.trim()) {
+      const nstError = validateThreshold(nearSupportThreshold, "接近支撑阈值");
+      if (nstError) {
+        setError(nstError);
+        return;
+      }
     }
 
-    const rrtError = validateRiskRewardThreshold(riskRewardThreshold);
-    if (rrtError) {
-      setError(rrtError);
-      return;
+    if (support.trim() && resistance.trim()) {
+      const rrtError = validateRiskRewardThreshold(riskRewardThreshold);
+      if (rrtError) {
+        setError(rrtError);
+        return;
+      }
     }
 
     if (mappings.length === 0) {
