@@ -45,6 +45,7 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
         risk_reward_threshold=payload.risk_reward_threshold,
         created_at=now,
         updated_at=now,
+        rule_cycle_started_at=now,
     )
     try:
         session.add(instrument)
@@ -73,7 +74,9 @@ def update_instrument(
     instrument.resistance = payload.resistance
     instrument.near_support_threshold = payload.near_support_threshold
     instrument.risk_reward_threshold = payload.risk_reward_threshold
-    instrument.updated_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    instrument.updated_at = now
+    instrument.rule_cycle_started_at = now
     try:
         sync_source_mappings(session, instrument_id, payload)
         if rule_fields_changed:
@@ -266,12 +269,12 @@ def sync_source_mappings(session: Session, instrument_id: int, payload: Instrume
         mapping_identity_key(source): source
         for source in source_mappings_for(session, instrument_id)
     }
-    desired_keys = {mapping_identity_key_from_request(source) for source in payload.source_mappings}
+    desired_keys = {mapping_identity_key(source) for source in payload.source_mappings}
     for key, row in list(existing.items()):
         if key not in desired_keys:
             delete_source_mapping_cascade(session, row)
     for source in payload.source_mappings:
-        key = mapping_identity_key_from_request(source)
+        key = mapping_identity_key(source)
         row = existing.get(key)
         if row is None:
             session.add(
@@ -288,12 +291,8 @@ def sync_source_mappings(session: Session, instrument_id: int, payload: Instrume
             session.add(row)
 
 
-def mapping_identity_key(source: SourceMapping) -> tuple[Provider, MarketType, str]:
-    return (source.provider, source.market_type, source.symbol)
-
-
-def mapping_identity_key_from_request(
-    source: SourceMappingRequest,
+def mapping_identity_key(
+    source: SourceMapping | SourceMappingRequest,
 ) -> tuple[Provider, MarketType, str]:
     return (source.provider, source.market_type, source.symbol)
 

@@ -12,9 +12,18 @@ from sqlmodel import select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, session_scope
-from wavemonitor_backend.models import LastRuleState
+from wavemonitor_backend.models import (
+    AlertEvent,
+    AlertKind,
+    Instrument,
+    LastRuleState,
+    SourceMapping,
+)
 from wavemonitor_backend.notifier import TelegramSendSuccess
-from wavemonitor_backend.rule_persistence import persist_rule_evaluation
+from wavemonitor_backend.rule_persistence import (
+    evaluate_and_persist_rules,
+    persist_rule_evaluation,
+)
 from wavemonitor_backend.rule_types import RuleEvaluation
 from wavemonitor_backend.rules import RuleState
 from wavemonitor_backend.settings import Settings
@@ -494,10 +503,13 @@ def test_update_rule_fields_clears_last_rule_state(client: TestClient, tmp_path:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
     observed_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
     with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        assert instrument is not None
         persist_rule_evaluation(
             session=session,
             instrument_id=instrument_id,
             source_mapping_id=source_mapping_id,
+            rule_cycle_started_at=instrument.rule_cycle_started_at,
             evaluation=RuleEvaluation(
                 alerts=(),
                 next_state=RuleState(
@@ -524,6 +536,166 @@ def test_update_rule_fields_clears_last_rule_state(client: TestClient, tmp_path:
         assert states == []
 
 
+def test_patch_enabled_preserves_rule_cycle(client: TestClient, tmp_path: Path):
+    # Given: an instrument has an established rule-cycle boundary.
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    instrument_id = create_response.json()["id"]
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        assert instrument is not None
+        cycle_started_at = instrument.rule_cycle_started_at
+
+    # When: monitoring is paused and resumed through PATCH.
+    assert client.patch(
+        f"/api/instruments/{instrument_id}", json={"enabled": False}
+    ).status_code == 200
+    assert client.patch(
+        f"/api/instruments/{instrument_id}", json={"enabled": True}
+    ).status_code == 200
+
+    # Then: the full-edit rule cycle remains unchanged.
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        assert instrument is not None
+        assert instrument.rule_cycle_started_at == cycle_started_at
+
+
+def test_update_starts_new_crossing_cycle(client: TestClient, tmp_path: Path):
+    # Given: the instrument already has a support-breach event from its current edit cycle.
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    instrument_id = created["id"]
+    source_mapping_id = created["source_mappings"][0]["id"]
+
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    old_triggered_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    with session_scope(engine) as session:
+        session.add(
+            AlertEvent(
+                instrument_id=instrument_id,
+                source_mapping_id=source_mapping_id,
+                alert_kind=AlertKind.SUPPORT_BREACH,
+                price=Decimal("89000"),
+                support=Decimal("90000.10"),
+                resistance=Decimal("110000.25"),
+                threshold=Decimal("90000.10"),
+                message="old cycle breach",
+                triggered_at=old_triggered_at,
+            )
+        )
+        session.commit()
+
+    # When: the instrument is edited and the same source breaches support again.
+    update_response = client.put(
+        f"/api/instruments/{instrument_id}",
+        json={**VALID_PAYLOAD, "name": "Bitcoin renamed"},
+    )
+    assert update_response.status_code == 200
+    with session_scope(engine) as session:
+        old_event = session.exec(
+            select(AlertEvent).where(
+                AlertEvent.instrument_id == instrument_id,
+                AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH,
+            )
+        ).one()
+        assert old_event.triggered_at == old_triggered_at.replace(tzinfo=None)
+
+    new_triggered_at = datetime.now(UTC)
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        source = session.get(SourceMapping, source_mapping_id)
+        assert instrument is not None
+        assert source is not None
+        evaluation = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("89000"),
+            observed_at=new_triggered_at,
+        )
+        stored_events = session.exec(
+            select(AlertEvent)
+            .where(
+                AlertEvent.instrument_id == instrument_id,
+                AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH,
+            )
+            .order_by(AlertEvent.triggered_at)
+        ).all()
+
+    # Then: the post-edit breach is emitted while the previous cycle remains historical.
+    assert [alert.kind for alert in evaluation.alerts] == [AlertKind.SUPPORT_BREACH]
+    assert [event.triggered_at for event in stored_events] == [
+        old_triggered_at.replace(tzinfo=None),
+        new_triggered_at.replace(tzinfo=None),
+    ]
+    assert stored_events[-1].price == Decimal("89000.0000000000")
+
+
+def test_pre_cycle_observation_does_not_replace_crossing_event(
+    client: TestClient, tmp_path: Path
+):
+    # Given: a completed edit cycle still retains its previous support-breach marker.
+    create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    instrument_id = created["id"]
+    source_mapping_id = created["source_mappings"][0]["id"]
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    old_triggered_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
+    with session_scope(engine) as session:
+        session.add(
+            AlertEvent(
+                instrument_id=instrument_id,
+                source_mapping_id=source_mapping_id,
+                alert_kind=AlertKind.SUPPORT_BREACH,
+                price=Decimal("89000"),
+                support=Decimal("90000.10"),
+                resistance=Decimal("110000.25"),
+                threshold=Decimal("90000.10"),
+                message="old cycle breach",
+                triggered_at=old_triggered_at,
+            )
+        )
+        session.commit()
+
+    update_response = client.put(
+        f"/api/instruments/{instrument_id}",
+        json={**VALID_PAYLOAD, "name": "Bitcoin renamed"},
+    )
+    assert update_response.status_code == 200
+
+    # When: a delayed quote from before the new cycle is evaluated afterward.
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        source = session.get(SourceMapping, source_mapping_id)
+        assert instrument is not None
+        assert source is not None
+        evaluation = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("89000"),
+            observed_at=old_triggered_at,
+        )
+        stored_event = session.exec(
+            select(AlertEvent).where(
+                AlertEvent.instrument_id == instrument_id,
+                AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH,
+            )
+        ).one()
+        states = session.exec(
+            select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
+        ).all()
+
+    # Then: no alert is emitted and the old marker remains untouched.
+    assert evaluation.alerts == ()
+    assert stored_event.triggered_at == old_triggered_at.replace(tzinfo=None)
+    assert states == []
+
+
 def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path: Path):
     create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
     assert create_response.status_code == 201
@@ -534,10 +706,13 @@ def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path
     engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
     observed_at = datetime(2026, 7, 2, 4, 0, tzinfo=UTC)
     with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        assert instrument is not None
         persist_rule_evaluation(
             session=session,
             instrument_id=instrument_id,
             source_mapping_id=source_mapping_id,
+            rule_cycle_started_at=instrument.rule_cycle_started_at,
             evaluation=RuleEvaluation(
                 alerts=(),
                 next_state=RuleState(last_price=Decimal("95000"), near_support_active=True),
