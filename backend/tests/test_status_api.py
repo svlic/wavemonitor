@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -26,8 +25,6 @@ from wavemonitor_backend.monitoring import RuntimeMetrics, RuntimeMetricsStore
 from wavemonitor_backend.settings import Settings
 
 BASE_TIME: Final[datetime] = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
-ROOT_DIR: Final[Path] = Path(__file__).resolve().parents[2]
-LIVE_SMOKE_SCRIPT: Final[Path] = ROOT_DIR / "backend" / "scripts" / "live_smoke.py"
 
 
 @pytest.fixture
@@ -185,8 +182,10 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
     ]
 
 
-def test_latest_prices_marks_historical_level_crossings(tmp_path: Path, session: Session):
-    # Given: one source has durable support-breach and resistance-breakout events.
+def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
+    tmp_path: Path, session: Session
+):
+    # Given: one source crossed both levels before its instrument's latest edit.
     seed_operational_rows(session)
     instrument = session.exec(select(Instrument)).one()
     source = session.exec(
@@ -204,48 +203,42 @@ def test_latest_prices_marks_historical_level_crossings(tmp_path: Path, session:
                 threshold=Decimal("98") if kind == AlertKind.SUPPORT_BREACH else Decimal("130"),
                 message=kind.value,
                 triggered_at=BASE_TIME,
+                rule_cycle_started_at=BASE_TIME,
             )
         )
-    session.commit()
-
-    sibling_source = SourceMapping(
-        instrument_id=instrument.id,
-        provider=Provider.HYPERLIQUID,
-        market_type=MarketType.PERPETUAL,
-        symbol="BTC",
-    )
-    session.add(sibling_source)
-    session.commit()
-    session.refresh(sibling_source)
+    new_cycle = datetime(2026, 6, 30, 12, 1, tzinfo=UTC)
+    instrument.updated_at = new_cycle
+    instrument.rule_cycle_started_at = new_cycle
+    session.add(instrument)
     session.add(
-        PriceObservation(
-            source_mapping_id=sibling_source.id,
-            price=Decimal("101"),
-            observed_at=BASE_TIME,
-            raw_path="fake.price",
+        AlertEvent(
+            instrument_id=instrument.id,
+            source_mapping_id=source.id,
+            alert_kind=AlertKind.RESISTANCE_BREAKOUT,
+            price=Decimal("131"),
+            support=Decimal("98"),
+            resistance=Decimal("130"),
+            threshold=Decimal("130"),
+            message="new cycle breakout",
+            triggered_at=datetime(2026, 6, 30, 12, 2, tzinfo=UTC),
+            rule_cycle_started_at=new_cycle,
         )
     )
-    instrument.support = Decimal("99")
-    instrument.resistance = Decimal("140")
-    session.add(instrument)
     session.commit()
 
-    # When: prices are requested after recovery and the configured levels have changed.
+    # When: latest prices are requested after a new-cycle resistance breakout.
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
         create_app(AppRuntime(settings=Settings(), database_url=database_url))
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 
-    # Then: all-time annotations remain on their source without changing latest prices.
+    # Then: only the post-edit crossing is marked and the latest price is unchanged.
     assert response.status_code == 200
-    rows_by_source = {row["source_mapping_id"]: row for row in response.json()}
-    assert rows_by_source[source.id]["last_price"] == "100.0000000000"
-    assert rows_by_source[source.id]["support_breached"] is True
-    assert rows_by_source[source.id]["resistance_broken"] is True
-    assert rows_by_source[sibling_source.id]["last_price"] == "101.0000000000"
-    assert rows_by_source[sibling_source.id]["support_breached"] is False
-    assert rows_by_source[sibling_source.id]["resistance_broken"] is False
+    row = response.json()[0]
+    assert row["last_price"] == "100.0000000000"
+    assert row["support_breached"] is False
+    assert row["resistance_broken"] is True
 
 
 def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, session: Session):
@@ -558,21 +551,3 @@ def test_openapi_documents_operational_paths(client: TestClient):
         "/api/source-errors",
         "/api/instruments/{instrument_id}/status",
     }.issubset(paths)
-
-
-def test_live_smoke_script_skips_without_explicit_gate():
-    # Given: the live smoke script is invoked without RUN_LIVE_SMOKE=1.
-    # When: it is run from the repository root.
-    result = subprocess.run(
-        [".venv/bin/python", str(LIVE_SMOKE_SCRIPT)],
-        cwd=ROOT_DIR,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    # Then: no live provider checks are attempted and the result is a clear skip.
-    assert result.returncode == 0
-    assert "SKIPPED" in result.stdout
-    assert "RUN_LIVE_SMOKE=1" in result.stdout

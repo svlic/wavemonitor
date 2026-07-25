@@ -47,9 +47,3 @@ class Settings(BaseModel):
     @property
     def auth_enabled(self) -> bool:
         return bool(self.web_password)
-
-    def public_status(self) -> dict[str, bool]:
-        status = {"telegram_ready": self.telegram_ready}
-        if self.auth_enabled:
-            return status | {"auth_enabled": True}
-        return status

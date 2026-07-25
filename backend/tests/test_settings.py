@@ -35,23 +35,6 @@ def test_settings_report_telegram_ready_only_when_both_env_values_exist(
     assert settings.telegram_chat_id == "-100987654321"
 
 
-def test_settings_schema_excludes_raw_telegram_secrets_from_safe_dump(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Given: runtime settings contain Telegram credentials from env.
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:secret-token")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100987654321")
-    settings = Settings.from_env()
-
-    # When: a public-safe settings view is produced.
-    public_dump = settings.public_status()
-
-    # Then: readiness is exposed without raw credential values.
-    assert public_dump == {"telegram_ready": True}
-    assert "123456:secret-token" not in str(public_dump)
-    assert "-100987654321" not in str(public_dump)
-
-
 def test_settings_load_web_auth_values_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given: the shared web password settings are provided by environment variables.
     monkeypatch.setenv("WAVEMONITOR_WEB_PASSWORD", "open-sesame")
@@ -60,11 +43,11 @@ def test_settings_load_web_auth_values_from_env(monkeypatch: pytest.MonkeyPatch)
     # When: settings are loaded from environment.
     settings = Settings.from_env()
 
-    # Then: auth is enabled without exposing the raw values in public status.
+    # Then: auth is enabled and secrets stay on the runtime settings object only.
     assert settings.auth_enabled is True
     assert settings.web_password == "open-sesame"
     assert settings.session_secret == "session-secret"
-    assert settings.public_status() == {"telegram_ready": False, "auth_enabled": True}
+    assert settings.telegram_ready is False
 
 
 def test_settings_auth_disabled_when_password_absent(monkeypatch: pytest.MonkeyPatch) -> None:
