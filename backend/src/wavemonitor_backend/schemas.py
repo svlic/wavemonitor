@@ -43,16 +43,23 @@ class DecimalStringMixin(BaseModel):
         check_fields=False,
     )
     @classmethod
-    def parse_decimal_string(cls, value: Decimal | str | int | float) -> Decimal:
+    def parse_decimal_string(
+        cls, value: Decimal | str | int | float | None
+    ) -> Decimal | None:
+        if value is None:
+            return None
         if isinstance(value, Decimal):
             return value
-        if isinstance(value, str | int):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return None if stripped == "" else Decimal(stripped)
+        if isinstance(value, int):
             return Decimal(value)
         raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
 
     @field_serializer("near_support_threshold", "risk_reward_threshold", check_fields=False)
-    def serialize_decimal(self, value: Decimal) -> str:
-        return str(value)
+    def serialize_decimal(self, value: Decimal | None) -> str | None:
+        return None if value is None else str(value)
 
 
 class SourceMappingRequest(BaseModel):
@@ -91,16 +98,26 @@ class InstrumentRequest(InstrumentLevelMixin, DecimalStringMixin):
     enabled: bool = True
     support: Decimal | None = None
     resistance: Decimal | None = None
-    near_support_threshold: Decimal
-    risk_reward_threshold: Decimal
+    near_support_threshold: Decimal | None = None
+    risk_reward_threshold: Decimal | None = None
     source_mappings: tuple[SourceMappingRequest, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
         validate_instrument_levels(support=self.support, resistance=self.resistance)
-        if self.near_support_threshold <= ZERO or self.near_support_threshold >= ONE:
+        if self.support is not None and self.near_support_threshold is None:
+            raise ValueError("near_support_threshold is required when support is set")
+        if self.near_support_threshold is not None and not ZERO < self.near_support_threshold < ONE:
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
-        if self.risk_reward_threshold <= ZERO:
+        if (
+            self.support is not None
+            and self.resistance is not None
+            and self.risk_reward_threshold is None
+        ):
+            raise ValueError(
+                "risk_reward_threshold is required when support and resistance are set"
+            )
+        if self.risk_reward_threshold is not None and self.risk_reward_threshold <= ZERO:
             raise ValueError("risk_reward_threshold must be greater than 0")
         return self
 
@@ -119,8 +136,8 @@ class InstrumentResponse(InstrumentLevelMixin, DecimalStringMixin):
     enabled: bool
     support: Decimal | None
     resistance: Decimal | None
-    near_support_threshold: Decimal
-    risk_reward_threshold: Decimal
+    near_support_threshold: Decimal | None = None
+    risk_reward_threshold: Decimal | None = None
     source_mappings: tuple[SourceMappingResponse, ...]
 
 
