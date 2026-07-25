@@ -26,6 +26,7 @@ export function formatAlertKindLabel(kind: string): string {
 }
 
 export const DISPLAY_TIME_ZONE = "Asia/Shanghai";
+const TIME_ZONE_SUFFIX = /(Z|[+-]\d{2}:\d{2})$/i;
 
 export function formatDecimal(value: string, fractionDigits = 2): string {
   const numericValue = Number(value);
@@ -43,7 +44,7 @@ export function formatOptionalLevel(value: string | null | undefined): string {
 }
 
 export function formatDateTime(iso: string): string {
-  const date = new Date(iso);
+  const date = new Date(TIME_ZONE_SUFFIX.test(iso) ? iso : `${iso}Z`);
   if (Number.isNaN(date.getTime())) return iso;
   const formatted = date.toLocaleString("zh-CN", {
     timeZone: DISPLAY_TIME_ZONE,
