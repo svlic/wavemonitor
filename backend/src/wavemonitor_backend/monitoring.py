@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Final, Protocol, assert_never
 
@@ -158,19 +158,12 @@ class MonitoringScheduler:
 
     def record_tick_failure(self) -> None:
         previous = self._metrics_store.metrics
-        failed_at = self._clock()
         self._metrics_store.update(
-            RuntimeMetrics(
+            replace(
+                previous,
                 scheduler_ready=False,
                 providers_ready=False,
-                enabled_sources=previous.enabled_sources,
-                polled_sources=previous.polled_sources,
-                observations_written=previous.observations_written,
-                source_errors=previous.source_errors,
-                alert_events_created=previous.alert_events_created,
-                telegram_deliveries_attempted=previous.telegram_deliveries_attempted,
-                last_tick_started_at=previous.last_tick_started_at,
-                last_tick_finished_at=failed_at,
+                last_tick_finished_at=self._clock(),
             )
         )
 
