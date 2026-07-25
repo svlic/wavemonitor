@@ -68,10 +68,14 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
         assert "uq_source_mapping_identity" not in source_table_sql
         connection.execute(
             """
-            INSERT INTO instrument (
-                id, name, enabled, support, resistance,
-                near_support_threshold, risk_reward_threshold
-            ) VALUES (2, 'Resistance only', 1, NULL, 120000, NULL, NULL)
+                INSERT INTO instrument (
+                    id, name, enabled, support, resistance,
+                    near_support_threshold, risk_reward_threshold, rule_cycle_started_at
+                ) VALUES (
+                    2, 'Resistance only', 1, NULL, 120000, NULL, NULL,
+                    '2026-01-01 00:00:00'
+                )
+
             """
         )
         connection.execute(
@@ -143,12 +147,115 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
     assert "ix_priceobservation_observed_at" in observation_indexes
 
 
-def test_create_schema_deduplicates_alerts_and_adds_once_only_index(tmp_path: Path):
-    # Given: a historical alert table containing duplicate source/rule rows.
+def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path: Path):
+    # Given: historical instrument and alert tables without explicit rule-cycle identity.
     database_path = tmp_path / "legacy-alerts.sqlite3"
     with sqlite3.connect(database_path) as connection:
         connection.executescript(
             """
+            CREATE TABLE instrument (
+                id INTEGER NOT NULL PRIMARY KEY,
+                name VARCHAR(120) NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                support NUMERIC(24, 10),
+                resistance NUMERIC(24, 10),
+                near_support_threshold NUMERIC(24, 10),
+                risk_reward_threshold NUMERIC(24, 10),
+                created_at DATETIME,
+                updated_at DATETIME
+            );
+            CREATE TABLE alertevent (
+                id INTEGER NOT NULL PRIMARY KEY,
+                instrument_id INTEGER NOT NULL,
+                source_mapping_id INTEGER NOT NULL,
+                alert_kind VARCHAR(19) NOT NULL,
+                price NUMERIC(24, 10) NOT NULL,
+                support NUMERIC(24, 10) NOT NULL,
+                resistance NUMERIC(24, 10) NOT NULL,
+                threshold NUMERIC(24, 10),
+                message VARCHAR(1000) NOT NULL,
+                triggered_at DATETIME NOT NULL
+            );
+            INSERT INTO instrument VALUES
+                (1, 'Bitcoin', 1, 98, 130, 0.02, 20, '2026-01-01', '2026-01-03');
+            INSERT INTO alertevent VALUES
+                (1, 1, 1, 'support_breach', 99, 100, 120, NULL, 'before edit', '2026-01-02'),
+                (2, 1, 1, 'near_support', 101, 100, 120, 0.02, 'first', '2026-01-04'),
+                (3, 1, 1, 'near_support', 102, 100, 120, 0.02, 'duplicate', '2026-01-05');
+            """
+        )
+
+    # When: application startup migrates the existing database twice.
+    engine = create_database_engine(f"sqlite:///{database_path}")
+    create_schema(engine)
+    create_schema(engine)
+
+    # Then: boundaries are backfilled and claims are unique only inside one cycle.
+    with sqlite3.connect(database_path) as connection:
+        cycle = connection.execute(
+            "SELECT rule_cycle_started_at FROM instrument WHERE id = 1"
+        ).fetchone()[0]
+        rows = connection.execute(
+            "SELECT id, message, rule_cycle_started_at FROM alertevent"
+        ).fetchall()
+        table_sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'alertevent'"
+        ).fetchone()[0]
+        foreign_keys = {
+            row[3] for row in connection.execute("PRAGMA foreign_key_list(alertevent)")
+        }
+        assert cycle == "2026-01-03"
+        assert rows == [
+            (1, "before edit", "2026-01-02"),
+            (2, "first", "2026-01-03"),
+        ]
+        assert "rule_cycle_started_at" in table_sql
+        assert foreign_keys == {"instrument_id", "source_mapping_id"}
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO alertevent (
+                    id, instrument_id, source_mapping_id, alert_kind, price,
+                    support, resistance, threshold, message, triggered_at,
+                    rule_cycle_started_at
+                ) VALUES (
+                    3, 1, 1, 'near_support', 103, 100, 120, 0.02, 'same cycle',
+                    '2026-01-06', '2026-01-03'
+                )
+                """
+            )
+        connection.execute(
+            """
+            INSERT INTO alertevent (
+                id, instrument_id, source_mapping_id, alert_kind, price,
+                support, resistance, threshold, message, triggered_at,
+                rule_cycle_started_at
+            ) VALUES (
+                4, 1, 1, 'near_support', 104, 100, 120, 0.02, 'new cycle',
+                '2026-02-01', '2026-02-01'
+            )
+            """
+        )
+        assert connection.execute("SELECT COUNT(*) FROM alertevent").fetchone()[0] == 3
+
+
+def test_create_schema_preserves_orphan_alert_history(tmp_path: Path):
+    # Given: a legacy alert references an instrument that no longer exists.
+    database_path = tmp_path / "orphan-alert.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE instrument (
+                id INTEGER NOT NULL PRIMARY KEY,
+                name VARCHAR(120) NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                support NUMERIC(24, 10),
+                resistance NUMERIC(24, 10),
+                near_support_threshold NUMERIC(24, 10),
+                risk_reward_threshold NUMERIC(24, 10),
+                created_at DATETIME,
+                updated_at DATETIME
+            );
             CREATE TABLE alertevent (
                 id INTEGER NOT NULL PRIMARY KEY,
                 instrument_id INTEGER NOT NULL,
@@ -162,24 +269,17 @@ def test_create_schema_deduplicates_alerts_and_adds_once_only_index(tmp_path: Pa
                 triggered_at DATETIME NOT NULL
             );
             INSERT INTO alertevent VALUES
-                (1, 1, 1, 'near_support', 101, 100, 120, 0.02, 'first', '2026-01-01'),
-                (2, 1, 1, 'near_support', 102, 100, 120, 0.02, 'duplicate', '2026-01-02');
+                (1, 999, 1, 'support_breach', 99, 100, 120, NULL, 'orphan', '2026-01-02');
             """
         )
 
-    # When: application startup migrates the existing database.
-    create_schema(create_database_engine(f"sqlite:///{database_path}"))
+    # When: application startup performs the cycle-aware migration.
+    engine = create_database_engine(f"sqlite:///{database_path}")
+    create_schema(engine)
 
-    # Then: one durable claim remains and the database rejects another duplicate claim.
+    # Then: the historical source row is preserved under its event-time cycle identity.
     with sqlite3.connect(database_path) as connection:
-        rows = connection.execute("SELECT id, message FROM alertevent").fetchall()
-        indexes = {row[1] for row in connection.execute("PRAGMA index_list(alertevent)")}
-        assert rows == [(1, "first")]
-        assert "uq_alert_event_source_rule" in indexes
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute(
-                """
-                INSERT INTO alertevent VALUES
-                    (3, 1, 1, 'near_support', 103, 100, 120, 0.02, 'third', '2026-01-03')
-                """
-            )
+        rows = connection.execute(
+            "SELECT id, message, rule_cycle_started_at FROM alertevent"
+        ).fetchall()
+        assert rows == [(1, "orphan", "2026-01-02")]

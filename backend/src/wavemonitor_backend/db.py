@@ -14,7 +14,7 @@ DEFAULT_DATABASE_URL: Final[str] = LOCAL_SQLITE_DATABASE_URL
 
 INSTRUMENT_COLUMNS: Final[str] = """
     id, name, enabled, support, resistance, near_support_threshold,
-    risk_reward_threshold, created_at, updated_at
+    risk_reward_threshold, created_at, updated_at, rule_cycle_started_at
 """
 SOURCE_MAPPING_COLUMNS: Final[str] = """
     id, instrument_id, provider, market_type, symbol, enabled
@@ -44,7 +44,18 @@ def migrate_sqlite_schema(connection: Connection) -> None:
         "near_support_threshold",
         "risk_reward_threshold",
     )
-    if any(
+    instrument_needs_cycle = _sqlite_table_sql(connection, "instrument") is not None and not (
+        _sqlite_column_exists(connection, "instrument", "rule_cycle_started_at")
+    )
+    if instrument_needs_cycle:
+        connection.exec_driver_sql(
+            "ALTER TABLE instrument ADD COLUMN rule_cycle_started_at DATETIME"
+        )
+        connection.exec_driver_sql(
+            "UPDATE instrument SET rule_cycle_started_at = "
+            "COALESCE(updated_at, created_at, '0001-01-01 00:00:00')"
+        )
+    if instrument_needs_cycle or any(
         _sqlite_column_is_not_null(connection, "instrument", column)
         for column in instrument_nullable_columns
     ):
@@ -72,16 +83,12 @@ def migrate_sqlite_schema(connection: Connection) -> None:
             "CREATE INDEX IF NOT EXISTS ix_priceobservation_observed_at "
             "ON priceobservation (observed_at)"
         )
-    if _sqlite_table_sql(connection, "alertevent") is not None:
-        connection.exec_driver_sql(
-            "DELETE FROM alertevent WHERE id NOT IN ("
-            "SELECT MIN(id) FROM alertevent "
-            "GROUP BY instrument_id, source_mapping_id, alert_kind)"
-        )
-        connection.exec_driver_sql(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_alert_event_source_rule "
-            "ON alertevent (instrument_id, source_mapping_id, alert_kind)"
-        )
+    alert_event_sql = _sqlite_table_sql(connection, "alertevent")
+    if alert_event_sql is not None and (
+        not _sqlite_column_exists(connection, "alertevent", "rule_cycle_started_at")
+        or "uq_alert_event_source_rule_cycle" not in alert_event_sql
+    ):
+        _rebuild_sqlite_alert_event_table(connection)
 
 
 def _sqlite_table_sql(connection: Connection, table_name: str) -> str | None:
@@ -116,6 +123,7 @@ def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
             risk_reward_threshold NUMERIC(24, 10),
             created_at DATETIME,
             updated_at DATETIME,
+            rule_cycle_started_at DATETIME NOT NULL,
             PRIMARY KEY (id)
         )
         """
@@ -166,6 +174,58 @@ def _rebuild_sqlite_source_mapping_table(connection: Connection) -> None:
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_sourcemapping_symbol ON sourcemapping (symbol)"
     )
+
+
+def _rebuild_sqlite_alert_event_table(connection: Connection) -> None:
+    has_cycle = _sqlite_column_exists(connection, "alertevent", "rule_cycle_started_at")
+    instrument_cycle = (
+        "(SELECT rule_cycle_started_at FROM instrument "
+        "WHERE instrument.id = alertevent.instrument_id)"
+    )
+    cycle_value = (
+        "rule_cycle_started_at"
+        if has_cycle
+        else f"CASE WHEN triggered_at >= {instrument_cycle} "
+        f"THEN {instrument_cycle} ELSE triggered_at END"
+    )
+    connection.exec_driver_sql("DROP TABLE IF EXISTS alertevent_new")
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE alertevent_new (
+            id INTEGER NOT NULL PRIMARY KEY,
+            instrument_id INTEGER NOT NULL,
+            source_mapping_id INTEGER NOT NULL,
+            alert_kind VARCHAR(19) NOT NULL,
+            price NUMERIC(24, 10) NOT NULL,
+            support NUMERIC(24, 10) NOT NULL,
+            resistance NUMERIC(24, 10) NOT NULL,
+            threshold NUMERIC(24, 10),
+            message VARCHAR(1000) NOT NULL,
+            triggered_at DATETIME NOT NULL,
+            rule_cycle_started_at DATETIME NOT NULL,
+            CONSTRAINT uq_alert_event_source_rule_cycle UNIQUE (
+                instrument_id, source_mapping_id, alert_kind, rule_cycle_started_at
+            ),
+            FOREIGN KEY(instrument_id) REFERENCES instrument (id),
+            FOREIGN KEY(source_mapping_id) REFERENCES sourcemapping (id)
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        "INSERT INTO alertevent_new ("
+        "id, instrument_id, source_mapping_id, alert_kind, price, support, resistance, "
+        "threshold, message, triggered_at, rule_cycle_started_at) "
+        "SELECT id, instrument_id, source_mapping_id, alert_kind, price, support, resistance, "
+        f"threshold, message, triggered_at, {cycle_value} FROM alertevent "
+        "WHERE id IN (SELECT MIN(id) FROM alertevent GROUP BY "
+        f"instrument_id, source_mapping_id, alert_kind, {cycle_value}) ORDER BY id"
+    )
+    connection.exec_driver_sql("DROP TABLE alertevent")
+    connection.exec_driver_sql("ALTER TABLE alertevent_new RENAME TO alertevent")
+    for column in ("instrument_id", "source_mapping_id", "alert_kind"):
+        connection.exec_driver_sql(
+            f"CREATE INDEX IF NOT EXISTS ix_alertevent_{column} ON alertevent ({column})"
+        )
 
 
 @contextmanager
