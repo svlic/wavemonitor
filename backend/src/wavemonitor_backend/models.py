@@ -89,8 +89,6 @@ class RuleDecimalMixin(SQLModel):
             return Decimal(stripped)
         if isinstance(value, int):
             return Decimal(value)
-        if isinstance(value, float):
-            raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
         raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
 
 
@@ -110,6 +108,9 @@ class Instrument(RuleDecimalMixin, table=True):
     )
     created_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
     updated_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
+    rule_cycle_started_at: datetime = Field(
+        default=datetime.min, sa_column=timestamp_column()
+    )
 
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
@@ -206,7 +207,8 @@ class AlertEvent(RuleDecimalMixin, table=True):
             "instrument_id",
             "source_mapping_id",
             "alert_kind",
-            name="uq_alert_event_source_rule",
+            "rule_cycle_started_at",
+            name="uq_alert_event_source_rule_cycle",
         ),
     )
     model_config = ConfigDict(validate_assignment=True)
@@ -221,6 +223,9 @@ class AlertEvent(RuleDecimalMixin, table=True):
     threshold: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     message: str = Field(min_length=1, max_length=1000)
     triggered_at: datetime = Field(sa_column=timestamp_column())
+    rule_cycle_started_at: datetime = Field(
+        default=datetime.min, sa_column=timestamp_column()
+    )
 
 
 class LastRuleState(RuleDecimalMixin, table=True):
