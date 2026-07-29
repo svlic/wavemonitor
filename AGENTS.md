@@ -1,63 +1,42 @@
-# AGENTS.md — WaveMonitor 协作者指南
+# WaveMonitor Agent Guide
 
-面向在本仓库中工作的 AI 与自动化工具。人类开发者也可作速查。
+## 项目
 
-## 项目是什么
+WaveMonitor 轮询多数据源行情，评估支撑/阻力规则，持久化价格与告警，并可发送 Telegram 通知。后端为 FastAPI + SQLModel，前端为 React + TypeScript。
 
-WaveMonitor：轮询多数据源价格 → 规则判断（支撑/阻力等）→ 持久化告警 → 可选 Telegram 通知。带 React 管理界面与 Docker Compose 一键部署。
+## 代码与权威文档
 
-## 仓库布局
+- `backend/src/wavemonitor_backend/`：API、调度、行情适配、规则与通知
+- `backend/tests/`：后端 pytest 测试
+- `frontend/src/`、`frontend/tests/`：React 应用与 Vitest 测试
+- `backend/API_CONTRACT.md`：HTTP API 权威契约
+- `frontend/DESIGN.md`：UI 设计规范
+- `README.md`、`.env.example`：部署、运行与环境变量说明
 
-| 路径 | 职责 |
-| --- | --- |
-| `backend/src/wavemonitor_backend/` | FastAPI 应用、调度、适配器、规则、通知 |
-| `backend/tests/` | pytest；改 API 或业务逻辑须跑通 |
-| `frontend/src/` | React 页面：`Dashboard`、`instruments/*` |
-| `frontend/DESIGN.md` | 前端设计 token；改 UI 须遵守 |
-| `backend/API_CONTRACT.md` | HTTP 路由契约 |
-| `docker-compose.yml` | 生产式本地/部署编排；**Web 宿主机端口 54002** |
+以当前代码和 API 契约为准；`.omo/plans/` 仅是历史记录。
 
-## 常用命令
+## 验证命令
 
 ```bash
-# 后端测试（仓库根目录）
+# 仓库根目录
 pytest
+ruff check backend/src backend/tests
 
 # 前端
 cd frontend && npm test && npm run build
 
-# Docker
-docker compose up --build
+# 编排配置
+docker compose config
 ```
 
-## 编码约定
+按改动范围运行验证；改 API、调度、规则或持久化逻辑时必须运行 `pytest`，改前端时必须运行前端测试与构建。
 
-### Python（后端）
+## 修改约束
 
-- Python 3.11+，类型注解与 ruff 规则见 `pyproject.toml`
-- 新行为优先补测试；勿用 `as any` 式绕过（Python 侧避免无类型裸字典扩散）
-- 密钥不得写入日志或 API 响应；Telegram 相关已做脱敏模式
-
-### TypeScript（前端）
-
-- API 响应经 `zod` 校验（`frontend/src/api/client.ts`）
-- 路由：`wouter`；测试使用 `@testing-library/react`，勿破坏现有 `aria-*` 与英文文案（测试断言依赖）
-- 样式：全局 `styles.css` + `DESIGN.md` token；勿引入未讨论的 CSS 框架
-
-## 修改时注意
-
-1. **Compose 端口**：对外 Web 为 `54002:8080`（frontend 容器 Nginx 8080）。改端口须同步 `README.md`。
-2. **数据库**：Compose 使用命名卷；本地开发常用文件 SQLite。
-3. **前端 API**：生产构建通过 Nginx 将 `/api` 代理到 `backend:8000`；本地 Vite 需代理或直连后端。
-4. **计划文档**：`.omo/plans/` 为历史规划，以当前代码与 `API_CONTRACT.md` 为准。
-
-## 不要做的事
-
-- 不要提交 `.env`、`.venv`、`node_modules`、`*.sqlite3`、`.codegraph/`
-- 不要在没有测试的情况下删除或弱化告警/轮询逻辑
-- 不要为通过 Lighthouse/测试而删除用户可见功能（见 `frontend` skill perfection 原则）
-
-## 文档语言
-
-- 用户面向说明：`README.md` 使用**中文**
-- 代码注释与 API 契约：保持现有英文风格即可，除非任务明确要求翻译
+- Python 3.11+；遵循 `pyproject.toml` 的类型与 Ruff 规则。新业务行为或缺陷修复应补回归测试。
+- 前端 API 数据必须经 `frontend/src/api/schemas.ts` 的 Zod schema 校验；保留无障碍语义，并遵循 `frontend/DESIGN.md`，不要引入新的 CSS 框架。
+- 不得在日志、API 响应或提交内容中暴露密钥。不要提交 `.env`、虚拟环境、`node_modules`、构建产物或 SQLite 数据库。
+- 不要为通过测试而删除用户可见功能，也不要无测试地削弱轮询、规则或告警行为。
+- Docker Web 入口为 `54002:8080`；Nginx 将 `/api` 和 `/health` 转发到 `backend:8000`。修改端口或代理时同步 `docker-compose.yml`、`frontend/docker/nginx.conf` 与 `README.md`。
+- 本地前端没有 Vite proxy；联调时通过 `VITE_API_BASE_URL` 指向后端。
+- 面向用户的 README 内容使用中文；代码注释与 API 契约沿用现有英文风格。
