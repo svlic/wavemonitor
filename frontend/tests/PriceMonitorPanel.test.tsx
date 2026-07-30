@@ -128,6 +128,34 @@ describe("PriceMonitorPanel", () => {
     expect(screen.getByText("2026/06/30 20:01:00 UTC+8")).toBeInTheDocument();
   });
 
+  it("shows resistance-only instruments while their first price is pending", () => {
+    const resistanceOnlyInstrument = {
+      id: 4,
+      name: "Resistance only",
+      enabled: true,
+      support: null,
+      resistance: "65000",
+      near_support_threshold: null,
+      risk_reward_threshold: null,
+      source_mappings: [
+        {
+          id: 4,
+          provider: "binance",
+          market_type: "usd_m_futures",
+          symbol: "BTCUSDT",
+          enabled: true,
+        },
+      ],
+    } satisfies InstrumentWithMappings;
+
+    render(<PriceMonitorPanel prices={[]} instruments={[resistanceOnlyInstrument]} />);
+
+    const row = screen.getByText("Resistance only").closest("tr");
+    expect(row).toHaveTextContent(/支撑\s+未设置/);
+    expect(row).toHaveTextContent(/阻力\s+65000\.00/);
+    expect(row).toHaveTextContent("待获取");
+  });
+
   it("marks historical support breaches and resistance breakouts on affected rows", () => {
     render(<PriceMonitorPanel prices={prices} instruments={instruments} />);
 

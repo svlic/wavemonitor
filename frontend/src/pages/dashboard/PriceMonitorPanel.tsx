@@ -22,7 +22,7 @@ type SourceMapping = InstrumentWithMappings["source_mappings"][number];
 
 type FlatPriceRow = {
   readonly instrument: InstrumentWithMappings;
-  readonly price: LatestPrice;
+  readonly price: LatestPrice | null;
   readonly source: SourceMapping;
 };
 
@@ -50,17 +50,14 @@ function buildFlatRows(
     if (!instrument.enabled) {
       continue;
     }
-    const bucket = buckets.get(instrument.id);
-    if (bucket === undefined) {
-      continue;
-    }
-    const sourceById = new Map(instrument.source_mappings.map((source) => [source.id, source]));
-    for (const price of bucket) {
-      const source = sourceById.get(price.source_mapping_id);
-      if (source === undefined || !source.enabled) {
+    const priceBySourceId = new Map(
+      (buckets.get(instrument.id) ?? []).map((price) => [price.source_mapping_id, price]),
+    );
+    for (const source of instrument.source_mappings) {
+      if (!source.enabled) {
         continue;
       }
-      rows.push({ instrument, price, source });
+      rows.push({ instrument, price: priceBySourceId.get(source.id) ?? null, source });
     }
   }
 
@@ -94,13 +91,15 @@ function PriceTableRow({ row }: PriceTableRowProps) {
   const support = instrument.support ?? undefined;
   const resistance = instrument.resistance ?? undefined;
   const supportPct =
-    support !== undefined ? computeSupportDistancePercent(price.last_price, support) : null;
+    price !== null && support !== undefined
+      ? computeSupportDistancePercent(price.last_price, support)
+      : null;
   const resistancePct =
-    resistance !== undefined
+    price !== null && resistance !== undefined
       ? computeResistanceDistancePercent(price.last_price, resistance)
       : null;
   const riskReward =
-    support !== undefined && resistance !== undefined
+    price !== null && support !== undefined && resistance !== undefined
       ? computeRiskRewardRatio(price.last_price, support, resistance)
       : null;
   const sourceLabel = formatSourceLabel(source.provider, source.market_type, source.symbol);
@@ -109,7 +108,7 @@ function PriceTableRow({ row }: PriceTableRowProps) {
     <tr className="price-table-row">
       <td className="price-table-row__instrument">
         <span className="price-table-row__instrument-name">{instrument.name}</span>
-        {(price.support_breached || price.resistance_broken) && (
+        {price !== null && (price.support_breached || price.resistance_broken) && (
           <span className="price-table-row__crossings" aria-label="历史价位突破">
             {price.support_breached && (
               <span className="price-crossing price-crossing--support">曾跌破支撑</span>
@@ -138,12 +137,18 @@ function PriceTableRow({ row }: PriceTableRowProps) {
         </span>
       </td>
       <td className="price-table-row__source">{sourceLabel}</td>
-      <td className="price-table-row__price">{formatDecimal(price.last_price)}</td>
+      <td className="price-table-row__price">
+        {price === null ? "待获取" : formatDecimal(price.last_price)}
+      </td>
       <td className="price-table-row__metric">{formatMetricPercent(supportPct)}</td>
       <td className="price-table-row__metric">{formatMetricPercent(resistancePct)}</td>
       <td className="price-table-row__metric">{formatRiskReward(riskReward)}</td>
       <td className="price-table-row__time muted-text">
-        <time dateTime={price.last_observed_at}>{formatDateTime(price.last_observed_at)}</time>
+        {price === null ? (
+          "—"
+        ) : (
+          <time dateTime={price.last_observed_at}>{formatDateTime(price.last_observed_at)}</time>
+        )}
       </td>
     </tr>
   );
@@ -174,7 +179,7 @@ export function PriceMonitorPanel({ prices, instruments }: PriceMonitorPanelProp
         <tbody>
           {rows.map((row) => (
             <PriceTableRow
-              key={`${row.instrument.id}-${row.price.source_mapping_id}`}
+              key={`${row.instrument.id}-${row.source.id}`}
               row={row}
             />
           ))}
