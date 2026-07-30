@@ -30,6 +30,7 @@ from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, req
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 OBSERVATION_RETENTION: Final[timedelta] = timedelta(days=3)
+PERSISTED_ERROR_MAX_LENGTH: Final[int] = 500
 
 
 class PollingPriceAdapter(Protocol):
@@ -310,7 +311,7 @@ def record_source_error(
             source_mapping_id=require_id(source.id),
             price=None,
             observed_at=observed_at,
-            error=f"{error.kind.value}: {error.message}",
+            error=f"{error.kind.value}: {error.message}"[:PERSISTED_ERROR_MAX_LENGTH],
         )
     )
     session.commit()

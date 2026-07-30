@@ -281,7 +281,7 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
                     market_type=MarketType.EQUITY,
                     symbol="BTC",
                     kind=AdapterErrorKind.PROVIDER_ERROR,
-                    message="provider down",
+                    message="provider down; " * 50,
                     raw_metadata={"provider": "fake"},
                 )
             ),
@@ -304,7 +304,7 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     ).all()
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
     assert [observation.error for observation in observations] == [
-        "provider_error: provider down",
+        f"provider_error: {'provider down; ' * 50}"[:500],
         None,
         None,
     ]
