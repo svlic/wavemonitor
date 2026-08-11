@@ -66,6 +66,51 @@ describe("InstrumentList", () => {
     expect(screen.getByText("65000.00")).toBeInTheDocument();
   });
 
+  it("sorts instruments by name alphabetically", async () => {
+    const unordered: readonly InstrumentWithMappings[] = [
+      {
+        id: 2,
+        name: "ETH/USD",
+        enabled: true,
+        support: "3000",
+        resistance: "4000",
+        near_support_threshold: "0.05",
+        risk_reward_threshold: "2.0",
+        source_mappings: [],
+      },
+      {
+        id: 1,
+        name: "BTC/USD",
+        enabled: true,
+        support: "60000",
+        resistance: "65000",
+        near_support_threshold: "0.05",
+        risk_reward_threshold: "2.0",
+        source_mappings: [],
+      },
+      {
+        id: 3,
+        name: "AAVE/USD",
+        enabled: false,
+        support: null,
+        resistance: null,
+        near_support_threshold: null,
+        risk_reward_threshold: null,
+        source_mappings: [],
+      },
+    ];
+    vi.mocked(apiClient.getInstruments).mockResolvedValue(unordered);
+    render(<InstrumentList />);
+
+    await waitFor(() => {
+      expect(screen.getByText("AAVE/USD")).toBeInTheDocument();
+    });
+
+    const rows = screen.getAllByRole("row").slice(1); // skip header
+    const names = rows.map((row) => row.querySelector("td")?.textContent ?? "");
+    expect(names).toEqual(["AAVE/USD", "BTC/USD", "ETH/USD"]);
+  });
+
   it("handles API error", async () => {
     vi.mocked(apiClient.getInstruments).mockRejectedValue(new Error("API Error"));
     render(<InstrumentList />);

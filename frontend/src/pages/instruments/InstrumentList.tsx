@@ -87,6 +87,9 @@ export function InstrumentList() {
     );
   }
 
+  const sortedInstruments = [...instruments].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
   const enabledCount = instruments.reduce((count, item) => count + (item.enabled ? 1 : 0), 0);
   const disabledCount = instruments.length - enabledCount;
 
@@ -112,7 +115,7 @@ export function InstrumentList() {
         </div>
       )}
 
-      {instruments.length === 0 ? (
+      {sortedInstruments.length === 0 ? (
         <div className="empty-state empty-state--action">
           <p>尚未配置标的。</p>
           <Link href="/instruments/new" className="button primary">
@@ -135,7 +138,7 @@ export function InstrumentList() {
               </tr>
             </thead>
             <tbody>
-              {instruments.map((inst) => (
+              {sortedInstruments.map((inst) => (
                 <tr key={inst.id}>
                   <td>{inst.name}</td>
                   <td>
