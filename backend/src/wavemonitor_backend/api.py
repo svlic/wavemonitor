@@ -39,8 +39,11 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
     instrument = Instrument(
         name=payload.name,
         enabled=payload.enabled,
+        alert_mode=payload.alert_mode,
         support=payload.support,
         resistance=payload.resistance,
+        high_water=payload.high_water,
+        fixed_drawdown=payload.fixed_drawdown,
         near_support_threshold=payload.near_support_threshold,
         risk_reward_threshold=payload.risk_reward_threshold,
         created_at=now,
@@ -70,10 +73,14 @@ def update_instrument(
     rule_fields_changed = instrument_rule_fields_changed(instrument, payload)
     instrument.name = payload.name
     instrument.enabled = payload.enabled
+    instrument.alert_mode = payload.alert_mode
     instrument.support = payload.support
     instrument.resistance = payload.resistance
+    instrument.high_water = payload.high_water
+    instrument.fixed_drawdown = payload.fixed_drawdown
     instrument.near_support_threshold = payload.near_support_threshold
     instrument.risk_reward_threshold = payload.risk_reward_threshold
+    instrument._assert_rule_contract()
     now = datetime.now(UTC)
     instrument.updated_at = now
     instrument.rule_cycle_started_at = now
@@ -136,8 +143,11 @@ def instrument_response(session: Session, instrument: Instrument) -> InstrumentR
         id=require_id(instrument.id),
         name=instrument.name,
         enabled=instrument.enabled,
+        alert_mode=instrument.alert_mode,
         support=instrument.support,
         resistance=instrument.resistance,
+        high_water=instrument.high_water,
+        fixed_drawdown=instrument.fixed_drawdown,
         near_support_threshold=instrument.near_support_threshold,
         risk_reward_threshold=instrument.risk_reward_threshold,
         source_mappings=tuple(
@@ -237,8 +247,11 @@ def recent_alerts_for(session: Session, instrument_id: int) -> list[AlertEvent]:
 
 def instrument_rule_fields_changed(instrument: Instrument, payload: InstrumentRequest) -> bool:
     return (
-        instrument.support != payload.support
+        instrument.alert_mode != payload.alert_mode
+        or instrument.support != payload.support
         or instrument.resistance != payload.resistance
+        or instrument.high_water != payload.high_water
+        or instrument.fixed_drawdown != payload.fixed_drawdown
         or instrument.near_support_threshold != payload.near_support_threshold
         or instrument.risk_reward_threshold != payload.risk_reward_threshold
     )

@@ -104,6 +104,9 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
 
     # Then: database-backed CRUD preserves API decimal strings and source identity.
     assert create_response.status_code == 201
+    assert created["alert_mode"] == "static"
+    assert created["high_water"] is None
+    assert created["fixed_drawdown"] is None
     assert created["support"] == "90000.1000000000"
     assert created["resistance"] == "110000.2500000000"
     assert created["source_mappings"] == [
@@ -197,6 +200,63 @@ def test_create_instrument_with_both_levels_requires_risk_reward_threshold(
 
 def test_create_instrument_rejects_both_levels_null(client: TestClient):
     payload = VALID_PAYLOAD | {"support": None, "resistance": None}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 422
+
+
+def test_create_update_list_fixed_drawdown_instrument_derives_support(client: TestClient):
+    payload = {
+        "name": "Bitcoin",
+        "enabled": True,
+        "alert_mode": "fixed_drawdown",
+        "high_water": "100000.10",
+        "fixed_drawdown": "10000.00",
+        "resistance": "110000.25",
+        "near_support_threshold": "0.02",
+        "risk_reward_threshold": "3.5",
+        "source_mappings": VALID_PAYLOAD["source_mappings"],
+    }
+
+    create_response = client.post("/api/instruments", json=payload)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["alert_mode"] == "fixed_drawdown"
+    assert created["high_water"] == "100000.1000000000"
+    assert created["fixed_drawdown"] == "10000.0000000000"
+    assert created["support"] == "90000.1000000000"
+    assert created["resistance"] == "110000.2500000000"
+
+    listed = client.get("/api/instruments").json()[0]
+    assert listed["alert_mode"] == "fixed_drawdown"
+    assert listed["high_water"] == "100000.1000000000"
+    assert listed["support"] == "90000.1000000000"
+
+    update_response = client.put(
+        f"/api/instruments/{created['id']}",
+        json={
+            **payload,
+            "high_water": "101000.10",
+            "fixed_drawdown": "11000.00",
+        },
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["high_water"] == "101000.1000000000"
+    assert updated["fixed_drawdown"] == "11000.0000000000"
+    assert updated["support"] == "90000.1000000000"
+
+
+def test_create_instrument_fixed_drawdown_rejects_client_support(client: TestClient):
+    payload = {
+        "name": "Bitcoin",
+        "enabled": True,
+        "alert_mode": "fixed_drawdown",
+        "support": "90000.10",
+        "high_water": "100000.10",
+        "fixed_drawdown": "10000.00",
+        "near_support_threshold": "0.02",
+        "source_mappings": VALID_PAYLOAD["source_mappings"],
+    }
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 422
 
