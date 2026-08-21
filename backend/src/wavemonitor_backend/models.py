@@ -7,6 +7,7 @@ from typing import Final, Self, assert_never
 
 from pydantic import ConfigDict, field_validator, model_validator
 from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
 from sqlmodel import Field, SQLModel
 
 from wavemonitor_backend.support_resistance import (
@@ -107,7 +108,17 @@ class Instrument(RuleDecimalMixin, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(min_length=1, max_length=120, index=True)
     enabled: bool = Field(default=True)
-    alert_mode: AlertMode = Field(default=AlertMode.STATIC)
+    alert_mode: AlertMode = Field(
+        default=AlertMode.STATIC,
+        sa_column=Column(
+            SAEnum(
+                AlertMode,
+                values_callable=lambda enum_cls: [member.value for member in enum_cls],
+                native_enum=False,
+            ),
+            nullable=False,
+        ),
+    )
     support: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     resistance: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     high_water: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))

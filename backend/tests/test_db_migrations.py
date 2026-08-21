@@ -4,8 +4,11 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from sqlmodel import select
 
-from wavemonitor_backend.db import create_database_engine, create_schema
+from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
+from wavemonitor_backend.models import Instrument
+from wavemonitor_backend.support_resistance import AlertMode
 
 
 def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_path: Path):
@@ -325,3 +328,38 @@ def test_create_schema_migrates_fixed_drawdown_columns(tmp_path: Path):
         ).fetchone()
     assert {"alert_mode", "high_water", "fixed_drawdown"} <= columns
     assert row == ("static", None, None)
+
+
+def test_orm_loads_legacy_static_alert_mode_value(tmp_path: Path):
+    # Given: a historical SQLite row persisted with alert_mode value 'static', not name 'STATIC'.
+    database_path = tmp_path / "legacy-static-alert-mode.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE instrument (
+                id INTEGER NOT NULL PRIMARY KEY,
+                name VARCHAR(120) NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                support NUMERIC(24, 10),
+                resistance NUMERIC(24, 10),
+                near_support_threshold NUMERIC(24, 10),
+                risk_reward_threshold NUMERIC(24, 10),
+                created_at DATETIME,
+                updated_at DATETIME,
+                rule_cycle_started_at DATETIME NOT NULL
+            );
+            INSERT INTO instrument VALUES
+                (1, 'Bitcoin', 1, 90000.1, 110000.25, 0.02, 3.5,
+                 '2026-01-01', '2026-01-03', '2026-01-03');
+            """
+        )
+
+    # When: startup migrates the schema and the ORM loads instruments.
+    engine = create_database_engine(f"sqlite:///{database_path}")
+    create_schema(engine)
+    with session_scope(engine) as session:
+        instruments = list(session.exec(select(Instrument).order_by(Instrument.id)).all())
+
+    # Then: the legacy value maps to AlertMode.STATIC without LookupError.
+    assert len(instruments) == 1
+    assert instruments[0].alert_mode is AlertMode.STATIC
