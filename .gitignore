@@ -43,3 +43,6 @@ Thumbs.db
 
 # Vite
 frontend/.vite/
+
+# Playwright MCP / local browser artifacts
+.playwright-mcp/
