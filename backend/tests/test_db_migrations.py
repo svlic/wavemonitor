@@ -283,3 +283,45 @@ def test_create_schema_preserves_orphan_alert_history(tmp_path: Path):
             "SELECT id, message, rule_cycle_started_at FROM alertevent"
         ).fetchall()
         assert rows == [(1, "orphan", "2026-01-02")]
+
+
+def test_create_schema_migrates_fixed_drawdown_columns(tmp_path: Path):
+    # Given: a historical SQLite schema without alert-mode or trailing-drawdown columns.
+    database_path = tmp_path / "legacy-drawdown.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE instrument (
+                id INTEGER NOT NULL PRIMARY KEY,
+                name VARCHAR(120) NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                support NUMERIC(24, 10),
+                resistance NUMERIC(24, 10),
+                near_support_threshold NUMERIC(24, 10),
+                risk_reward_threshold NUMERIC(24, 10),
+                created_at DATETIME,
+                updated_at DATETIME,
+                rule_cycle_started_at DATETIME NOT NULL
+            );
+            INSERT INTO instrument VALUES
+                (1, 'Bitcoin', 1, 90000.1, 110000.25, 0.02, 3.5,
+                 '2026-01-01', '2026-01-03', '2026-01-03');
+            """
+        )
+
+    # When: application startup migrates the existing database twice.
+    engine = create_database_engine(f"sqlite:///{database_path}")
+    create_schema(engine)
+    create_schema(engine)
+
+    # Then: new columns exist and legacy rows default to static mode with no trailing levels.
+    with sqlite3.connect(database_path) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(instrument)")}
+        row = connection.execute(
+            """
+            SELECT alert_mode, high_water, fixed_drawdown
+            FROM instrument WHERE id = 1
+            """
+        ).fetchone()
+    assert {"alert_mode", "high_water", "fixed_drawdown"} <= columns
+    assert row == ("static", None, None)

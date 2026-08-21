@@ -13,8 +13,9 @@ DEFAULT_DATABASE_URL: Final[str] = LOCAL_SQLITE_DATABASE_URL
 
 
 INSTRUMENT_COLUMNS: Final[str] = """
-    id, name, enabled, support, resistance, near_support_threshold,
-    risk_reward_threshold, created_at, updated_at, rule_cycle_started_at
+    id, name, enabled, alert_mode, support, resistance, high_water, fixed_drawdown,
+    near_support_threshold, risk_reward_threshold, created_at, updated_at,
+    rule_cycle_started_at
 """
 SOURCE_MAPPING_COLUMNS: Final[str] = """
     id, instrument_id, provider, market_type, symbol, enabled
@@ -38,13 +39,27 @@ def create_schema(engine: Engine) -> None:
 
 
 def migrate_sqlite_schema(connection: Connection) -> None:
+    instrument_sql = _sqlite_table_sql(connection, "instrument")
+    if instrument_sql is not None:
+        if not _sqlite_column_exists(connection, "instrument", "alert_mode"):
+            connection.exec_driver_sql(
+                "ALTER TABLE instrument ADD COLUMN alert_mode VARCHAR NOT NULL DEFAULT 'static'"
+            )
+        if not _sqlite_column_exists(connection, "instrument", "high_water"):
+            connection.exec_driver_sql(
+                "ALTER TABLE instrument ADD COLUMN high_water NUMERIC(24, 10)"
+            )
+        if not _sqlite_column_exists(connection, "instrument", "fixed_drawdown"):
+            connection.exec_driver_sql(
+                "ALTER TABLE instrument ADD COLUMN fixed_drawdown NUMERIC(24, 10)"
+            )
     instrument_nullable_columns = (
         "support",
         "resistance",
         "near_support_threshold",
         "risk_reward_threshold",
     )
-    instrument_needs_cycle = _sqlite_table_sql(connection, "instrument") is not None and not (
+    instrument_needs_cycle = instrument_sql is not None and not (
         _sqlite_column_exists(connection, "instrument", "rule_cycle_started_at")
     )
     if instrument_needs_cycle:
@@ -117,8 +132,11 @@ def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
             id INTEGER NOT NULL,
             name VARCHAR(120) NOT NULL,
             enabled BOOLEAN NOT NULL,
+            alert_mode VARCHAR NOT NULL DEFAULT 'static',
             support NUMERIC(24, 10),
             resistance NUMERIC(24, 10),
+            high_water NUMERIC(24, 10),
+            fixed_drawdown NUMERIC(24, 10),
             near_support_threshold NUMERIC(24, 10),
             risk_reward_threshold NUMERIC(24, 10),
             created_at DATETIME,
