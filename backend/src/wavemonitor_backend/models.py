@@ -3,13 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Final, Self
+from typing import Final, Self, assert_never
 
 from pydantic import ConfigDict, field_validator, model_validator
 from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from wavemonitor_backend.support_resistance import (
+    AlertMode,
+    derived_support,
     normalize_optional_level,
     validate_instrument_levels,
 )
@@ -62,7 +64,14 @@ class DeliveryStatus(StrEnum):
 
 
 class RuleDecimalMixin(SQLModel):
-    @field_validator("support", "resistance", mode="before", check_fields=False)
+    @field_validator(
+        "support",
+        "resistance",
+        "high_water",
+        "fixed_drawdown",
+        mode="before",
+        check_fields=False,
+    )
     @classmethod
     def parse_optional_level(cls, value: Decimal | str | int | float | None) -> Decimal | None:
         return normalize_optional_level(value)
@@ -98,8 +107,11 @@ class Instrument(RuleDecimalMixin, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(min_length=1, max_length=120, index=True)
     enabled: bool = Field(default=True)
+    alert_mode: AlertMode = Field(default=AlertMode.STATIC)
     support: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     resistance: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    high_water: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    fixed_drawdown: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     near_support_threshold: Decimal | None = Field(
         default=None, sa_column=decimal_column(nullable=True)
     )
@@ -129,6 +141,10 @@ class Instrument(RuleDecimalMixin, table=True):
             and not isinstance(self.support, Decimal)
             or self.resistance is not None
             and not isinstance(self.resistance, Decimal)
+            or self.high_water is not None
+            and not isinstance(self.high_water, Decimal)
+            or self.fixed_drawdown is not None
+            and not isinstance(self.fixed_drawdown, Decimal)
             or self.near_support_threshold is not None
             and not isinstance(self.near_support_threshold, Decimal)
             or self.risk_reward_threshold is not None
@@ -138,6 +154,8 @@ class Instrument(RuleDecimalMixin, table=True):
     def _coerce_rule_fields(self) -> None:
         self.support = normalize_optional_level(self.support)
         self.resistance = normalize_optional_level(self.resistance)
+        self.high_water = normalize_optional_level(self.high_water)
+        self.fixed_drawdown = normalize_optional_level(self.fixed_drawdown)
         self.near_support_threshold = self.parse_decimal_from_string(
             self.near_support_threshold
         )
@@ -145,8 +163,28 @@ class Instrument(RuleDecimalMixin, table=True):
             self.risk_reward_threshold
         )
 
+    def _derive_fixed_drawdown_support(self) -> None:
+        match self.alert_mode:
+            case AlertMode.STATIC:
+                return
+            case AlertMode.FIXED_DRAWDOWN:
+                high_water = self.high_water
+                fixed_drawdown = self.fixed_drawdown
+                if high_water is None or fixed_drawdown is None or self.support is not None:
+                    return
+                self.support = derived_support(high_water, fixed_drawdown)
+            case unreachable:
+                assert_never(unreachable)
+
     def _assert_rule_contract(self) -> None:
-        validate_instrument_levels(support=self.support, resistance=self.resistance)
+        validate_instrument_levels(
+            support=self.support,
+            resistance=self.resistance,
+            alert_mode=self.alert_mode,
+            high_water=self.high_water,
+            fixed_drawdown=self.fixed_drawdown,
+        )
+        self._derive_fixed_drawdown_support()
         near = self.near_support_threshold
         risk = self.risk_reward_threshold
         if self.support is not None and near is None:

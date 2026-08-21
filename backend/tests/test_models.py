@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 from wavemonitor_backend.models import (
     AlertEvent,
     AlertKind,
+    AlertMode,
     Instrument,
     LastRuleState,
     MarketType,
@@ -128,6 +129,107 @@ def test_instrument_rejects_both_levels_unset():
                 "resistance": None,
                 "near_support_threshold": "0.02",
                 "risk_reward_threshold": "2",
+            }
+        )
+
+
+def test_instrument_defaults_to_static_alert_mode():
+    # Given: a legacy-style instrument with no explicit alert mode.
+    instrument = Instrument(
+        name="Bitcoin",
+        support="90000.10",
+        resistance="110000.25",
+        near_support_threshold="0.02",
+        risk_reward_threshold="3.5",
+    )
+
+    # When / Then: existing rows stay on static support/resistance.
+    assert instrument.alert_mode is AlertMode.STATIC
+    assert instrument.high_water is None
+    assert instrument.fixed_drawdown is None
+
+
+def test_instrument_derives_support_from_high_water_minus_fixed_drawdown():
+    # Given: a fixed-drawdown instrument with an initial high water and absolute drawdown.
+    instrument = Instrument(
+        name="Bitcoin trail",
+        alert_mode=AlertMode.FIXED_DRAWDOWN,
+        high_water="100000",
+        fixed_drawdown="5000",
+        resistance="120000",
+        near_support_threshold="0.02",
+        risk_reward_threshold="3.5",
+    )
+
+    # When / Then: support is derived and stored as high water minus drawdown.
+    assert instrument.support == Decimal("95000")
+    assert instrument.high_water == Decimal("100000")
+    assert instrument.fixed_drawdown == Decimal("5000")
+
+
+def test_instrument_rejects_client_support_in_fixed_drawdown_mode():
+    # Given: a drawdown instrument that also tries to set support directly.
+    # When / Then: the domain rejects client-owned support in this mode.
+    with pytest.raises(ValidationError, match="support is derived"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin trail",
+                "alert_mode": "fixed_drawdown",
+                "support": "90000",
+                "high_water": "100000",
+                "fixed_drawdown": "5000",
+                "near_support_threshold": "0.02",
+            }
+        )
+
+
+def test_instrument_requires_high_water_and_drawdown_in_fixed_drawdown_mode():
+    with pytest.raises(ValidationError, match="high_water and fixed_drawdown are required"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin trail",
+                "alert_mode": "fixed_drawdown",
+                "near_support_threshold": "0.02",
+            }
+        )
+
+
+def test_instrument_rejects_non_positive_fixed_drawdown():
+    with pytest.raises(ValidationError, match="fixed_drawdown must be positive"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin trail",
+                "alert_mode": "fixed_drawdown",
+                "high_water": "100000",
+                "fixed_drawdown": "0",
+                "near_support_threshold": "0.02",
+            }
+        )
+
+
+def test_instrument_rejects_derived_support_that_is_not_positive():
+    with pytest.raises(ValidationError, match="support must be positive"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin trail",
+                "alert_mode": "fixed_drawdown",
+                "high_water": "100",
+                "fixed_drawdown": "100",
+                "near_support_threshold": "0.02",
+            }
+        )
+
+
+def test_instrument_rejects_drawdown_fields_in_static_mode():
+    with pytest.raises(ValidationError, match="high_water and fixed_drawdown"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin",
+                "alert_mode": "static",
+                "support": "90000",
+                "high_water": "100000",
+                "fixed_drawdown": "5000",
+                "near_support_threshold": "0.02",
             }
         )
 
