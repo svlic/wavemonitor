@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Final, Self
+from typing import Final, Self, assert_never
 
 from pydantic import (
     BaseModel,
@@ -16,6 +16,8 @@ from pydantic import (
 from wavemonitor_backend.models import AlertKind, MarketType, Provider, normalize_market_symbol
 from wavemonitor_backend.source_pairs import validate_provider_market_pair
 from wavemonitor_backend.support_resistance import (
+    AlertMode,
+    derived_support,
     normalize_optional_level,
     validate_instrument_levels,
 )
@@ -25,12 +27,19 @@ ONE: Final[Decimal] = Decimal("1")
 
 
 class InstrumentLevelMixin(BaseModel):
-    @field_validator("support", "resistance", mode="before", check_fields=False)
+    @field_validator(
+        "support",
+        "resistance",
+        "high_water",
+        "fixed_drawdown",
+        mode="before",
+        check_fields=False,
+    )
     @classmethod
     def parse_optional_level(cls, value: Decimal | str | int | float | None) -> Decimal | None:
         return normalize_optional_level(value)
 
-    @field_serializer("support", "resistance", check_fields=False)
+    @field_serializer("support", "resistance", "high_water", "fixed_drawdown", check_fields=False)
     def serialize_optional_level(self, value: Decimal | None) -> str | None:
         return None if value is None else str(value)
 
@@ -96,21 +105,41 @@ class InstrumentRequest(InstrumentLevelMixin, DecimalStringMixin):
 
     name: str = Field(min_length=1, max_length=120)
     enabled: bool = True
+    alert_mode: AlertMode = AlertMode.STATIC
     support: Decimal | None = None
     resistance: Decimal | None = None
+    high_water: Decimal | None = None
+    fixed_drawdown: Decimal | None = None
     near_support_threshold: Decimal | None = None
     risk_reward_threshold: Decimal | None = None
     source_mappings: tuple[SourceMappingRequest, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
-        validate_instrument_levels(support=self.support, resistance=self.resistance)
-        if self.support is not None and self.near_support_threshold is None:
+        validate_instrument_levels(
+            support=self.support,
+            resistance=self.resistance,
+            alert_mode=self.alert_mode,
+            high_water=self.high_water,
+            fixed_drawdown=self.fixed_drawdown,
+        )
+        support = self.support
+        match self.alert_mode:
+            case AlertMode.STATIC:
+                pass
+            case AlertMode.FIXED_DRAWDOWN:
+                if self.support is not None:
+                    raise ValueError("support is derived")
+                if self.high_water is not None and self.fixed_drawdown is not None:
+                    support = derived_support(self.high_water, self.fixed_drawdown)
+            case unreachable:
+                assert_never(unreachable)
+        if support is not None and self.near_support_threshold is None:
             raise ValueError("near_support_threshold is required when support is set")
         if self.near_support_threshold is not None and not ZERO < self.near_support_threshold < ONE:
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
         if (
-            self.support is not None
+            support is not None
             and self.resistance is not None
             and self.risk_reward_threshold is None
         ):
@@ -134,8 +163,11 @@ class InstrumentResponse(InstrumentLevelMixin, DecimalStringMixin):
     id: int
     name: str
     enabled: bool
+    alert_mode: AlertMode
     support: Decimal | None
     resistance: Decimal | None
+    high_water: Decimal | None = None
+    fixed_drawdown: Decimal | None = None
     near_support_threshold: Decimal | None = None
     risk_reward_threshold: Decimal | None = None
     source_mappings: tuple[SourceMappingResponse, ...]
