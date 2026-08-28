@@ -29,8 +29,8 @@ OBSERVED_AT = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 def persisted_instrument_and_source(session: Session) -> tuple[Instrument, SourceMapping]:
     instrument = Instrument(
         name="Bitcoin",
-        support="98",
-        resistance="130",
+        supports=["98"],
+        resistances=["130"],
         near_support_threshold="0.02",
         risk_reward_threshold="20",
         created_at=OBSERVED_AT,
@@ -289,3 +289,51 @@ def test_no_alert_evaluation_updates_last_rule_state_timestamp(tmp_path: Path):
         stored_state = session.exec(select(LastRuleState)).one()
         assert stored_state.last_price == Decimal("120.0000000000")
         assert stored_state.updated_at == tick_at.replace(tzinfo=None)
+
+
+def test_evaluate_and_persist_uses_nearest_support_and_resistance_pair(tmp_path: Path):
+    # Given: several supports below price and several resistances above it.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'nearest-pair.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin",
+            supports=["90", "98"],
+            resistances=["130", "150"],
+            near_support_threshold="0.02",
+            risk_reward_threshold="20",
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+            rule_cycle_started_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        # When: price sits between 98 and 130, closer to the inner pair than the outer bands.
+        evaluation = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT,
+        )
+        stored_events = session.exec(select(AlertEvent)).all()
+
+        # Then: the persisted snapshot uses the nearest pair, not the farther levels.
+        assert [alert.kind for alert in evaluation.alerts] == [AlertKind.NEAR_SUPPORT]
+        assert len(stored_events) == 1
+        assert stored_events[0].support == Decimal("98.0000000000")
+        assert stored_events[0].resistance == Decimal("130.0000000000")
