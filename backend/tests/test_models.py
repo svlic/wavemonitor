@@ -22,16 +22,16 @@ def test_instrument_accepts_decimal_string_levels_and_fraction_thresholds():
     # Given: one instrument configured with exact decimal strings.
     instrument = Instrument(
         name="Bitcoin",
-        support="90000.10",
-        resistance="110000.25",
+        supports=["90000.10"],
+        resistances=["110000.25"],
         near_support_threshold="0.02",
         risk_reward_threshold="3.5",
     )
 
     # When: the model parses the configuration.
     # Then: rule values are Decimal instances, not floats, and fractions remain fractions.
-    assert instrument.support == Decimal("90000.10")
-    assert instrument.resistance == Decimal("110000.25")
+    assert instrument.supports == [Decimal("90000.10")]
+    assert instrument.resistances == [Decimal("110000.25")]
     assert instrument.near_support_threshold == Decimal("0.02")
     assert instrument.risk_reward_threshold == Decimal("3.5")
 
@@ -43,8 +43,8 @@ def test_instrument_rejects_float_only_rule_inputs():
         Instrument.model_validate(
             {
                 "name": "Bitcoin",
-                "support": 90000.10,
-                "resistance": "110000.25",
+                "supports": [90000.10],
+                "resistances": ["110000.25"],
                 "near_support_threshold": "0.02",
                 "risk_reward_threshold": "3.5",
             }
@@ -58,8 +58,23 @@ def test_instrument_rejects_support_greater_than_or_equal_to_resistance():
         Instrument.model_validate(
             {
                 "name": "Broken range",
-                "support": "100",
-                "resistance": "100",
+                "supports": ["100"],
+                "resistances": ["100"],
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": "2",
+            }
+        )
+
+
+def test_instrument_rejects_overlapping_multi_level_range():
+    # Given: the highest support sits at or above the lowest resistance.
+    # When / Then: validation rejects the range even when other levels are ordered.
+    with pytest.raises(ValidationError, match="support must be less than resistance"):
+        Instrument.model_validate(
+            {
+                "name": "Overlapping bands",
+                "supports": ["90", "110"],
+                "resistances": ["105", "130"],
                 "near_support_threshold": "0.02",
                 "risk_reward_threshold": "2",
             }
@@ -69,13 +84,13 @@ def test_instrument_rejects_support_greater_than_or_equal_to_resistance():
 def test_instrument_accepts_support_only_without_risk_reward_threshold():
     instrument = Instrument(
         name="Resistance TBD",
-        support="100",
-        resistance=None,
+        supports=["100"],
+        resistances=[],
         near_support_threshold="0.02",
         risk_reward_threshold=None,
     )
-    assert instrument.support == Decimal("100")
-    assert instrument.resistance is None
+    assert instrument.supports == [Decimal("100")]
+    assert instrument.resistances == []
     assert instrument.near_support_threshold == Decimal("0.02")
     assert instrument.risk_reward_threshold is None
 
@@ -83,13 +98,13 @@ def test_instrument_accepts_support_only_without_risk_reward_threshold():
 def test_instrument_accepts_resistance_only_without_thresholds():
     instrument = Instrument(
         name="Support TBD",
-        support=None,
-        resistance="120",
+        supports=[],
+        resistances=["120"],
         near_support_threshold=None,
         risk_reward_threshold=None,
     )
-    assert instrument.support is None
-    assert instrument.resistance == Decimal("120")
+    assert instrument.supports == []
+    assert instrument.resistances == [Decimal("120")]
     assert instrument.near_support_threshold is None
     assert instrument.risk_reward_threshold is None
 
@@ -99,8 +114,8 @@ def test_instrument_rejects_support_without_near_support_threshold():
         Instrument.model_validate(
             {
                 "name": "Missing near threshold",
-                "support": "100",
-                "resistance": None,
+                "supports": ["100"],
+                "resistances": [],
                 "near_support_threshold": None,
                 "risk_reward_threshold": None,
             }
@@ -112,8 +127,8 @@ def test_instrument_rejects_both_levels_without_risk_reward_threshold():
         Instrument.model_validate(
             {
                 "name": "Missing risk threshold",
-                "support": "100",
-                "resistance": "120",
+                "supports": ["100"],
+                "resistances": ["120"],
                 "near_support_threshold": "0.02",
                 "risk_reward_threshold": None,
             }
@@ -125,8 +140,8 @@ def test_instrument_rejects_both_levels_unset():
         Instrument.model_validate(
             {
                 "name": "No levels",
-                "support": None,
-                "resistance": None,
+                "supports": [],
+                "resistances": [],
                 "near_support_threshold": "0.02",
                 "risk_reward_threshold": "2",
             }
@@ -137,8 +152,8 @@ def test_instrument_defaults_to_static_alert_mode():
     # Given: a legacy-style instrument with no explicit alert mode.
     instrument = Instrument(
         name="Bitcoin",
-        support="90000.10",
-        resistance="110000.25",
+        supports=["90000.10"],
+        resistances=["110000.25"],
         near_support_threshold="0.02",
         risk_reward_threshold="3.5",
     )
@@ -156,13 +171,13 @@ def test_instrument_derives_support_from_high_water_minus_fixed_drawdown():
         alert_mode=AlertMode.FIXED_DRAWDOWN,
         high_water="100000",
         fixed_drawdown="5000",
-        resistance="120000",
+        resistances=["120000"],
         near_support_threshold="0.02",
         risk_reward_threshold="3.5",
     )
 
     # When / Then: support is derived and stored as high water minus drawdown.
-    assert instrument.support == Decimal("95000")
+    assert instrument.supports == [Decimal("95000")]
     assert instrument.high_water == Decimal("100000")
     assert instrument.fixed_drawdown == Decimal("5000")
 
@@ -175,7 +190,7 @@ def test_instrument_rejects_client_support_in_fixed_drawdown_mode():
             {
                 "name": "Bitcoin trail",
                 "alert_mode": "fixed_drawdown",
-                "support": "90000",
+                "supports": ["90000"],
                 "high_water": "100000",
                 "fixed_drawdown": "5000",
                 "near_support_threshold": "0.02",
@@ -226,7 +241,7 @@ def test_instrument_rejects_drawdown_fields_in_static_mode():
             {
                 "name": "Bitcoin",
                 "alert_mode": "static",
-                "support": "90000",
+                "supports": ["90000"],
                 "high_water": "100000",
                 "fixed_drawdown": "5000",
                 "near_support_threshold": "0.02",
@@ -234,21 +249,36 @@ def test_instrument_rejects_drawdown_fields_in_static_mode():
         )
 
 
-def test_instrument_enforces_one_support_resistance_pair():
-    # Given: MVP rule config has one support and one resistance per instrument.
+def test_instrument_accepts_multiple_supports_and_resistances():
+    # Given: a static instrument with more than one support and resistance.
     instrument = Instrument(
         name="Apple",
-        support="150",
-        resistance="200",
+        supports=["140", "150"],
+        resistances=["200", "220"],
         near_support_threshold="0.01",
         risk_reward_threshold="2",
     )
 
-    # When / Then: the domain exposes exactly one scalar Decimal pair.
-    assert instrument.support == Decimal("150")
-    assert instrument.resistance == Decimal("200")
-    assert not hasattr(instrument, "support_levels")
-    assert not hasattr(instrument, "resistance_levels")
+    # When / Then: the domain stores Decimal arrays, not a scalar pair.
+    assert instrument.supports == [Decimal("140"), Decimal("150")]
+    assert instrument.resistances == [Decimal("200"), Decimal("220")]
+
+
+def test_instrument_rejects_multiple_resistances_in_fixed_drawdown_mode():
+    # Given: fixed_drawdown still owns a single derived support and at most one resistance.
+    # When / Then: extra resistances are rejected.
+    with pytest.raises(ValidationError, match="fixed_drawdown accepts at most one resistance"):
+        Instrument.model_validate(
+            {
+                "name": "Bitcoin trail",
+                "alert_mode": "fixed_drawdown",
+                "high_water": "100000",
+                "fixed_drawdown": "5000",
+                "resistances": ["120000", "130000"],
+                "near_support_threshold": "0.02",
+                "risk_reward_threshold": "3.5",
+            }
+        )
 
 
 def test_source_mapping_identity_is_provider_market_type_and_symbol():
