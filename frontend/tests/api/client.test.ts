@@ -104,15 +104,15 @@ describe("ApiClient", () => {
     const payload = {
       name: "X",
       enabled: true,
-      support: "",
-      resistance: "200",
+      supports: [],
+      resistances: ["200"],
       near_support_threshold: "invalid stale value",
       risk_reward_threshold: "2",
       source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
     };
     expect(serializeInstrumentLevelsForApi(payload)).toMatchObject({
-      support: null,
-      resistance: "200",
+      supports: [],
+      resistances: ["200"],
       near_support_threshold: null,
       risk_reward_threshold: null,
     });
@@ -123,8 +123,11 @@ describe("ApiClient", () => {
       id: 1,
       name: "X",
       enabled: true,
-      support: null,
-      resistance: "200.0000000000",
+      alert_mode: "static",
+      supports: [],
+      resistances: ["200.0000000000"],
+      high_water: null,
+      fixed_drawdown: null,
       near_support_threshold: null,
       risk_reward_threshold: null,
       source_mappings: [],
@@ -136,8 +139,8 @@ describe("ApiClient", () => {
     await client.createInstrument({
       name: "X",
       enabled: true,
-      support: "",
-      resistance: "200",
+      supports: [],
+      resistances: ["200"],
       near_support_threshold: "0.02",
       risk_reward_threshold: "2",
       source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
@@ -145,14 +148,14 @@ describe("ApiClient", () => {
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(init.body)) as {
-      support: string | null;
-      resistance: string | null;
+      supports: string[];
+      resistances: string[];
       near_support_threshold: string | null;
       risk_reward_threshold: string | null;
     };
     expect(body).toMatchObject({
-      support: null,
-      resistance: "200",
+      supports: [],
+      resistances: ["200"],
       near_support_threshold: null,
       risk_reward_threshold: null,
     });
@@ -164,8 +167,11 @@ describe("ApiClient", () => {
         id: 1,
         name: "Bitcoin",
         enabled: true,
-        support: "1",
-        resistance: "2",
+        alert_mode: "static",
+        supports: ["1"],
+        resistances: ["2"],
+        high_water: null,
+        fixed_drawdown: null,
         near_support_threshold: "0.01",
         risk_reward_threshold: "1",
         source_mappings: [],

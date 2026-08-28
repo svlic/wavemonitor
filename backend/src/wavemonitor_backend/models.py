@@ -6,8 +6,9 @@ from enum import StrEnum
 from typing import Final, Self, assert_never
 
 from pydantic import ConfigDict, field_validator, model_validator
-from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
+from sqlalchemy import JSON, Column, DateTime, Numeric, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
 
 from wavemonitor_backend.support_resistance import (
@@ -23,6 +24,27 @@ DECIMAL_PLACES: Final[int] = 10
 
 def decimal_column(*, nullable: bool = False) -> Column[Decimal]:
     return Column(Numeric(DECIMAL_MAX_DIGITS, DECIMAL_PLACES, asdecimal=True), nullable=nullable)
+
+
+class DecimalListType(TypeDecorator[list[Decimal]]):
+    impl = JSON
+    cache_ok = True
+
+    def process_bind_param(self, value: list[Decimal] | None, dialect: object) -> list[str]:
+        del dialect
+        return [] if value is None else [str(level) for level in value]
+
+    def process_result_value(self, value: list[str] | None, dialect: object) -> list[Decimal]:
+        del dialect
+        return (
+            []
+            if value is None
+            else [Decimal(level).quantize(Decimal("0.0000000001")) for level in value]
+        )
+
+
+def decimal_list_column() -> Column[list[Decimal]]:
+    return Column(DecimalListType(), nullable=False, default=list)
 
 
 def timestamp_column(*, nullable: bool = False, index: bool = False) -> Column[datetime]:
@@ -66,8 +88,6 @@ class DeliveryStatus(StrEnum):
 
 class RuleDecimalMixin(SQLModel):
     @field_validator(
-        "support",
-        "resistance",
         "high_water",
         "fixed_drawdown",
         mode="before",
@@ -76,6 +96,18 @@ class RuleDecimalMixin(SQLModel):
     @classmethod
     def parse_optional_level(cls, value: Decimal | str | int | float | None) -> Decimal | None:
         return normalize_optional_level(value)
+
+    @field_validator("supports", "resistances", mode="before", check_fields=False)
+    @classmethod
+    def parse_level_list(
+        cls,
+        value: list[Decimal | str | int | float] | tuple[Decimal | str | int | float, ...] | None,
+    ) -> list[Decimal]:
+        if value is None:
+            return []
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("levels must be provided as arrays")
+        return [level for item in value if (level := normalize_optional_level(item)) is not None]
 
     @field_validator(
         "near_support_threshold",
@@ -119,8 +151,8 @@ class Instrument(RuleDecimalMixin, table=True):
             nullable=False,
         ),
     )
-    support: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
-    resistance: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
+    supports: list[Decimal] = Field(default_factory=list, sa_column=decimal_list_column())
+    resistances: list[Decimal] = Field(default_factory=list, sa_column=decimal_list_column())
     high_water: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     fixed_drawdown: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     near_support_threshold: Decimal | None = Field(
@@ -131,9 +163,7 @@ class Instrument(RuleDecimalMixin, table=True):
     )
     created_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
     updated_at: datetime | None = Field(default=None, sa_column=timestamp_column(nullable=True))
-    rule_cycle_started_at: datetime = Field(
-        default=datetime.min, sa_column=timestamp_column()
-    )
+    rule_cycle_started_at: datetime = Field(default=datetime.min, sa_column=timestamp_column())
 
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
@@ -148,10 +178,8 @@ class Instrument(RuleDecimalMixin, table=True):
 
     def _needs_rule_field_coercion(self) -> bool:
         return (
-            self.support is not None
-            and not isinstance(self.support, Decimal)
-            or self.resistance is not None
-            and not isinstance(self.resistance, Decimal)
+            any(not isinstance(level, Decimal) for level in self.supports)
+            or any(not isinstance(level, Decimal) for level in self.resistances)
             or self.high_water is not None
             and not isinstance(self.high_water, Decimal)
             or self.fixed_drawdown is not None
@@ -163,16 +191,12 @@ class Instrument(RuleDecimalMixin, table=True):
         )
 
     def _coerce_rule_fields(self) -> None:
-        self.support = normalize_optional_level(self.support)
-        self.resistance = normalize_optional_level(self.resistance)
+        self.supports = self.parse_level_list(self.supports)
+        self.resistances = self.parse_level_list(self.resistances)
         self.high_water = normalize_optional_level(self.high_water)
         self.fixed_drawdown = normalize_optional_level(self.fixed_drawdown)
-        self.near_support_threshold = self.parse_decimal_from_string(
-            self.near_support_threshold
-        )
-        self.risk_reward_threshold = self.parse_decimal_from_string(
-            self.risk_reward_threshold
-        )
+        self.near_support_threshold = self.parse_decimal_from_string(self.near_support_threshold)
+        self.risk_reward_threshold = self.parse_decimal_from_string(self.risk_reward_threshold)
 
     def _derive_fixed_drawdown_support(self) -> None:
         match self.alert_mode:
@@ -181,16 +205,16 @@ class Instrument(RuleDecimalMixin, table=True):
             case AlertMode.FIXED_DRAWDOWN:
                 high_water = self.high_water
                 fixed_drawdown = self.fixed_drawdown
-                if high_water is None or fixed_drawdown is None or self.support is not None:
+                if high_water is None or fixed_drawdown is None or self.supports:
                     return
-                self.support = derived_support(high_water, fixed_drawdown)
+                self.supports = [derived_support(high_water, fixed_drawdown)]
             case unreachable:
                 assert_never(unreachable)
 
     def _assert_rule_contract(self) -> None:
         validate_instrument_levels(
-            support=self.support,
-            resistance=self.resistance,
+            supports=self.supports,
+            resistances=self.resistances,
             alert_mode=self.alert_mode,
             high_water=self.high_water,
             fixed_drawdown=self.fixed_drawdown,
@@ -198,11 +222,11 @@ class Instrument(RuleDecimalMixin, table=True):
         self._derive_fixed_drawdown_support()
         near = self.near_support_threshold
         risk = self.risk_reward_threshold
-        if self.support is not None and near is None:
+        if self.supports and near is None:
             raise ValueError("near_support_threshold is required when support is set")
         if near is not None and not Decimal("0") < near < Decimal("1"):
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
-        if self.support is not None and self.resistance is not None and risk is None:
+        if self.supports and self.resistances and risk is None:
             raise ValueError(
                 "risk_reward_threshold is required when support and resistance are set"
             )
@@ -272,9 +296,7 @@ class AlertEvent(RuleDecimalMixin, table=True):
     threshold: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     message: str = Field(min_length=1, max_length=1000)
     triggered_at: datetime = Field(sa_column=timestamp_column())
-    rule_cycle_started_at: datetime = Field(
-        default=datetime.min, sa_column=timestamp_column()
-    )
+    rule_cycle_started_at: datetime = Field(default=datetime.min, sa_column=timestamp_column())
 
 
 class LastRuleState(RuleDecimalMixin, table=True):

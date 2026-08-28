@@ -6,8 +6,11 @@ const resistanceOnlyInstrument = {
   id: 1,
   name: "Resistance only",
   enabled: true,
-  support: null,
-  resistance: "120",
+  alert_mode: "static" as const,
+  supports: [],
+  resistances: ["120"],
+  high_water: null,
+  fixed_drawdown: null,
   near_support_threshold: null,
   risk_reward_threshold: null,
   source_mappings: [
@@ -50,7 +53,7 @@ describe("InstrumentForm", () => {
       <InstrumentForm
         initialData={{
           ...resistanceOnlyInstrument,
-          support: "100",
+          supports: ["100"],
           near_support_threshold: "0.02",
           risk_reward_threshold: "3",
         }}
@@ -65,8 +68,8 @@ describe("InstrumentForm", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        support: "",
-        resistance: "120",
+        supports: [],
+        resistances: ["120"],
         near_support_threshold: "0.02",
         risk_reward_threshold: "3",
       }),
@@ -80,8 +83,8 @@ describe("InstrumentForm", () => {
       <InstrumentForm
         initialData={{
           ...resistanceOnlyInstrument,
-          support: "100",
-          resistance: null,
+          supports: ["100"],
+          resistances: [],
           near_support_threshold: null,
         }}
         onSubmit={onSubmit}

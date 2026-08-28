@@ -49,8 +49,8 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
 def seed_operational_rows(session: Session) -> None:
     instrument = Instrument(
         name="Bitcoin",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -265,8 +265,8 @@ def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, sessi
 def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Session):
     instrument = Instrument(
         name="Tie break",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -317,8 +317,8 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
     # Given: one enabled source has an older successful price and a newer provider error.
     instrument = Instrument(
         name="Bitcoin",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -385,8 +385,8 @@ def test_instrument_status_keeps_last_success_after_newer_source_error(
     # Given: one enabled source has an older successful price and a newer provider error.
     instrument = Instrument(
         name="Bitcoin",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -440,8 +440,8 @@ def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, ses
     enabled_instrument = Instrument(
         name="Active",
         enabled=True,
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -450,8 +450,8 @@ def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, ses
     paused_instrument = Instrument(
         name="Paused",
         enabled=False,
-        support=Decimal("1"),
-        resistance=Decimal("2"),
+        supports=[Decimal("1")],
+        resistances=[Decimal("2")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,

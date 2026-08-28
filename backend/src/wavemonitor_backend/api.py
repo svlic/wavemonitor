@@ -40,8 +40,8 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
         name=payload.name,
         enabled=payload.enabled,
         alert_mode=payload.alert_mode,
-        support=payload.support,
-        resistance=payload.resistance,
+        supports=payload.supports,
+        resistances=payload.resistances,
         high_water=payload.high_water,
         fixed_drawdown=payload.fixed_drawdown,
         near_support_threshold=payload.near_support_threshold,
@@ -74,8 +74,8 @@ def update_instrument(
     instrument.name = payload.name
     instrument.enabled = payload.enabled
     instrument.alert_mode = payload.alert_mode
-    instrument.support = payload.support
-    instrument.resistance = payload.resistance
+    instrument.supports = payload.supports
+    instrument.resistances = payload.resistances
     instrument.high_water = payload.high_water
     instrument.fixed_drawdown = payload.fixed_drawdown
     instrument.near_support_threshold = payload.near_support_threshold
@@ -144,8 +144,8 @@ def instrument_response(session: Session, instrument: Instrument) -> InstrumentR
         name=instrument.name,
         enabled=instrument.enabled,
         alert_mode=instrument.alert_mode,
-        support=instrument.support,
-        resistance=instrument.resistance,
+        supports=instrument.supports,
+        resistances=instrument.resistances,
         high_water=instrument.high_water,
         fixed_drawdown=instrument.fixed_drawdown,
         near_support_threshold=instrument.near_support_threshold,
@@ -248,8 +248,8 @@ def recent_alerts_for(session: Session, instrument_id: int) -> list[AlertEvent]:
 def instrument_rule_fields_changed(instrument: Instrument, payload: InstrumentRequest) -> bool:
     return (
         instrument.alert_mode != payload.alert_mode
-        or instrument.support != payload.support
-        or instrument.resistance != payload.resistance
+        or instrument.supports != payload.supports
+        or instrument.resistances != payload.resistances
         or instrument.high_water != payload.high_water
         or instrument.fixed_drawdown != payload.fixed_drawdown
         or instrument.near_support_threshold != payload.near_support_threshold

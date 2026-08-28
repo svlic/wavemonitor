@@ -43,6 +43,10 @@ export function formatOptionalLevel(value: string | null | undefined): string {
   return formatDecimal(value);
 }
 
+export function formatLevels(values: readonly string[]): string {
+  return values.length === 0 ? "未设置" : values.map((value) => formatDecimal(value)).join("、");
+}
+
 export function formatDateTime(iso: string): string {
   const date = new Date(TIME_ZONE_SUFFIX.test(iso) ? iso : `${iso}Z`);
   if (Number.isNaN(date.getTime())) return iso;

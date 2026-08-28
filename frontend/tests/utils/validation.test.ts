@@ -27,33 +27,33 @@ describe("validation", () => {
 
   describe("validateSupportResistance", () => {
     it("returns error when both levels are empty", () => {
-      expect(validateSupportResistance("", "")).toBe("支撑位和阻力位至少填写一项");
+      expect(validateSupportResistance([], [])).toBe("支撑位和阻力位至少填写一项");
     });
 
     it("returns null when only one level is set", () => {
-      expect(validateSupportResistance("", "100")).toBeNull();
-      expect(validateSupportResistance("50", "")).toBeNull();
+      expect(validateSupportResistance([], ["100"])).toBeNull();
+      expect(validateSupportResistance(["50"], [])).toBeNull();
     });
 
     it("returns error for non-numbers on filled fields", () => {
-      expect(validateSupportResistance("abc", "100")).toBe("支撑位必须是数字");
-      expect(validateSupportResistance("100", "def")).toBe("阻力位必须是数字");
+      expect(validateSupportResistance(["abc"], ["100"])).toBe("支撑位必须是数字");
+      expect(validateSupportResistance(["100"], ["def"])).toBe("阻力位必须是数字");
     });
 
     it("returns error for non-positive values on filled fields", () => {
-      expect(validateSupportResistance("0", "100")).toBe("支撑位必须为正数");
-      expect(validateSupportResistance("-10", "100")).toBe("支撑位必须为正数");
-      expect(validateSupportResistance("100", "0")).toBe("阻力位必须为正数");
+      expect(validateSupportResistance(["0"], ["100"])).toBe("支撑位必须为正数");
+      expect(validateSupportResistance(["-10"], ["100"])).toBe("支撑位必须为正数");
+      expect(validateSupportResistance(["100"], ["0"])).toBe("阻力位必须为正数");
     });
 
     it("returns error when support >= resistance", () => {
-      expect(validateSupportResistance("100", "100")).toBe("支撑位必须严格小于阻力位");
-      expect(validateSupportResistance("110", "100")).toBe("支撑位必须严格小于阻力位");
+      expect(validateSupportResistance(["100"], ["100"])).toBe("支撑位必须严格小于阻力位");
+      expect(validateSupportResistance(["90", "110"], ["105", "130"])).toBe("所有支撑位必须严格小于所有阻力位");
     });
 
     it("returns null for valid values", () => {
-      expect(validateSupportResistance("90", "110")).toBeNull();
-      expect(validateSupportResistance("100.5", "100.6")).toBeNull();
+      expect(validateSupportResistance(["90"], ["110"])).toBeNull();
+      expect(validateSupportResistance(["80", "100.5"], ["100.6", "120"])).toBeNull();
     });
   });
 });

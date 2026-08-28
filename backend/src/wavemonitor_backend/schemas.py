@@ -28,8 +28,6 @@ ONE: Final[Decimal] = Decimal("1")
 
 class InstrumentLevelMixin(BaseModel):
     @field_validator(
-        "support",
-        "resistance",
         "high_water",
         "fixed_drawdown",
         mode="before",
@@ -39,9 +37,26 @@ class InstrumentLevelMixin(BaseModel):
     def parse_optional_level(cls, value: Decimal | str | int | float | None) -> Decimal | None:
         return normalize_optional_level(value)
 
-    @field_serializer("support", "resistance", "high_water", "fixed_drawdown", check_fields=False)
+    @field_serializer("high_water", "fixed_drawdown", check_fields=False)
     def serialize_optional_level(self, value: Decimal | None) -> str | None:
         return None if value is None else str(value)
+
+    @field_validator("supports", "resistances", mode="before", check_fields=False)
+    @classmethod
+    def parse_levels(
+        cls,
+        value: list[Decimal | str | int | float] | tuple[Decimal | str | int | float, ...],
+    ) -> list[Decimal]:
+        levels: list[Decimal] = []
+        for item in value:
+            level = normalize_optional_level(item)
+            if level is not None:
+                levels.append(level)
+        return levels
+
+    @field_serializer("supports", "resistances", check_fields=False)
+    def serialize_levels(self, value: list[Decimal]) -> list[str]:
+        return [str(level) for level in value]
 
 
 class DecimalStringMixin(BaseModel):
@@ -52,9 +67,7 @@ class DecimalStringMixin(BaseModel):
         check_fields=False,
     )
     @classmethod
-    def parse_decimal_string(
-        cls, value: Decimal | str | int | float | None
-    ) -> Decimal | None:
+    def parse_decimal_string(cls, value: Decimal | str | int | float | None) -> Decimal | None:
         if value is None:
             return None
         if isinstance(value, Decimal):
@@ -106,8 +119,8 @@ class InstrumentRequest(InstrumentLevelMixin, DecimalStringMixin):
     name: str = Field(min_length=1, max_length=120)
     enabled: bool = True
     alert_mode: AlertMode = AlertMode.STATIC
-    support: Decimal | None = None
-    resistance: Decimal | None = None
+    supports: list[Decimal] = Field(default_factory=list)
+    resistances: list[Decimal] = Field(default_factory=list)
     high_water: Decimal | None = None
     fixed_drawdown: Decimal | None = None
     near_support_threshold: Decimal | None = None
@@ -117,32 +130,29 @@ class InstrumentRequest(InstrumentLevelMixin, DecimalStringMixin):
     @model_validator(mode="after")
     def validate_rule_contract(self) -> Self:
         validate_instrument_levels(
-            support=self.support,
-            resistance=self.resistance,
+            supports=self.supports,
+            resistances=self.resistances,
             alert_mode=self.alert_mode,
             high_water=self.high_water,
             fixed_drawdown=self.fixed_drawdown,
         )
-        support = self.support
+        has_support = bool(self.supports)
         match self.alert_mode:
             case AlertMode.STATIC:
                 pass
             case AlertMode.FIXED_DRAWDOWN:
-                if self.support is not None:
+                if self.supports:
                     raise ValueError("support is derived")
                 if self.high_water is not None and self.fixed_drawdown is not None:
-                    support = derived_support(self.high_water, self.fixed_drawdown)
+                    derived_support(self.high_water, self.fixed_drawdown)
+                    has_support = True
             case unreachable:
                 assert_never(unreachable)
-        if support is not None and self.near_support_threshold is None:
+        if has_support and self.near_support_threshold is None:
             raise ValueError("near_support_threshold is required when support is set")
         if self.near_support_threshold is not None and not ZERO < self.near_support_threshold < ONE:
             raise ValueError("near_support_threshold must be a decimal fraction between 0 and 1")
-        if (
-            support is not None
-            and self.resistance is not None
-            and self.risk_reward_threshold is None
-        ):
+        if has_support and self.resistances and self.risk_reward_threshold is None:
             raise ValueError(
                 "risk_reward_threshold is required when support and resistance are set"
             )
@@ -164,8 +174,8 @@ class InstrumentResponse(InstrumentLevelMixin, DecimalStringMixin):
     name: str
     enabled: bool
     alert_mode: AlertMode
-    support: Decimal | None
-    resistance: Decimal | None
+    supports: list[Decimal]
+    resistances: list[Decimal]
     high_water: Decimal | None = None
     fixed_drawdown: Decimal | None = None
     near_support_threshold: Decimal | None = None

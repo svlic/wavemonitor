@@ -97,8 +97,8 @@ def session(tmp_path: Path) -> Iterator[Session]:
 def seed_instrument(session: Session) -> tuple[Instrument, list[SourceMapping]]:
     instrument = Instrument(
         name="Bitcoin",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("20"),
         created_at=BASE_TIME,
@@ -420,9 +420,7 @@ def test_edit_during_poll_uses_new_rule_cycle(session: Session):
 
     @dataclass(frozen=True, slots=True)
     class EditingAdapter:
-        def get_latest_price(
-            self, symbol: str, market_type: MarketType
-        ) -> PriceAdapterResult:
+        def get_latest_price(self, symbol: str, market_type: MarketType) -> PriceAdapterResult:
             with Session(engine) as edit_session:
                 current = edit_session.get(Instrument, instrument_id)
                 assert current is not None
@@ -433,9 +431,7 @@ def test_edit_during_poll_uses_new_rule_cycle(session: Session):
             return price(Provider.YFINANCE, market_type, symbol, "90", BASE_TIME)
 
     notifier = FakeNotifier()
-    registry = AdapterRegistry(
-        adapters={(Provider.YFINANCE, MarketType.EQUITY): EditingAdapter()}
-    )
+    registry = AdapterRegistry(adapters={(Provider.YFINANCE, MarketType.EQUITY): EditingAdapter()})
     scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=FakeClock(new_cycle))
 
     # When: the scheduler completes the poll that straddled the edit.

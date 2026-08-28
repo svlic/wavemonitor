@@ -24,8 +24,8 @@ type MappingForm = {
 export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
   const [name, setName] = useState(initialData?.name ?? "");
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
-  const [support, setSupport] = useState(initialData?.support ?? "");
-  const [resistance, setResistance] = useState(initialData?.resistance ?? "");
+  const [supports, setSupports] = useState(initialData?.supports.join(", ") ?? "");
+  const [resistances, setResistances] = useState(initialData?.resistances.join(", ") ?? "");
   const [nearSupportThreshold, setNearSupportThreshold] = useState(
     initialData?.near_support_threshold ?? "0.02",
   );
@@ -44,6 +44,9 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const supportLevels = supports.split(/[,，\n]/).map((level) => level.trim()).filter(Boolean);
+  const resistanceLevels = resistances.split(/[,，\n]/).map((level) => level.trim()).filter(Boolean);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -53,13 +56,13 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       return;
     }
 
-    const srError = validateSupportResistance(support, resistance);
+    const srError = validateSupportResistance(supportLevels, resistanceLevels);
     if (srError) {
       setError(srError);
       return;
     }
 
-    if (support.trim()) {
+    if (supportLevels.length > 0) {
       const nstError = validateThreshold(nearSupportThreshold, "接近支撑阈值");
       if (nstError) {
         setError(nstError);
@@ -67,7 +70,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       }
     }
 
-    if (support.trim() && resistance.trim()) {
+    if (supportLevels.length > 0 && resistanceLevels.length > 0) {
       const rrtError = validateRiskRewardThreshold(riskRewardThreshold);
       if (rrtError) {
         setError(rrtError);
@@ -92,8 +95,8 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       await onSubmit({
         name,
         enabled,
-        support,
-        resistance,
+        supports: supportLevels,
+        resistances: resistanceLevels,
         near_support_threshold: nearSupportThreshold,
         risk_reward_threshold: riskRewardThreshold,
         source_mappings: mappings,
@@ -152,21 +155,23 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           <label htmlFor="support">支撑位</label>
           <input
             id="support"
-            type="number"
-            step="any"
-            value={support}
-            onChange={e => setSupport(e.target.value)}
+            type="text"
+            inputMode="decimal"
+            value={supports}
+            onChange={e => setSupports(e.target.value)}
           />
+          <span className="summary">多个数值用逗号分隔</span>
         </div>
         <div className="form-group">
           <label htmlFor="resistance">阻力位</label>
           <input
             id="resistance"
-            type="number"
-            step="any"
-            value={resistance}
-            onChange={e => setResistance(e.target.value)}
+            type="text"
+            inputMode="decimal"
+            value={resistances}
+            onChange={e => setResistances(e.target.value)}
           />
+          <span className="summary">多个数值用逗号分隔</span>
         </div>
       </div>
       

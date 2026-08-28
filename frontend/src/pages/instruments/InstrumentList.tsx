@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { apiClient } from "../../api/client";
 import { bumpInstrumentRevision } from "../../state/instrumentRevision";
 import type { InstrumentWithMappings } from "../../api/client";
-import { formatOptionalLevel } from "../../utils/format";
+import { formatLevels, formatOptionalLevel } from "../../utils/format";
 
 export function InstrumentList() {
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
@@ -146,8 +146,8 @@ export function InstrumentList() {
                       {inst.enabled ? "监控中" : "已暂停"}
                     </span>
                   </td>
-                  <td className="price-cell">{formatOptionalLevel(inst.support)}</td>
-                  <td className="price-cell">{formatOptionalLevel(inst.resistance)}</td>
+                  <td className="price-cell">{formatLevels(inst.supports)}</td>
+                  <td className="price-cell">{formatLevels(inst.resistances)}</td>
                   <td>{formatOptionalLevel(inst.near_support_threshold)}</td>
                   <td>{formatOptionalLevel(inst.risk_reward_threshold)}</td>
                   <td>{inst.source_mappings.length}</td>

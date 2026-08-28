@@ -14,24 +14,27 @@ export function validateRiskRewardThreshold(value: string): string | null {
   return null;
 }
 
-export function validateSupportResistance(support: string, resistance: string): string | null {
-  const supportTrimmed = support.trim();
-  const resistanceTrimmed = resistance.trim();
-  if (!supportTrimmed && !resistanceTrimmed) {
+export function validateSupportResistance(
+  supports: readonly string[],
+  resistances: readonly string[],
+): string | null {
+  const parsedSupports = supports.filter((value) => value.trim()).map(Number);
+  const parsedResistances = resistances.filter((value) => value.trim()).map(Number);
+  if (parsedSupports.length === 0 && parsedResistances.length === 0) {
     return "支撑位和阻力位至少填写一项";
   }
-  let s: number | null = null;
-  let r: number | null = null;
-  if (supportTrimmed) {
-    s = Number(supportTrimmed);
-    if (isNaN(s)) return "支撑位必须是数字";
-    if (s <= 0) return "支撑位必须为正数";
+  if (parsedSupports.some((value) => !Number.isFinite(value))) return "支撑位必须是数字";
+  if (parsedSupports.some((value) => value <= 0)) return "支撑位必须为正数";
+  if (parsedResistances.some((value) => !Number.isFinite(value))) return "阻力位必须是数字";
+  if (parsedResistances.some((value) => value <= 0)) return "阻力位必须为正数";
+  if (
+    parsedSupports.length > 0
+    && parsedResistances.length > 0
+    && Math.max(...parsedSupports) >= Math.min(...parsedResistances)
+  ) {
+    return parsedSupports.length === 1 && parsedResistances.length === 1
+      ? "支撑位必须严格小于阻力位"
+      : "所有支撑位必须严格小于所有阻力位";
   }
-  if (resistanceTrimmed) {
-    r = Number(resistanceTrimmed);
-    if (isNaN(r)) return "阻力位必须是数字";
-    if (r <= 0) return "阻力位必须为正数";
-  }
-  if (s !== null && r !== null && s >= r) return "支撑位必须严格小于阻力位";
   return null;
 }

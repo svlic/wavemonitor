@@ -91,17 +91,18 @@ const SourceMappingSchema = z.object({
   enabled: z.boolean(),
 });
 
-const optionalLevelString = z
-  .string()
-  .nullable()
-  .transform((v) => (v === null || v === "" ? null : v));
+const optionalLevelString = z.string().nullable().transform((v) => (v === null || v === "" ? null : v));
+const levelStrings = z.array(z.string());
 
 const InstrumentSchema = z.object({
   id: z.number(),
   name: z.string(),
   enabled: z.boolean(),
-  support: optionalLevelString,
-  resistance: optionalLevelString,
+  alert_mode: z.enum(["static", "fixed_drawdown"]),
+  supports: levelStrings,
+  resistances: levelStrings,
+  high_water: optionalLevelString,
+  fixed_drawdown: optionalLevelString,
   near_support_threshold: optionalLevelString,
   risk_reward_threshold: optionalLevelString,
 });
@@ -115,8 +116,11 @@ export type InstrumentWithMappings = z.infer<typeof InstrumentWithMappingsSchema
 export type CreateInstrumentRequest = {
   name: string;
   enabled: boolean;
-  support: string;
-  resistance: string;
+  alert_mode?: "static" | "fixed_drawdown";
+  supports: string[];
+  resistances: string[];
+  high_water?: string;
+  fixed_drawdown?: string;
   near_support_threshold: string;
   risk_reward_threshold: string;
   source_mappings: ReadonlyArray<{
@@ -129,25 +133,34 @@ export type CreateInstrumentRequest = {
 
 type CreateInstrumentApiPayload = Omit<
   CreateInstrumentRequest,
-  "support" | "resistance" | "near_support_threshold" | "risk_reward_threshold"
+  "supports" | "resistances" | "high_water" | "fixed_drawdown" | "near_support_threshold" | "risk_reward_threshold"
 > & {
-  readonly support: string | null;
-  readonly resistance: string | null;
+  readonly supports: string[];
+  readonly resistances: string[];
+  readonly high_water: string | null;
+  readonly fixed_drawdown: string | null;
   readonly near_support_threshold: string | null;
   readonly risk_reward_threshold: string | null;
 };
 
 export function serializeInstrumentLevelsForApi(data: CreateInstrumentRequest): CreateInstrumentApiPayload {
-  const support = data.support.trim() || null;
-  const resistance = data.resistance.trim() || null;
+  const supports = data.supports.map((level) => level.trim()).filter(Boolean);
+  const resistances = data.resistances.map((level) => level.trim()).filter(Boolean);
+  const fixedDrawdown = data.alert_mode === "fixed_drawdown";
 
   return {
     ...data,
-    support,
-    resistance,
-    near_support_threshold: support === null ? null : data.near_support_threshold.trim() || null,
+    alert_mode: data.alert_mode ?? "static",
+    supports: fixedDrawdown ? [] : supports,
+    resistances,
+    high_water: fixedDrawdown ? data.high_water?.trim() || null : null,
+    fixed_drawdown: fixedDrawdown ? data.fixed_drawdown?.trim() || null : null,
+    near_support_threshold:
+      supports.length === 0 && !fixedDrawdown ? null : data.near_support_threshold.trim() || null,
     risk_reward_threshold:
-      support === null || resistance === null ? null : data.risk_reward_threshold.trim() || null,
+      (supports.length === 0 && !fixedDrawdown) || resistances.length === 0
+        ? null
+        : data.risk_reward_threshold.trim() || null,
   };
 }
 

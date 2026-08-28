@@ -26,9 +26,7 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
         select(AlertEvent.source_mapping_id, AlertEvent.alert_kind)
         .join(Instrument, AlertEvent.instrument_id == Instrument.id)
         .where(
-            AlertEvent.alert_kind.in_(
-                (AlertKind.SUPPORT_BREACH, AlertKind.RESISTANCE_BREAKOUT)
-            ),
+            AlertEvent.alert_kind.in_((AlertKind.SUPPORT_BREACH, AlertKind.RESISTANCE_BREAKOUT)),
             AlertEvent.rule_cycle_started_at == Instrument.rule_cycle_started_at,
         )
     ).all()

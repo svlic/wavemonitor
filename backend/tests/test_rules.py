@@ -332,8 +332,8 @@ def test_persistence_integration_records_alert_and_suppresses_duplicate(tmp_path
     with Session(engine) as session:
         instrument = Instrument(
             name="Bitcoin",
-            support="98",
-            resistance="130",
+            supports=["98"],
+            resistances=["130"],
             near_support_threshold="0.02",
             risk_reward_threshold="20",
             created_at=OBSERVED_AT,

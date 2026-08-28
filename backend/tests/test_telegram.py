@@ -284,8 +284,8 @@ def test_send_alert_persists_delivery_result_without_storing_credentials(
     # Given: a persisted alert event context and mocked Telegram success transport.
     instrument = Instrument(
         name="Bitcoin",
-        support=Decimal("98"),
-        resistance=Decimal("130"),
+        supports=[Decimal("98")],
+        resistances=[Decimal("130")],
         near_support_threshold=Decimal("0.02"),
         risk_reward_threshold=Decimal("3"),
     )

@@ -10,6 +10,22 @@ function parsePositiveDecimal(value: string): number | null {
   return parsed;
 }
 
+export function nearestInstrumentLevels(
+  price: string,
+  supports: readonly string[],
+  resistances: readonly string[],
+): { support: string | undefined; resistance: string | undefined } {
+  const priceN = parsePositiveDecimal(price);
+  if (priceN === null) return { support: undefined, resistance: undefined };
+  const support = supports
+    .filter((level) => (parsePositiveDecimal(level) ?? Number.POSITIVE_INFINITY) < priceN)
+    .sort((left, right) => Number(right) - Number(left))[0];
+  const resistance = resistances
+    .filter((level) => (parsePositiveDecimal(level) ?? Number.NEGATIVE_INFINITY) > priceN)
+    .sort((left, right) => Number(left) - Number(right))[0];
+  return { support, resistance };
+}
+
 /** (price - support) / price × 100 — same basis as backend near_support_metric. */
 export function computeSupportDistancePercent(price: string, support: string): number | null {
   const priceN = parsePositiveDecimal(price);

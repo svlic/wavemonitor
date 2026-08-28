@@ -654,12 +654,13 @@ def test_patch_enabled_preserves_rule_cycle(client: TestClient, tmp_path: Path):
         cycle_started_at = instrument.rule_cycle_started_at
 
     # When: monitoring is paused and resumed through PATCH.
-    assert client.patch(
-        f"/api/instruments/{instrument_id}", json={"enabled": False}
-    ).status_code == 200
-    assert client.patch(
-        f"/api/instruments/{instrument_id}", json={"enabled": True}
-    ).status_code == 200
+    assert (
+        client.patch(f"/api/instruments/{instrument_id}", json={"enabled": False}).status_code
+        == 200
+    )
+    assert (
+        client.patch(f"/api/instruments/{instrument_id}", json={"enabled": True}).status_code == 200
+    )
 
     # Then: the full-edit rule cycle remains unchanged.
     with session_scope(engine) as session:
@@ -740,9 +741,7 @@ def test_update_starts_new_crossing_cycle(client: TestClient, tmp_path: Path):
     assert stored_events[-1].price == Decimal("89000.0000000000")
 
 
-def test_pre_cycle_observation_does_not_replace_crossing_event(
-    client: TestClient, tmp_path: Path
-):
+def test_pre_cycle_observation_does_not_replace_crossing_event(client: TestClient, tmp_path: Path):
     # Given: a completed edit cycle still retains its previous support-breach marker.
     create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
     assert create_response.status_code == 201

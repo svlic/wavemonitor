@@ -2,7 +2,7 @@ import type { InstrumentWithMappings, LatestPrice } from "../../api/client";
 import {
   formatDateTime,
   formatDecimal,
-  formatOptionalLevel,
+  formatLevels,
   formatSourceLabel,
 } from "../../utils/format";
 import {
@@ -11,6 +11,7 @@ import {
   computeSupportDistancePercent,
   formatMetricPercent,
   formatRiskReward,
+  nearestInstrumentLevels,
 } from "../../utils/instrumentMetrics";
 
 type PriceMonitorPanelProps = {
@@ -88,8 +89,9 @@ type PriceTableRowProps = {
 
 function PriceTableRow({ row }: PriceTableRowProps) {
   const { instrument, price, source } = row;
-  const support = instrument.support ?? undefined;
-  const resistance = instrument.resistance ?? undefined;
+  const { support, resistance } = price === null
+    ? { support: undefined, resistance: undefined }
+    : nearestInstrumentLevels(price.last_price, instrument.supports, instrument.resistances);
   const supportPct =
     price !== null && support !== undefined
       ? computeSupportDistancePercent(price.last_price, support)
@@ -123,7 +125,7 @@ function PriceTableRow({ row }: PriceTableRowProps) {
         <span className="price-table-row__level-pair">
           <span>
             支撑{" "}
-            <span className="price-monitor__level-value">{formatOptionalLevel(instrument.support)}</span>
+            <span className="price-monitor__level-value">{formatLevels(instrument.supports)}</span>
           </span>
           <span className="price-monitor__levels-sep" aria-hidden="true">
             ·
@@ -131,7 +133,7 @@ function PriceTableRow({ row }: PriceTableRowProps) {
           <span>
             阻力{" "}
             <span className="price-monitor__level-value">
-              {formatOptionalLevel(instrument.resistance)}
+              {formatLevels(instrument.resistances)}
             </span>
           </span>
         </span>

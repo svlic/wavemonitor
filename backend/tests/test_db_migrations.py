@@ -152,9 +152,7 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
 
     # Then: new columns exist and existing rows receive safe defaults.
     with sqlite3.connect(database_path) as connection:
-        columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(lastrulestate)")
-        }
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(lastrulestate)")}
         state = connection.execute(
             """
             SELECT support_breach_active, support_breach_last_alert_at
@@ -223,9 +221,7 @@ def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path:
         table_sql = connection.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'alertevent'"
         ).fetchone()[0]
-        foreign_keys = {
-            row[3] for row in connection.execute("PRAGMA foreign_key_list(alertevent)")
-        }
+        foreign_keys = {row[3] for row in connection.execute("PRAGMA foreign_key_list(alertevent)")}
         levels = connection.execute(
             "SELECT supports, resistances FROM instrument WHERE id = 1"
         ).fetchone()

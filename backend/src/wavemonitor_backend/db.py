@@ -13,7 +13,7 @@ DEFAULT_DATABASE_URL: Final[str] = LOCAL_SQLITE_DATABASE_URL
 
 
 INSTRUMENT_COLUMNS: Final[str] = """
-    id, name, enabled, alert_mode, support, resistance, high_water, fixed_drawdown,
+    id, name, enabled, alert_mode, supports, resistances, high_water, fixed_drawdown,
     near_support_threshold, risk_reward_threshold, created_at, updated_at,
     rule_cycle_started_at
 """
@@ -54,10 +54,16 @@ def migrate_sqlite_schema(connection: Connection) -> None:
                 "ALTER TABLE instrument ADD COLUMN fixed_drawdown NUMERIC(24, 10)"
             )
     instrument_nullable_columns = (
-        "support",
-        "resistance",
         "near_support_threshold",
         "risk_reward_threshold",
+    )
+    instrument_has_scalar_levels = instrument_sql is not None and (
+        _sqlite_column_exists(connection, "instrument", "support")
+        or _sqlite_column_exists(connection, "instrument", "resistance")
+    )
+    instrument_missing_level_arrays = instrument_sql is not None and (
+        not _sqlite_column_exists(connection, "instrument", "supports")
+        or not _sqlite_column_exists(connection, "instrument", "resistances")
     )
     instrument_needs_cycle = instrument_sql is not None and not (
         _sqlite_column_exists(connection, "instrument", "rule_cycle_started_at")
@@ -70,9 +76,14 @@ def migrate_sqlite_schema(connection: Connection) -> None:
             "UPDATE instrument SET rule_cycle_started_at = "
             "COALESCE(updated_at, created_at, '0001-01-01 00:00:00')"
         )
-    if instrument_needs_cycle or any(
-        _sqlite_column_is_not_null(connection, "instrument", column)
-        for column in instrument_nullable_columns
+    if (
+        instrument_needs_cycle
+        or instrument_has_scalar_levels
+        or instrument_missing_level_arrays
+        or any(
+            _sqlite_column_is_not_null(connection, "instrument", column)
+            for column in instrument_nullable_columns
+        )
     ):
         _rebuild_sqlite_instrument_table(connection)
     source_mapping_sql = _sqlite_table_sql(connection, "sourcemapping")
@@ -87,9 +98,7 @@ def migrate_sqlite_schema(connection: Connection) -> None:
                 "ALTER TABLE lastrulestate "
                 "ADD COLUMN support_breach_active BOOLEAN NOT NULL DEFAULT 0"
             )
-        if not _sqlite_column_exists(
-            connection, "lastrulestate", "support_breach_last_alert_at"
-        ):
+        if not _sqlite_column_exists(connection, "lastrulestate", "support_breach_last_alert_at"):
             connection.exec_driver_sql(
                 "ALTER TABLE lastrulestate ADD COLUMN support_breach_last_alert_at DATETIME"
             )
@@ -125,6 +134,24 @@ def _sqlite_column_is_not_null(connection: Connection, table_name: str, column_n
 
 
 def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
+    has_support = _sqlite_column_exists(connection, "instrument", "support")
+    has_resistance = _sqlite_column_exists(connection, "instrument", "resistance")
+    has_supports = _sqlite_column_exists(connection, "instrument", "supports")
+    has_resistances = _sqlite_column_exists(connection, "instrument", "resistances")
+    supports_value = (
+        "supports"
+        if has_supports
+        else "CASE WHEN support IS NULL THEN '[]' ELSE json_array(CAST(support AS TEXT)) END"
+        if has_support
+        else "'[]'"
+    )
+    resistances_value = (
+        "resistances"
+        if has_resistances
+        else "CASE WHEN resistance IS NULL THEN '[]' ELSE json_array(CAST(resistance AS TEXT)) END"
+        if has_resistance
+        else "'[]'"
+    )
     connection.exec_driver_sql("DROP TABLE IF EXISTS instrument_new")
     connection.exec_driver_sql(
         """
@@ -133,8 +160,8 @@ def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
             name VARCHAR(120) NOT NULL,
             enabled BOOLEAN NOT NULL,
             alert_mode VARCHAR NOT NULL DEFAULT 'static',
-            support NUMERIC(24, 10),
-            resistance NUMERIC(24, 10),
+            supports JSON NOT NULL,
+            resistances JSON NOT NULL,
             high_water NUMERIC(24, 10),
             fixed_drawdown NUMERIC(24, 10),
             near_support_threshold NUMERIC(24, 10),
@@ -148,7 +175,10 @@ def _rebuild_sqlite_instrument_table(connection: Connection) -> None:
     )
     connection.exec_driver_sql(
         f"INSERT INTO instrument_new ({INSTRUMENT_COLUMNS}) "
-        f"SELECT {INSTRUMENT_COLUMNS} FROM instrument"
+        "SELECT id, name, enabled, alert_mode, "
+        f"{supports_value}, {resistances_value}, high_water, fixed_drawdown, "
+        "near_support_threshold, risk_reward_threshold, created_at, updated_at, "
+        "rule_cycle_started_at FROM instrument"
     )
     connection.exec_driver_sql("DROP TABLE instrument")
     connection.exec_driver_sql("ALTER TABLE instrument_new RENAME TO instrument")

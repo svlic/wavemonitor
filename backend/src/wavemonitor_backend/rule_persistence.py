@@ -15,6 +15,7 @@ from wavemonitor_backend.models import (
     SourceMapping,
 )
 from wavemonitor_backend.rule_types import RuleEvaluation, RuleState
+from wavemonitor_backend.support_resistance import nearest_pair
 
 
 def evaluate_and_persist_rules(
@@ -52,10 +53,13 @@ def evaluate_and_persist_rules(
         and state_updated_at < cycle_started_at
         else rule_state_from_persisted(persisted_state)
     )
+    support, resistance = nearest_pair(instrument.supports, instrument.resistances, price)
+    if support is None and instrument.supports:
+        support = min(instrument.supports)
     evaluation = evaluate_rules(
         price=price,
-        support=instrument.support,
-        resistance=instrument.resistance,
+        support=support,
+        resistance=resistance,
         near_support_threshold=instrument.near_support_threshold,
         risk_reward_threshold=instrument.risk_reward_threshold,
         previous_state=previous_state,
