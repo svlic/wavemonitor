@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from enum import StrEnum
 from typing import Final, assert_never
@@ -45,10 +46,21 @@ def lift_high_water(
     return high_water, derived_support(high_water, fixed_drawdown), False
 
 
+def nearest_pair(
+    supports: Sequence[Decimal],
+    resistances: Sequence[Decimal],
+    price: Decimal,
+) -> tuple[Decimal | None, Decimal | None]:
+    """Pick the greatest support below price and the least resistance above it."""
+    below = tuple(level for level in supports if level < price)
+    above = tuple(level for level in resistances if level > price)
+    return (max(below) if below else None, min(above) if above else None)
+
+
 def validate_instrument_levels(
     *,
-    support: Decimal | None,
-    resistance: Decimal | None,
+    supports: Sequence[Decimal],
+    resistances: Sequence[Decimal],
     alert_mode: AlertMode = AlertMode.STATIC,
     high_water: Decimal | None = None,
     fixed_drawdown: Decimal | None = None,
@@ -57,13 +69,15 @@ def validate_instrument_levels(
         case AlertMode.STATIC:
             if high_water is not None or fixed_drawdown is not None:
                 raise ValueError("high_water and fixed_drawdown must not be set in static mode")
-            if support is None and resistance is None:
+            if not supports and not resistances:
                 raise ValueError("at least one of support or resistance must be set")
-            if support is not None and support <= ZERO:
-                raise ValueError("support must be positive when set")
-            if resistance is not None and resistance <= ZERO:
-                raise ValueError("resistance must be positive when set")
-            if support is not None and resistance is not None and support >= resistance:
+            for support in supports:
+                if support <= ZERO:
+                    raise ValueError("support must be positive when set")
+            for resistance in resistances:
+                if resistance <= ZERO:
+                    raise ValueError("resistance must be positive when set")
+            if supports and resistances and max(supports) >= min(resistances):
                 raise ValueError("support must be less than resistance")
         case AlertMode.FIXED_DRAWDOWN:
             if high_water is None or fixed_drawdown is None:
@@ -71,12 +85,16 @@ def validate_instrument_levels(
             if fixed_drawdown <= ZERO:
                 raise ValueError("fixed_drawdown must be positive")
             computed = derived_support(high_water, fixed_drawdown)
-            if support is not None and support != computed:
-                raise ValueError("support is derived")
-            if resistance is not None and resistance <= ZERO:
-                raise ValueError("resistance must be positive when set")
-            if resistance is not None and computed >= resistance:
-                raise ValueError("support must be less than resistance")
+            for support in supports:
+                if support != computed:
+                    raise ValueError("support is derived")
+            if len(resistances) > 1:
+                raise ValueError("fixed_drawdown accepts at most one resistance")
+            for resistance in resistances:
+                if resistance <= ZERO:
+                    raise ValueError("resistance must be positive when set")
+                if computed >= resistance:
+                    raise ValueError("support must be less than resistance")
         case unreachable:
             assert_never(unreachable)
 
