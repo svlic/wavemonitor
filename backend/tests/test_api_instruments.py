@@ -45,11 +45,11 @@ class FakeRequestingLifecycle:
         self.tick_requests += 1
 
 
-VALID_PAYLOAD: Final[dict[str, str | bool | list[dict[str, str | bool]]]] = {
+VALID_PAYLOAD: Final[dict[str, str | bool | list[str] | list[dict[str, str | bool]]]] = {
     "name": "Bitcoin",
     "enabled": True,
-    "support": "90000.10",
-    "resistance": "110000.25",
+    "supports": ["90000.10"],
+    "resistances": ["110000.25"],
     "near_support_threshold": "0.02",
     "risk_reward_threshold": "3.5",
     "source_mappings": [
@@ -84,8 +84,8 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
         json={
             "name": "Bitcoin long setup",
             "enabled": False,
-            "support": "91000.00",
-            "resistance": "111000.00",
+            "supports": ["91000.00"],
+            "resistances": ["111000.00"],
             "near_support_threshold": "0.03",
             "risk_reward_threshold": "4.0",
             "source_mappings": [
@@ -107,8 +107,8 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
     assert created["alert_mode"] == "static"
     assert created["high_water"] is None
     assert created["fixed_drawdown"] is None
-    assert created["support"] == "90000.1000000000"
-    assert created["resistance"] == "110000.2500000000"
+    assert created["supports"] == ["90000.1000000000"]
+    assert created["resistances"] == ["110000.2500000000"]
     assert created["source_mappings"] == [
         {
             "id": 1,
@@ -129,23 +129,23 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
 
 def test_create_instrument_with_support_only(client: TestClient):
     payload = VALID_PAYLOAD | {
-        "support": "90000.00",
-        "resistance": None,
+        "supports": ["90000.00"],
+        "resistances": [],
         "risk_reward_threshold": None,
     }
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 201
     body = response.json()
-    assert body["support"] is not None
-    assert body["resistance"] is None
+    assert body["supports"] == ["90000.0000000000"]
+    assert body["resistances"] == []
     assert body["near_support_threshold"] == "0.0200000000"
     assert body["risk_reward_threshold"] is None
 
 
 def test_create_support_only_instrument_requires_near_support_threshold(client: TestClient):
     payload = VALID_PAYLOAD | {
-        "support": "90000.00",
-        "resistance": None,
+        "supports": ["90000.00"],
+        "resistances": [],
         "near_support_threshold": None,
         "risk_reward_threshold": None,
     }
@@ -176,16 +176,16 @@ def test_create_instrument_requests_immediate_monitoring_tick(tmp_path: Path):
 
 def test_create_instrument_with_resistance_only(client: TestClient):
     payload = VALID_PAYLOAD | {
-        "support": None,
-        "resistance": "110000.00",
+        "supports": [],
+        "resistances": ["110000.00"],
         "near_support_threshold": None,
         "risk_reward_threshold": None,
     }
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 201
     body = response.json()
-    assert body["support"] is None
-    assert body["resistance"] is not None
+    assert body["supports"] == []
+    assert body["resistances"] == ["110000.0000000000"]
     assert body["near_support_threshold"] is None
     assert body["risk_reward_threshold"] is None
 
@@ -199,9 +199,51 @@ def test_create_instrument_with_both_levels_requires_risk_reward_threshold(
 
 
 def test_create_instrument_rejects_both_levels_null(client: TestClient):
-    payload = VALID_PAYLOAD | {"support": None, "resistance": None}
+    payload = VALID_PAYLOAD | {"supports": [], "resistances": []}
     response = client.post("/api/instruments", json=payload)
     assert response.status_code == 422
+
+
+def test_create_update_list_instrument_with_multiple_supports_and_resistances(
+    client: TestClient,
+):
+    # Given: a static instrument with multiple support and resistance levels.
+    payload = VALID_PAYLOAD | {
+        "supports": ["88000.00", "90000.10", "92000.00"],
+        "resistances": ["108000.00", "110000.25", "115000.50"],
+    }
+
+    # When: the instrument is created, listed, and updated with a different set of levels.
+    create_response = client.post("/api/instruments", json=payload)
+    created = create_response.json()
+    listed = client.get("/api/instruments").json()[0]
+    update_response = client.put(
+        f"/api/instruments/{created['id']}",
+        json={
+            **payload,
+            "supports": ["89000.00", "91000.00"],
+            "resistances": ["111000.00"],
+        },
+    )
+
+    # Then: create, list, and update all persist the full arrays as decimal strings.
+    assert create_response.status_code == 201
+    assert created["supports"] == [
+        "88000.0000000000",
+        "90000.1000000000",
+        "92000.0000000000",
+    ]
+    assert created["resistances"] == [
+        "108000.0000000000",
+        "110000.2500000000",
+        "115000.5000000000",
+    ]
+    assert listed["supports"] == created["supports"]
+    assert listed["resistances"] == created["resistances"]
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["supports"] == ["89000.0000000000", "91000.0000000000"]
+    assert updated["resistances"] == ["111000.0000000000"]
 
 
 def test_create_update_list_fixed_drawdown_instrument_derives_support(client: TestClient):
@@ -211,7 +253,7 @@ def test_create_update_list_fixed_drawdown_instrument_derives_support(client: Te
         "alert_mode": "fixed_drawdown",
         "high_water": "100000.10",
         "fixed_drawdown": "10000.00",
-        "resistance": "110000.25",
+        "resistances": ["110000.25"],
         "near_support_threshold": "0.02",
         "risk_reward_threshold": "3.5",
         "source_mappings": VALID_PAYLOAD["source_mappings"],
@@ -223,13 +265,13 @@ def test_create_update_list_fixed_drawdown_instrument_derives_support(client: Te
     assert created["alert_mode"] == "fixed_drawdown"
     assert created["high_water"] == "100000.1000000000"
     assert created["fixed_drawdown"] == "10000.0000000000"
-    assert created["support"] == "90000.1000000000"
-    assert created["resistance"] == "110000.2500000000"
+    assert created["supports"] == ["90000.1000000000"]
+    assert created["resistances"] == ["110000.2500000000"]
 
     listed = client.get("/api/instruments").json()[0]
     assert listed["alert_mode"] == "fixed_drawdown"
     assert listed["high_water"] == "100000.1000000000"
-    assert listed["support"] == "90000.1000000000"
+    assert listed["supports"] == ["90000.1000000000"]
 
     update_response = client.put(
         f"/api/instruments/{created['id']}",
@@ -243,7 +285,7 @@ def test_create_update_list_fixed_drawdown_instrument_derives_support(client: Te
     updated = update_response.json()
     assert updated["high_water"] == "101000.1000000000"
     assert updated["fixed_drawdown"] == "11000.0000000000"
-    assert updated["support"] == "90000.1000000000"
+    assert updated["supports"] == ["90000.1000000000"]
 
 
 def test_create_instrument_fixed_drawdown_rejects_client_support(client: TestClient):
@@ -251,7 +293,7 @@ def test_create_instrument_fixed_drawdown_rejects_client_support(client: TestCli
         "name": "Bitcoin",
         "enabled": True,
         "alert_mode": "fixed_drawdown",
-        "support": "90000.10",
+        "supports": ["90000.10"],
         "high_water": "100000.10",
         "fixed_drawdown": "10000.00",
         "near_support_threshold": "0.02",
@@ -441,7 +483,11 @@ def test_health_runtime_recent_alerts_and_telegram_test_redact_secrets(tmp_path:
             "symbol",
         ),
         (VALID_PAYLOAD | {"near_support_threshold": "1.5"}, "near_support_threshold"),
-        (VALID_PAYLOAD | {"support": "100", "resistance": "100"}, "support must be less"),
+        (VALID_PAYLOAD | {"supports": ["100"], "resistances": ["100"]}, "support must be less"),
+        (
+            VALID_PAYLOAD | {"supports": ["90", "110"], "resistances": ["105", "130"]},
+            "support must be less",
+        ),
         (VALID_PAYLOAD | {"source_mappings": []}, "source_mappings"),
     ],
 )
@@ -585,7 +631,7 @@ def test_update_rule_fields_clears_last_rule_state(client: TestClient, tmp_path:
 
     update_response = client.put(
         f"/api/instruments/{instrument_id}",
-        json={**VALID_PAYLOAD, "support": "89000.00"},
+        json={**VALID_PAYLOAD, "supports": ["89000.00"]},
     )
     assert update_response.status_code == 200
 
