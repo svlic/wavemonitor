@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,16 @@ from sqlmodel import select
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
 from wavemonitor_backend.models import Instrument
 from wavemonitor_backend.support_resistance import AlertMode
+
+
+def json_decimals(value: object) -> list[Decimal]:
+    parsed = json.loads(value) if isinstance(value, str) else value
+    assert isinstance(parsed, list)
+    levels: list[Decimal] = []
+    for item in parsed:
+        assert isinstance(item, str)
+        levels.append(Decimal(item))
+    return levels
 
 
 def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_path: Path):
@@ -55,7 +67,7 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
     # When: application startup creates/migrates schema.
     create_schema(create_database_engine(f"sqlite:///{database_path}"))
 
-    # Then: nullable levels and per-instrument source identity work with old rows preserved.
+    # Then: scalar levels become JSON arrays and per-instrument source identity is preserved.
     with sqlite3.connect(database_path) as connection:
         instrument_columns = {
             row[1]: row[3] for row in connection.execute("PRAGMA table_info(instrument)")
@@ -63,19 +75,26 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
         source_table_sql = connection.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sourcemapping'"
         ).fetchone()[0]
-        assert instrument_columns["support"] == 0
-        assert instrument_columns["resistance"] == 0
+        assert "supports" in instrument_columns
+        assert "resistances" in instrument_columns
+        assert "support" not in instrument_columns
+        assert "resistance" not in instrument_columns
         assert instrument_columns["near_support_threshold"] == 0
         assert instrument_columns["risk_reward_threshold"] == 0
         assert "uq_source_mapping_per_instrument" in source_table_sql
         assert "uq_source_mapping_identity" not in source_table_sql
+        migrated = connection.execute(
+            "SELECT supports, resistances FROM instrument WHERE id = 1"
+        ).fetchone()
+        assert json_decimals(migrated[0]) == [Decimal("90000.1")]
+        assert json_decimals(migrated[1]) == [Decimal("110000.25")]
         connection.execute(
             """
                 INSERT INTO instrument (
-                    id, name, enabled, support, resistance,
+                    id, name, enabled, supports, resistances,
                     near_support_threshold, risk_reward_threshold, rule_cycle_started_at
                 ) VALUES (
-                    2, 'Resistance only', 1, NULL, 120000, NULL, NULL,
+                    2, 'Resistance only', 1, '[]', '["120000"]', NULL, NULL,
                     '2026-01-01 00:00:00'
                 )
 
@@ -207,7 +226,12 @@ def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path:
         foreign_keys = {
             row[3] for row in connection.execute("PRAGMA foreign_key_list(alertevent)")
         }
+        levels = connection.execute(
+            "SELECT supports, resistances FROM instrument WHERE id = 1"
+        ).fetchone()
         assert cycle == "2026-01-03"
+        assert json_decimals(levels[0]) == [Decimal("98")]
+        assert json_decimals(levels[1]) == [Decimal("130")]
         assert rows == [
             (1, "before edit", "2026-01-02"),
             (2, "first", "2026-01-03"),
@@ -322,12 +346,16 @@ def test_create_schema_migrates_fixed_drawdown_columns(tmp_path: Path):
         columns = {row[1] for row in connection.execute("PRAGMA table_info(instrument)")}
         row = connection.execute(
             """
-            SELECT alert_mode, high_water, fixed_drawdown
+            SELECT alert_mode, high_water, fixed_drawdown, supports, resistances
             FROM instrument WHERE id = 1
             """
         ).fetchone()
-    assert {"alert_mode", "high_water", "fixed_drawdown"} <= columns
-    assert row == ("static", None, None)
+    assert {"alert_mode", "high_water", "fixed_drawdown", "supports", "resistances"} <= columns
+    assert "support" not in columns
+    assert "resistance" not in columns
+    assert row[0:3] == ("static", None, None)
+    assert json_decimals(row[3]) == [Decimal("90000.1")]
+    assert json_decimals(row[4]) == [Decimal("110000.25")]
 
 
 def test_orm_loads_legacy_static_alert_mode_value(tmp_path: Path):
@@ -363,3 +391,5 @@ def test_orm_loads_legacy_static_alert_mode_value(tmp_path: Path):
     # Then: the legacy value maps to AlertMode.STATIC without LookupError.
     assert len(instruments) == 1
     assert instruments[0].alert_mode is AlertMode.STATIC
+    assert instruments[0].supports == [Decimal("90000.1")]
+    assert instruments[0].resistances == [Decimal("110000.25")]
