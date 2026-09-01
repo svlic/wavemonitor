@@ -17,6 +17,11 @@ class FakeBinanceExchange:
         }
 
 
+class UnavailableBinanceExchange:
+    def exchange_info(self) -> dict[str, object]:
+        raise RuntimeError("provider unavailable")
+
+
 class FakeHyperliquid:
     def __init__(
         self,
@@ -43,6 +48,37 @@ def test_binance_filters_trading_symbols_and_ranks_prefix_matches() -> None:
     )
     options = catalog.search(Provider.BINANCE, MarketType.USD_M_FUTURES, "btc")
     assert [option.symbol for option in options] == ["BTCUSDT", "WBTCUSDT"]
+
+
+def test_binance_falls_back_to_normalized_usd_m_symbol_when_catalog_is_unavailable() -> None:
+    catalog = SymbolCatalog(usd_m_client=UnavailableBinanceExchange())
+
+    options = catalog.search(Provider.BINANCE, MarketType.USD_M_FUTURES, "btcusdt")
+
+    assert options == [
+        SymbolOption(
+            symbol="BTCUSDT",
+            label="BTCUSDT",
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+        )
+    ]
+
+
+def test_binance_fallback_appends_usdt_for_partial_usd_m_symbol() -> None:
+    catalog = SymbolCatalog(usd_m_client=UnavailableBinanceExchange())
+
+    options = catalog.search(Provider.BINANCE, MarketType.USD_M_FUTURES, "btc")
+
+    assert options[0].symbol == "BTCUSDT"
+
+
+def test_binance_fallback_preserves_coin_m_contract_query() -> None:
+    catalog = SymbolCatalog(coin_m_client=UnavailableBinanceExchange())
+
+    options = catalog.search(Provider.BINANCE, MarketType.COIN_M_FUTURES, "btcusd_perp")
+
+    assert options[0].symbol == "BTCUSD_PERP"
 
 
 def test_hyperliquid_searches_all_mids() -> None:

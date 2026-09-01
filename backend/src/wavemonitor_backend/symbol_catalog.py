@@ -70,6 +70,25 @@ def _binance_trading_symbols(payload: dict[str, object]) -> list[str]:
     return symbols
 
 
+def _binance_fallback_option(
+    query: str,
+    *,
+    provider: Provider,
+    market_type: MarketType,
+) -> list[SymbolOption]:
+    symbol = query
+    if market_type is MarketType.USD_M_FUTURES and not symbol.endswith("USDT"):
+        symbol = f"{symbol}USDT"
+    return [
+        SymbolOption(
+            symbol=symbol,
+            label=symbol,
+            provider=provider,
+            market_type=market_type,
+        )
+    ]
+
+
 class SymbolCatalog:
     def __init__(
         self,
@@ -119,13 +138,13 @@ class SymbolCatalog:
         market_type: MarketType,
     ) -> list[SymbolOption]:
         if client is None:
-            return []
+            return _binance_fallback_option(query, provider=provider, market_type=market_type)
         try:
             payload = client.exchange_info()
         except Exception:
-            return []
+            return _binance_fallback_option(query, provider=provider, market_type=market_type)
         if not isinstance(payload, dict):
-            return []
+            return _binance_fallback_option(query, provider=provider, market_type=market_type)
         return _filter_symbols(
             _binance_trading_symbols(payload),
             query=query,
@@ -241,7 +260,7 @@ def default_symbol_catalog() -> SymbolCatalog:
     from hyperliquid.info import Info
 
     return SymbolCatalog(
-        usd_m_client=UMFutures(),
-        coin_m_client=CMFutures(),
+        usd_m_client=UMFutures(timeout=5),
+        coin_m_client=CMFutures(timeout=5),
         hyperliquid_client=Info(),
     )
