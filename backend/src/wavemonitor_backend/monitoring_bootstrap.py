@@ -19,7 +19,11 @@ from wavemonitor_backend.monitoring import (
 )
 from wavemonitor_backend.notifier import TelegramNotifier
 from wavemonitor_backend.settings import Settings
-from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
+from wavemonitor_backend.symbol_catalog import (
+    SymbolCatalog,
+    default_binance_futures_clients,
+    default_symbol_catalog,
+)
 
 POLL_INTERVAL_SECONDS_ENV: Final[str] = "WAVEMONITOR_POLL_INTERVAL_SECONDS"
 DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 120.0
@@ -42,12 +46,9 @@ def monitoring_disabled_from_env() -> bool:
 
 
 def build_adapter_registry() -> AdapterRegistry:
-    from binance.cm_futures import CMFutures
-    from binance.um_futures import UMFutures
     from hyperliquid.info import Info
 
-    usd_m = UMFutures()
-    coin_m = CMFutures()
+    usd_m, coin_m = default_binance_futures_clients()
     return AdapterRegistry(
         adapters={
             (Provider.YFINANCE, MarketType.EQUITY): YFinanceAdapter(),

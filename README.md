@@ -78,6 +78,8 @@ TELEGRAM_CHAT_ID=-1001234567890
 WAVEMONITOR_WEB_PASSWORD=change-me
 # 可选：Cookie 签名密钥；不填则在首次启动时自动生成并保存在 SQLite 同目录（Docker 为 /data/session_secret）
 # WAVEMONITOR_SESSION_SECRET=
+# 可选：仅供 Binance USD-M / COIN-M API 请求使用的 HTTPS 代理
+# BINANCE_HTTPS_PROXY=http://proxy-host:port
 
 # ---------- 本地开发常用（Docker Compose 默认不读取下列变量，见下文说明）----------
 # 本地 SQLite（相对路径，文件落在项目根目录）
@@ -95,6 +97,7 @@ VITE_API_BASE_URL=http://localhost:8000
 | `TELEGRAM_CHAT_ID` | 从宿主机 `.env` 或环境传入 | 须与 Token 同时配置 |
 | `WAVEMONITOR_WEB_PASSWORD` | 从宿主机 `.env` 或环境传入 | 空则关闭访问验证；设置后首次访问需输入共享密码 |
 | `WAVEMONITOR_SESSION_SECRET` | 可选；未设置时自动生成并写入数据卷 `/data/session_secret` | 覆盖自动生成的 Cookie 签名密钥（多实例部署时需显式配置同一密钥） |
+| `BINANCE_HTTPS_PROXY` | 从宿主机 `.env` 或环境传入 | 可选；仅代理 Binance USD-M / COIN-M API 请求，适用于部署网络收到 HTTP 451 的情况 |
 
 Compose **不会**自动把 `WAVEMONITOR_POLL_INTERVAL_SECONDS`、`WAVEMONITOR_MONITORING_DISABLED` 传入容器。若要在 Docker 中调整轮询间隔或关闭调度，在 `docker-compose.yml` 的 `backend.environment` 中增加，例如：
 
@@ -195,6 +198,7 @@ docker compose up --build -d
 | `TELEGRAM_CHAT_ID` | 无 | 告警接收方 Chat ID（可选） |
 | `WAVEMONITOR_WEB_PASSWORD` | 无，访问验证关闭 | 设置后，前端首次访问显示密码验证页，且 `/api/*` 需要会话 Cookie（`/api/auth/*` 与 `/health` 除外） |
 | `WAVEMONITOR_SESSION_SECRET` | 无（启用密码时自动生成并持久化） | 可选覆盖；未设置时在数据库文件旁写入 `session_secret` |
+| `BINANCE_HTTPS_PROXY` | 无 | 可选；仅供 Binance USD-M / COIN-M API 请求使用的 HTTP(S) 代理 URL |
 | `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `120` | 行情轮询周期（秒），须 > 0；默认 2 分钟 |
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
 | `VITE_API_BASE_URL` | 空字符串 | **仅本地前端构建/开发**：API 根地址；Docker 生产构建留空，使用同源 `/api` |

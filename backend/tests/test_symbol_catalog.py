@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import pytest
+
 from wavemonitor_backend.models import MarketType, Provider
-from wavemonitor_backend.symbol_catalog import SymbolCatalog, SymbolOption
+from wavemonitor_backend.symbol_catalog import (
+    BINANCE_HTTPS_PROXY_ENV,
+    BINANCE_TIMEOUT_SECONDS,
+    SymbolCatalog,
+    SymbolOption,
+    default_binance_futures_clients,
+)
 
 
 class FakeBinanceExchange:
@@ -20,6 +28,16 @@ class FakeBinanceExchange:
 class UnavailableBinanceExchange:
     def exchange_info(self) -> dict[str, object]:
         raise RuntimeError("provider unavailable")
+
+
+class FakeBinanceSdkClient:
+    created_with: list[dict[str, object]] = []
+
+    def __init__(self, **kwargs: object) -> None:
+        self.created_with.append(kwargs)
+
+    def exchange_info(self) -> dict[str, object]:
+        return {"symbols": []}
 
 
 class FakeHyperliquid:
@@ -79,6 +97,40 @@ def test_binance_fallback_preserves_coin_m_contract_query() -> None:
     options = catalog.search(Provider.BINANCE, MarketType.COIN_M_FUTURES, "btcusd_perp")
 
     assert options[0].symbol == "BTCUSD_PERP"
+
+
+def test_default_binance_clients_use_configured_proxy_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from binance import cm_futures, um_futures
+
+    FakeBinanceSdkClient.created_with.clear()
+    monkeypatch.setenv(BINANCE_HTTPS_PROXY_ENV, " http://proxy.internal:8080 ")
+    monkeypatch.setattr(um_futures, "UMFutures", FakeBinanceSdkClient)
+    monkeypatch.setattr(cm_futures, "CMFutures", FakeBinanceSdkClient)
+
+    default_binance_futures_clients()
+
+    assert FakeBinanceSdkClient.created_with == [
+        {"timeout": BINANCE_TIMEOUT_SECONDS, "proxies": {"https": "http://proxy.internal:8080"}},
+        {"timeout": BINANCE_TIMEOUT_SECONDS, "proxies": {"https": "http://proxy.internal:8080"}},
+    ]
+
+
+def test_default_binance_clients_do_not_set_empty_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from binance import cm_futures, um_futures
+
+    FakeBinanceSdkClient.created_with.clear()
+    monkeypatch.delenv(BINANCE_HTTPS_PROXY_ENV, raising=False)
+    monkeypatch.setattr(um_futures, "UMFutures", FakeBinanceSdkClient)
+    monkeypatch.setattr(cm_futures, "CMFutures", FakeBinanceSdkClient)
+
+    default_binance_futures_clients()
+
+    assert FakeBinanceSdkClient.created_with == [
+        {"timeout": BINANCE_TIMEOUT_SECONDS},
+        {"timeout": BINANCE_TIMEOUT_SECONDS},
+    ]
 
 
 def test_hyperliquid_searches_all_mids() -> None:

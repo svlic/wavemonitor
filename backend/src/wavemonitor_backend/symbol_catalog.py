@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-from wavemonitor_backend.adapter_types import HyperliquidInfoClient
+from wavemonitor_backend.adapter_types import BinanceFuturesClient, HyperliquidInfoClient
 from wavemonitor_backend.models import MarketType, Provider
 
 SYMBOL_QUERY_MAX_RESULTS: Final[int] = 25
+BINANCE_HTTPS_PROXY_ENV: Final[str] = "BINANCE_HTTPS_PROXY"
+BINANCE_TIMEOUT_SECONDS: Final[int] = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +21,7 @@ class SymbolOption:
     market_type: MarketType
 
 
-class BinanceExchangeListing(Protocol):
+class BinanceExchangeListing(BinanceFuturesClient, Protocol):
     def exchange_info(self) -> dict[str, object]: ...
 
 
@@ -254,13 +257,23 @@ def _default_yfinance_search(query: str, limit: int) -> list[SymbolOption]:
     return options[:limit]
 
 
-def default_symbol_catalog() -> SymbolCatalog:
+def default_binance_futures_clients() -> tuple[BinanceExchangeListing, BinanceExchangeListing]:
     from binance.cm_futures import CMFutures
     from binance.um_futures import UMFutures
+
+    kwargs: dict[str, object] = {"timeout": BINANCE_TIMEOUT_SECONDS}
+    proxy = os.getenv(BINANCE_HTTPS_PROXY_ENV, "").strip()
+    if proxy:
+        kwargs["proxies"] = {"https": proxy}
+    return UMFutures(**kwargs), CMFutures(**kwargs)
+
+
+def default_symbol_catalog() -> SymbolCatalog:
     from hyperliquid.info import Info
 
+    usd_m, coin_m = default_binance_futures_clients()
     return SymbolCatalog(
-        usd_m_client=UMFutures(timeout=5),
-        coin_m_client=CMFutures(timeout=5),
+        usd_m_client=usd_m,
+        coin_m_client=coin_m,
         hyperliquid_client=Info(),
     )
