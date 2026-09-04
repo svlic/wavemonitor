@@ -172,58 +172,47 @@ docker compose up --build -d
 
 ## Cloudflare 免费无服务器部署
 
-`worker/` 提供与现有前端 API 契约兼容的 Workers 实现：静态资源由 Workers Static Assets 托管，业务数据写入 D1，Cron Trigger 每 2 分钟轮询行情。此路径不需要 Python、容器、常驻进程或持久磁盘。
+`worker/` 提供 Cloudflare Workers 实现：Workers Static Assets 托管前端，D1 保存业务和配置数据，Cron Trigger 每 2 分钟轮询行情。此路径不需要 Python、容器、常驻进程、持久磁盘，也不迁移原 SQLite 历史数据。
 
-### 1. 创建 D1 并配置绑定
+### 方式一：通过 GitHub 绑定一键部署（推荐）
+
+<div align="center">
+  <a href="https://dash.cloudflare.com/?url=https://github.com/svlic/wavemonitor/tree/serverless">
+    <img src="https://img.shields.io/badge/Deploy_to_Cloudflare-FF6633?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Deploy to Cloudflare">
+  </a>
+  <p>跳转至 Cloudflare 控制台，授权 GitHub 后可完成部署，无需本地开发环境。</p>
+</div>
+
+1. Fork 本仓库到自己的 GitHub 账号。
+2. 点击上方按钮，或在 Cloudflare **Workers & Pages → Create application → Import a repository** 中选择 Fork。
+3. Production branch 选择 `serverless`；Root directory 填写 `worker`。
+4. Build command 填写 `npm run build:frontend`，Deploy command 填写 `npm run deploy`。
+5. 保存并部署。Wrangler 会自动创建并绑定名为 `wavemonitor` 的 D1；部署命令随后应用 D1 migrations。
+6. 打开部署生成的 `workers.dev` 地址，在“初始化配置”页设置访问密码，并可同时填写 Telegram Bot Token 与 Chat ID。
+
+后续推送到所选分支会自动重新构建和部署。自定义域名可在 Worker 的 **Settings → Domains & Routes** 中绑定。
+
+### 方式二：本地命令行部署
 
 ```bash
-cd frontend
+cd worker
 npm ci
-npm run build
-
-cd ../worker
-npm ci
+npm run build:frontend
 npx wrangler login
-npx wrangler d1 create wavemonitor
-```
-
-将创建命令返回的 `database_id` 写入 `worker/wrangler.jsonc`，替换 `REPLACE_WITH_D1_DATABASE_ID`。然后初始化远端数据库：
-
-```bash
-npm run d1:migrate:remote
-```
-
-### 2. 配置机密并部署
-
-Telegram 可选。启用 Web 密码时，`WAVEMONITOR_SESSION_SECRET` 必须显式设置为随机长字符串；Workers 不会在本地磁盘自动生成密钥。
-
-```bash
-# 可选 Telegram
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_CHAT_ID
-
-# 可选 Web 密码；若设置，下面两项必须同时配置
-npx wrangler secret put WAVEMONITOR_WEB_PASSWORD
-npx wrangler secret put WAVEMONITOR_SESSION_SECRET
-
 npm run deploy
 ```
 
-部署完成后访问 Wrangler 输出的 `workers.dev` 地址。`/`、`/api/*` 与 `/health` 同源，无需配置 `VITE_API_BASE_URL`。首次 Cron 成功执行前，仪表盘显示“等待首次触发”。
+`npm run build:frontend` 安装并构建前端；`npm run deploy` 自动供应 D1、发布 Worker 并应用 migrations。部署后访问 Wrangler 输出的地址完成图形化初始化。`/`、`/api/*` 与 `/health` 同源，无需设置 `VITE_API_BASE_URL`。
 
-### 3. 从现有 SQLite 迁移
+### 图形化配置
 
-先停止旧后端，避免导出期间继续写入。建议先备份数据库。导出工具要求 SQLite 已由当前版本后端启动并完成 schema migration。
+- 首次访问必须设置至少 8 个字符的访问密码；该密码经 PBKDF2-SHA256 派生后保存，D1 不保存明文。
+- Telegram 可在首次初始化时填写，也可登录后进入“系统设置”启用、替换或停用。
+- Telegram Token 不会通过 API 或界面回显；更新时两项都留空表示沿用现有凭据。
+- 若旧部署已经通过 Wrangler secrets 设置 `WAVEMONITOR_WEB_PASSWORD`、`WAVEMONITOR_SESSION_SECRET` 和 `TELEGRAM_*`，仍可登录并在“系统设置”切换到 GUI 管理；切换后 D1 配置优先。
+- 修改访问密码会轮换 Cookie 签名密钥，使其他浏览器中的旧会话失效。
 
-```bash
-# 在仓库根目录生成一次性导入 SQL；输出文件含业务数据，勿提交
-python3 worker/scripts/export_sqlite_to_d1.py wavemonitor.sqlite3 /tmp/wavemonitor-d1.sql
-
-cd worker
-npx wrangler d1 execute wavemonitor --remote --file /tmp/wavemonitor-d1.sql --yes
-```
-
-导入 SQL 会替换 D1 中已有的业务数据，但保留 schema migration 记录。导入后先检查 `GET /api/instruments`、`GET /api/alerts`，再切换正式访问入口。确认 Cloudflare 路径稳定前保留原 SQLite 备份。
+首次 Cron 成功执行前，仪表盘显示“等待首次触发”。
 
 ### 免费额度边界
 

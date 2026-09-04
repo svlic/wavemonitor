@@ -46,5 +46,34 @@ export function normalizeSymbol(value: string): string { const trimmed = value.t
 export type InstrumentInput = z.infer<typeof instrumentSchema>;
 export const enabledPatchSchema = z.object({ enabled: z.boolean() }).strict();
 export const authSchema = z.object({ password: z.string().min(1) });
+const telegramFields = {
+  telegram_bot_token: z.string().trim().max(256).optional().default(""),
+  telegram_chat_id: z.string().trim().max(128).optional().default(""),
+};
+
+function requireTelegramPair(
+  data: { telegram_bot_token: string; telegram_chat_id: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (Boolean(data.telegram_bot_token) !== Boolean(data.telegram_chat_id)) {
+    ctx.addIssue({ code: "custom", message: "Telegram Bot Token and Chat ID must be set together" });
+  }
+}
+
+export const setupSchema = z.object({
+  password: z.string().min(8).max(256),
+  ...telegramFields,
+}).superRefine(requireTelegramPair);
+
+export const settingsSchema = z.object({
+  new_password: z.string().max(256).optional().default("").refine(
+    (value) => value.length === 0 || value.length >= 8,
+    "New password must contain at least 8 characters",
+  ),
+  telegram_enabled: z.boolean(),
+  ...telegramFields,
+}).superRefine((data, ctx) => {
+  if (data.telegram_enabled) requireTelegramPair(data, ctx);
+});
 export function isProvider(value: string): value is Provider { return ["yfinance", "binance", "hyperliquid"].includes(value); }
 export function isMarketType(value: string): value is MarketType { return ["equity", "usd_m_futures", "coin_m_futures", "perpetual"].includes(value); }

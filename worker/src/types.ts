@@ -3,6 +3,11 @@ export type MarketType = "equity" | "usd_m_futures" | "coin_m_futures" | "perpet
 export type AlertMode = "static" | "fixed_drawdown";
 export type AlertKind = "near_support" | "risk_reward" | "resistance_breakout" | "support_breach";
 
+export interface TelegramCredentials {
+  token: string;
+  chatId: string;
+}
+
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;

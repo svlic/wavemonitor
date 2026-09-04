@@ -564,6 +564,43 @@ select:focus {
   width: 100%;
 }
 
+.setup-layout {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.setup-panel {
+  width: min(100%, 48rem);
+}
+
+.setup-panel > .summary {
+  margin-bottom: 1.5rem;
+}
+
+.setup-panel > .button {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.settings-section {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-section + .settings-section {
+  margin-top: 0.25rem;
+}
+
+.settings-section > .section-title {
+  margin-bottom: 1rem;
+}
+
+.settings-section__hint {
+  margin: -0.6rem 0 1rem;
+}
+
 .symbol-combobox {
   position: relative;
 }
@@ -883,6 +920,25 @@ select:focus {
   flex-direction: column;
   gap: 0.75rem;
   align-items: flex-start;
+}
+
+.settings-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-panel);
+}
+
+.settings-card {
+  max-width: 48rem;
+}
+
+.settings-card .form-group {
+  margin-bottom: 0;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* ── List actions ──────────────────────────────────────── */

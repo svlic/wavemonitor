@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE instrument (
+CREATE TABLE IF NOT EXISTS instrument (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 120),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
@@ -15,9 +15,9 @@ CREATE TABLE instrument (
   updated_at TEXT,
   rule_cycle_started_at TEXT NOT NULL
 );
-CREATE INDEX ix_instrument_name ON instrument(name);
+CREATE INDEX IF NOT EXISTS ix_instrument_name ON instrument(name);
 
-CREATE TABLE source_mapping (
+CREATE TABLE IF NOT EXISTS source_mapping (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   instrument_id INTEGER NOT NULL REFERENCES instrument(id) ON DELETE CASCADE,
   provider TEXT NOT NULL CHECK(provider IN ('yfinance', 'binance', 'hyperliquid')),
@@ -26,9 +26,9 @@ CREATE TABLE source_mapping (
   enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
   UNIQUE(instrument_id, provider, market_type, symbol)
 );
-CREATE INDEX ix_source_mapping_instrument_id ON source_mapping(instrument_id);
+CREATE INDEX IF NOT EXISTS ix_source_mapping_instrument_id ON source_mapping(instrument_id);
 
-CREATE TABLE price_observation (
+CREATE TABLE IF NOT EXISTS price_observation (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_mapping_id INTEGER NOT NULL REFERENCES source_mapping(id) ON DELETE CASCADE,
   price TEXT,
@@ -36,10 +36,10 @@ CREATE TABLE price_observation (
   raw_path TEXT,
   error TEXT
 );
-CREATE INDEX ix_price_observation_source_time ON price_observation(source_mapping_id, observed_at DESC, id DESC);
-CREATE INDEX ix_price_observation_observed_at ON price_observation(observed_at);
+CREATE INDEX IF NOT EXISTS ix_price_source_time ON price_observation(source_mapping_id, observed_at);
+CREATE INDEX IF NOT EXISTS ix_price_observation_observed_at ON price_observation(observed_at);
 
-CREATE TABLE alert_event (
+CREATE TABLE IF NOT EXISTS alert_event (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   instrument_id INTEGER NOT NULL REFERENCES instrument(id) ON DELETE CASCADE,
   source_mapping_id INTEGER NOT NULL REFERENCES source_mapping(id) ON DELETE CASCADE,
@@ -53,10 +53,9 @@ CREATE TABLE alert_event (
   rule_cycle_started_at TEXT NOT NULL,
   UNIQUE(instrument_id, source_mapping_id, alert_kind, rule_cycle_started_at)
 );
-CREATE INDEX ix_alert_event_triggered_at ON alert_event(triggered_at DESC);
-CREATE INDEX ix_alert_event_instrument ON alert_event(instrument_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS ix_alert_event_triggered_at ON alert_event(triggered_at DESC);
 
-CREATE TABLE last_rule_state (
+CREATE TABLE IF NOT EXISTS last_rule_state (
   instrument_id INTEGER NOT NULL REFERENCES instrument(id) ON DELETE CASCADE,
   source_mapping_id INTEGER NOT NULL REFERENCES source_mapping(id) ON DELETE CASCADE,
   last_price TEXT,
@@ -73,7 +72,7 @@ CREATE TABLE last_rule_state (
   PRIMARY KEY(instrument_id, source_mapping_id)
 );
 
-CREATE TABLE telegram_delivery (
+CREATE TABLE IF NOT EXISTS telegram_delivery (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   status TEXT NOT NULL CHECK(status IN ('sent', 'failed')),
   message_kind TEXT NOT NULL,
@@ -84,7 +83,7 @@ CREATE TABLE telegram_delivery (
   delivered_at TEXT NOT NULL
 );
 
-CREATE TABLE runtime_state (
+CREATE TABLE IF NOT EXISTS runtime_state (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   scheduler_ready INTEGER NOT NULL DEFAULT 0,
   providers_ready INTEGER NOT NULL DEFAULT 0,
@@ -97,4 +96,4 @@ CREATE TABLE runtime_state (
   last_tick_started_at TEXT,
   last_tick_finished_at TEXT
 );
-INSERT INTO runtime_state(singleton) VALUES (1);
+INSERT OR IGNORE INTO runtime_state(singleton) VALUES (1);

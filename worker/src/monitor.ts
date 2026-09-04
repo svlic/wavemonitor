@@ -1,3 +1,4 @@
+import { loadTelegramCredentials } from "./config";
 import { decimal, emptyRuleState, evaluateRules, fixed, nearestPair } from "./rules";
 import { fetchPrice } from "./providers";
 import { alertMessage, sendTelegram } from "./telegram";
@@ -50,6 +51,7 @@ async function insertDeliveries(db: D1Database, rows: DeliveryRow[]): Promise<vo
 
 export async function runMonitoringTick(env: Env): Promise<void> {
   const startedAt = new Date().toISOString();
+  const telegramCredentials = await loadTelegramCredentials(env);
   const sourceRows = await env.DB.prepare("SELECT s.*,i.name AS instrument_name,i.alert_mode,i.supports,i.resistances,i.high_water,i.fixed_drawdown,i.near_support_threshold,i.risk_reward_threshold,i.rule_cycle_started_at FROM source_mapping s JOIN instrument i ON i.id=s.instrument_id WHERE i.enabled=1 AND s.enabled=1 ORDER BY s.id").all<EnabledSource>();
   const sources = sourceRows.results;
   const stateRows = await env.DB.prepare("SELECT * FROM last_rule_state").all<StateRow>();
@@ -112,7 +114,7 @@ export async function runMonitoringTick(env: Env): Promise<void> {
   const deliveries: DeliveryRow[] = [];
   for (const item of claimed) {
     const message = alertMessage(item.source, item.alert);
-    const result = await sendTelegram(env, message);
+    const result = await sendTelegram(telegramCredentials, message);
     if (result !== null) {
       deliveries.push({
         status: result.status,

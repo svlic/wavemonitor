@@ -1,8 +1,9 @@
-import { applyD1Migrations, env, SELF } from "cloudflare:test";
+import { applyD1Migrations, env, SELF, type D1Migration } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
-
-declare module "cloudflare:test" {
-  interface ProvidedEnv { DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
+declare global {
+  namespace Cloudflare {
+    interface Env { DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
+  }
 }
 
 beforeAll(async () => applyD1Migrations(env.DB, env.TEST_MIGRATIONS));
@@ -37,5 +38,72 @@ describe("worker API", () => {
   it("rejects invalid provider-market pairs", async () => {
     const response = await SELF.fetch("https://example.com/api/instruments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Bad", supports: ["1"], near_support_threshold: "0.1", source_mappings: [{ provider: "yfinance", market_type: "perpetual", symbol: "BTC" }] }) });
     expect(response.status).toBe(422);
+  });
+
+  it("initializes GUI settings and protects subsequent API access", async () => {
+    const initial = await SELF.fetch("https://example.com/api/auth/session");
+    expect(await initial.json()).toMatchObject({
+      authenticated: false,
+      auth_enabled: false,
+      setup_required: true,
+      configuration_available: true,
+    });
+
+    const setup = await SELF.fetch("https://example.com/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        password: "correct-horse",
+        telegram_bot_token: "123456:token",
+        telegram_chat_id: "-100123456",
+      }),
+    });
+    expect(setup.status).toBe(201);
+    expect(await setup.json()).toMatchObject({ authenticated: true, setup_required: false });
+    const cookie = setup.headers.get("set-cookie")?.split(";", 1)[0];
+    expect(cookie).toBeTruthy();
+
+    const duplicate = await SELF.fetch("https://example.com/api/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "another-password" }),
+    });
+    expect(duplicate.status).toBe(409);
+    expect((await SELF.fetch("https://example.com/api/settings")).status).toBe(401);
+
+    const settings = await SELF.fetch("https://example.com/api/settings", {
+      headers: { cookie: cookie! },
+    });
+    expect(await settings.json()).toEqual({
+      telegram_enabled: true,
+      password_configured: true,
+      managed_in_gui: true,
+    });
+
+    const updated = await SELF.fetch("https://example.com/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({
+        new_password: "replacement-password",
+        telegram_enabled: false,
+        telegram_bot_token: "",
+        telegram_chat_id: "",
+      }),
+    });
+    expect(await updated.json()).toMatchObject({ telegram_enabled: false, managed_in_gui: true });
+    expect(updated.headers.get("set-cookie")).toContain("wavemonitor_session=");
+
+    const oldLogin = await SELF.fetch("https://example.com/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "correct-horse" }),
+    });
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await SELF.fetch("https://example.com/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "replacement-password" }),
+    });
+    expect(newLogin.status).toBe(200);
   });
 });
