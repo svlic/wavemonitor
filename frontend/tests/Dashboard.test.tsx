@@ -74,6 +74,20 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
     });
+    expect(screen.getByText("Cron 调度")).toBeInTheDocument();
+    expect(screen.getByText("已运行")).toBeInTheDocument();
+  });
+
+  it("shows that Cloudflare Cron has not run yet", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue({ ...emptyRuntime, scheduler_ready: false });
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("等待首次触发")).toBeInTheDocument();
+    });
     expect(screen.queryByText("暂无最近告警。")).not.toBeInTheDocument();
   });
 

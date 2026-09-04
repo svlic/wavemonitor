@@ -33,3 +33,9 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 When `WAVEMONITOR_WEB_PASSWORD` is unset, `/api/*` remains public for local/development compatibility. When it is set, every `/api/*` route requires the signed `wavemonitor_session` cookie except `/api/auth/session`, `/api/auth/login`, and `/api/auth/logout`. `/health` is always public.
 
 The cookie is signed with `WAVEMONITOR_SESSION_SECRET` when set; otherwise the backend generates a random secret on first start and persists it beside the SQLite database file (`session_secret` next to the DB path, or `/data/session_secret` in the default Docker layout).
+
+## Cloudflare Workers runtime
+
+`worker/` implements the same HTTP surface on Cloudflare Workers. D1 replaces SQLite, Workers Static Assets serves the frontend, and a `*/2 * * * *` Cron Trigger replaces the in-process scheduler. `scheduler_ready` becomes true after the first completed Cron tick.
+
+When `WAVEMONITOR_WEB_PASSWORD` is configured on Workers, `WAVEMONITOR_SESSION_SECRET` is required and must be set as a Wrangler secret; no filesystem-backed secret generation exists. The Workers implementation does not support `BINANCE_HTTPS_PROXY`.
