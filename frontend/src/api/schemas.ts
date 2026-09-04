@@ -23,9 +23,31 @@ export type RuntimeResponse = z.infer<typeof RuntimeResponseSchema>;
 export const AuthStatusResponseSchema = z.object({
   authenticated: z.boolean(),
   auth_enabled: z.boolean(),
+  setup_required: z.boolean().optional(),
+  configuration_available: z.boolean().optional(),
 });
 
 export type AuthStatusResponse = z.infer<typeof AuthStatusResponseSchema>;
+export const AppSettingsResponseSchema = z.object({
+  telegram_enabled: z.boolean(),
+  password_configured: z.boolean(),
+  managed_in_gui: z.boolean(),
+});
+
+export type AppSettingsResponse = z.infer<typeof AppSettingsResponseSchema>;
+
+export type SetupRequest = {
+  password: string;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+};
+
+export type UpdateSettingsRequest = {
+  new_password: string;
+  telegram_enabled: boolean;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+};
 
 export const TelegramTestResponseSchema = z.object({
   sent: z.boolean(),
