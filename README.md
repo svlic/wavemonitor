@@ -14,9 +14,10 @@
 
 | 层级 | 说明 |
 | --- | --- |
-| 后端 | Python 3.11+、FastAPI、SQLModel、SQLite |
+| 后端（传统部署） | Python 3.11+、FastAPI、SQLModel、SQLite |
+| 后端（Cloudflare） | TypeScript、Cloudflare Workers、D1、Cron Triggers |
 | 前端 | React、TypeScript、Vite、Wouter |
-| 部署 | Docker Compose（Nginx 反代前端并转发 `/api`） |
+| 部署 | Docker Compose，或单个 Cloudflare Worker 同源托管 SPA 与 API |
 
 API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 
@@ -166,6 +167,70 @@ docker compose up --build -d
 - `8000:8000` — 后端 FastAPI（可选直连；前端容器通过服务名 `backend:8000` 访问 API）
 
 修改对外端口时，请同步改 `docker-compose.yml` 与本 README。
+
+---
+
+## Cloudflare 免费无服务器部署
+
+`worker/` 提供与现有前端 API 契约兼容的 Workers 实现：静态资源由 Workers Static Assets 托管，业务数据写入 D1，Cron Trigger 每 2 分钟轮询行情。此路径不需要 Python、容器、常驻进程或持久磁盘。
+
+### 1. 创建 D1 并配置绑定
+
+```bash
+cd frontend
+npm ci
+npm run build
+
+cd ../worker
+npm ci
+npx wrangler login
+npx wrangler d1 create wavemonitor
+```
+
+将创建命令返回的 `database_id` 写入 `worker/wrangler.jsonc`，替换 `REPLACE_WITH_D1_DATABASE_ID`。然后初始化远端数据库：
+
+```bash
+npm run d1:migrate:remote
+```
+
+### 2. 配置机密并部署
+
+Telegram 可选。启用 Web 密码时，`WAVEMONITOR_SESSION_SECRET` 必须显式设置为随机长字符串；Workers 不会在本地磁盘自动生成密钥。
+
+```bash
+# 可选 Telegram
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_CHAT_ID
+
+# 可选 Web 密码；若设置，下面两项必须同时配置
+npx wrangler secret put WAVEMONITOR_WEB_PASSWORD
+npx wrangler secret put WAVEMONITOR_SESSION_SECRET
+
+npm run deploy
+```
+
+部署完成后访问 Wrangler 输出的 `workers.dev` 地址。`/`、`/api/*` 与 `/health` 同源，无需配置 `VITE_API_BASE_URL`。首次 Cron 成功执行前，仪表盘显示“等待首次触发”。
+
+### 3. 从现有 SQLite 迁移
+
+先停止旧后端，避免导出期间继续写入。建议先备份数据库。导出工具要求 SQLite 已由当前版本后端启动并完成 schema migration。
+
+```bash
+# 在仓库根目录生成一次性导入 SQL；输出文件含业务数据，勿提交
+python3 worker/scripts/export_sqlite_to_d1.py wavemonitor.sqlite3 /tmp/wavemonitor-d1.sql
+
+cd worker
+npx wrangler d1 execute wavemonitor --remote --file /tmp/wavemonitor-d1.sql --yes
+```
+
+导入 SQL 会替换 D1 中已有的业务数据，但保留 schema migration 记录。导入后先检查 `GET /api/instruments`、`GET /api/alerts`，再切换正式访问入口。确认 Cloudflare 路径稳定前保留原 SQLite 备份。
+
+### 免费额度边界
+
+- 当前配置每 2 分钟执行一次 Cron，即每天 720 次；Worker 请求与 D1 读写仍受 Cloudflare 账户免费额度约束。
+- 每个启用来源每轮至少写一条价格观测；系统仅保留 3 天观测。来源数量较多或公开 API 流量较高时，免费额度不是无限容量保证。
+- Workers 不支持 `BINANCE_HTTPS_PROXY`。若 Cloudflare 出口访问 Binance 被地域限制，应停用该来源或改用可直接访问的数据源，不能依赖原 Docker 代理配置。
+- Cloudflare Cron 由平台调度，可能有触发延迟；本实现不是实时行情系统，也不保证恰好每 2 分钟执行。
 
 ---
 

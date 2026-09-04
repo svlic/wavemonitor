@@ -1,0 +1,27 @@
+{
+  "name": "wavemonitor-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:migrate:local": "wrangler d1 migrations apply wavemonitor --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply wavemonitor --remote"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0",
+    "hono": "^4.9.6",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.8.71",
+    "@types/node": "^24.3.0",
+    "@cloudflare/workers-types": "4.20250906.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "4.35.0"
+  }
+}

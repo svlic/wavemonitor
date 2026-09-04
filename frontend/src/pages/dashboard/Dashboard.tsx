@@ -182,11 +182,11 @@ export function Dashboard() {
         </div>
         <div className="status-strip" role="list" aria-label="组件就绪状态">
           <div className="status-strip__item" role="listitem">
-            <span className="status-strip__label">调度器</span>
+            <span className="status-strip__label">Cron 调度</span>
             <span
               className={`status-pill ${runtime?.scheduler_ready ? "status-pill--ready" : "status-pill--idle"}`}
             >
-              {runtime?.scheduler_ready ? "就绪" : "未就绪"}
+              {runtime?.scheduler_ready ? "已运行" : "等待首次触发"}
             </span>
           </div>
           <div className="status-strip__item" role="listitem">
