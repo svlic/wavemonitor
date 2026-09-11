@@ -8,7 +8,7 @@
 | Cloudflare | Workers + D1 + Cron（`*/2 * * * *`） | `worker/` |
 | 前端 | React + Vite；Zod 在 API 边界 | `frontend/` |
 
-权威：当前代码与 `backend/API_CONTRACT.md`。`.omo/plans/`、`HANDOFF.md` 仅供追溯。
+权威：当前代码与 `backend/API_CONTRACT.md`。`.omo/plans/` 仅供追溯。
 
 ## 地图
 
