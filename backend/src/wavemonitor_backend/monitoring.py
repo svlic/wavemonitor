@@ -86,21 +86,8 @@ class AdapterRegistry:
     def __init__(self, adapters: Mapping[tuple[Provider, MarketType], PollingPriceAdapter]) -> None:
         self._adapters = dict(adapters)
 
-    def get(self, provider: Provider, market_type: MarketType) -> PollingPriceAdapter | None:
-        return self._adapters.get((provider, market_type))
-
-    def replace(
-        self, provider: Provider, market_type: MarketType, adapter: PollingPriceAdapter
-    ) -> None:
-        self._adapters[(provider, market_type)] = adapter
-
-
-class SourcePoller:
-    def __init__(self, registry: AdapterRegistry) -> None:
-        self._registry = registry
-
     def poll(self, source: SourceMapping) -> PriceAdapterResult:
-        adapter = self._registry.get(source.provider, source.market_type)
+        adapter = self._adapters.get((source.provider, source.market_type))
         if adapter is None:
             return AdapterError(
                 source=source.provider,
@@ -115,11 +102,16 @@ class SourcePoller:
             )
         return adapter.get_latest_price(source.symbol, source.market_type)
 
+    def replace(
+        self, provider: Provider, market_type: MarketType, adapter: PollingPriceAdapter
+    ) -> None:
+        self._adapters[(provider, market_type)] = adapter
+
 
 class MonitoringScheduler:
     def __init__(
         self,
-        poller: SourcePoller,
+        poller: AdapterRegistry,
         notifier: AlertNotifier,
         *,
         clock: Clock | None = None,

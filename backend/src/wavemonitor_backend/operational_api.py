@@ -4,7 +4,6 @@ from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from wavemonitor_backend.api import (
-    decimal_to_api_string,
     latest_observation_for,
     latest_successful_observation_for,
     require_id,
@@ -53,7 +52,7 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
                     provider=source.provider,
                     market_type=source.market_type,
                     symbol=source.symbol,
-                    last_price=decimal_to_api_string(observation.price)
+                    last_price=str(observation.price)
                     if observation.price is not None
                     else "",
                     last_observed_at=observation.observed_at,

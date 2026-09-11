@@ -34,7 +34,6 @@ from wavemonitor_backend.monitoring import (
     AdapterRegistry,
     MonitoringScheduler,
     RuntimeMetrics,
-    SourcePoller,
 )
 from wavemonitor_backend.notifier import (
     TelegramHttpFailure,
@@ -170,7 +169,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+    scheduler = MonitoringScheduler(registry, notifier, clock=clock)
 
     # When: the scheduler runs one deterministic polling tick.
     metrics = scheduler.run_tick(session)
@@ -224,7 +223,7 @@ def test_poll_tick_sends_each_source_rule_only_once_after_condition_resets(sessi
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+    scheduler = MonitoringScheduler(registry, notifier, clock=clock)
     first = scheduler.run_tick(session)
 
     # When: price repeats, resets away from support, then returns near support.
@@ -293,7 +292,7 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+    scheduler = MonitoringScheduler(registry, notifier, clock=clock)
 
     # When: the scheduler polls all enabled mappings.
     metrics = scheduler.run_tick(session)
@@ -341,7 +340,7 @@ def test_poll_tick_does_not_poll_disabled_instrument(session: Session):
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+    scheduler = MonitoringScheduler(registry, notifier, clock=clock)
 
     metrics = scheduler.run_tick(session)
 
@@ -391,7 +390,7 @@ def test_poll_tick_prunes_observations_older_than_retention(session: Session):
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), FakeNotifier(), clock=clock)
+    scheduler = MonitoringScheduler(registry, FakeNotifier(), clock=clock)
 
     # When: a tick runs with the retention window relative to the clock.
     scheduler.run_tick(session)
@@ -432,7 +431,7 @@ def test_edit_during_poll_uses_new_rule_cycle(session: Session):
 
     notifier = FakeNotifier()
     registry = AdapterRegistry(adapters={(Provider.YFINANCE, MarketType.EQUITY): EditingAdapter()})
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=FakeClock(new_cycle))
+    scheduler = MonitoringScheduler(registry, notifier, clock=FakeClock(new_cycle))
 
     # When: the scheduler completes the poll that straddled the edit.
     metrics = scheduler.run_tick(session)
@@ -464,7 +463,7 @@ def test_failed_telegram_delivery_does_not_repeat_alert_next_tick(session: Sessi
             ),
         }
     )
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, clock=clock)
+    scheduler = MonitoringScheduler(registry, notifier, clock=clock)
 
     # When: the first tick fails delivery; the second tick still sees the active condition.
     first = scheduler.run_tick(session)

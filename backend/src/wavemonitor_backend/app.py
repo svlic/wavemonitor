@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from functools import lru_cache
 from typing import Final, Protocol
 
 import anyio
@@ -34,10 +33,7 @@ from wavemonitor_backend.db import (
 from wavemonitor_backend.lifecycle import ImmediateTickRequester
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
-from wavemonitor_backend.monitoring_bootstrap import (
-    build_symbol_catalog,
-    default_monitoring_lifecycle,
-)
+from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
@@ -59,7 +55,7 @@ from wavemonitor_backend.schemas import (
     SourceErrorResponse,
 )
 from wavemonitor_backend.settings import Settings
-from wavemonitor_backend.symbol_catalog import SymbolCatalog
+from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
@@ -205,7 +201,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     def resolved_symbol_catalog() -> SymbolCatalog | None:
         if app_runtime.symbol_catalog is not None:
             return app_runtime.symbol_catalog
-        return build_symbol_catalog()
+        return default_symbol_catalog()
 
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store
@@ -481,7 +477,6 @@ def api_timestamp(value: datetime | None) -> str | None:
     return value.isoformat().replace("+00:00", "Z")
 
 
-@lru_cache
 def get_application() -> FastAPI:
     return create_app()
 

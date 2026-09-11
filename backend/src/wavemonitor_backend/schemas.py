@@ -68,16 +68,7 @@ class DecimalStringMixin(BaseModel):
     )
     @classmethod
     def parse_decimal_string(cls, value: Decimal | str | int | float | None) -> Decimal | None:
-        if value is None:
-            return None
-        if isinstance(value, Decimal):
-            return value
-        if isinstance(value, str):
-            stripped = value.strip()
-            return None if stripped == "" else Decimal(stripped)
-        if isinstance(value, int):
-            return Decimal(value)
-        raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
+        return normalize_optional_level(value)
 
     @field_serializer("near_support_threshold", "risk_reward_threshold", check_fields=False)
     def serialize_decimal(self, value: Decimal | None) -> str | None:

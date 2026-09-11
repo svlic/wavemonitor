@@ -36,7 +36,6 @@ export const instrumentSchema = z.object({
   if (data.near_support_threshold !== null && (!decimal(data.near_support_threshold).gt(0) || !decimal(data.near_support_threshold).lt(1))) issue("near_support_threshold must be a decimal fraction between 0 and 1");
   if (effectiveSupports.length && resistances.length && data.risk_reward_threshold === null) issue("risk_reward_threshold is required when support and resistance are set");
   if (data.risk_reward_threshold !== null && decimal(data.risk_reward_threshold).lte(0)) issue("risk_reward_threshold must be greater than 0");
-  void data.source_mappings;
 }).transform((data) => {
   const supports = data.alert_mode === "fixed_drawdown" ? [fixed(decimal(data.high_water!).minus(decimal(data.fixed_drawdown!)))] : data.supports.map(fixed);
   return { ...data, supports, resistances: data.resistances.map(fixed), source_mappings: data.source_mappings.map((source) => ({ ...source, symbol: normalizeSymbol(source.symbol) })) };

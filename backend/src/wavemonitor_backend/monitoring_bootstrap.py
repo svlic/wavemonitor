@@ -11,19 +11,10 @@ from wavemonitor_backend.adapters import BinanceFuturesAdapter, HyperliquidAdapt
 from wavemonitor_backend.db import session_scope
 from wavemonitor_backend.lifecycle import MonitoringLifecycle, WakingTicker
 from wavemonitor_backend.models import MarketType, Provider
-from wavemonitor_backend.monitoring import (
-    AdapterRegistry,
-    MonitoringScheduler,
-    RuntimeMetricsStore,
-    SourcePoller,
-)
+from wavemonitor_backend.monitoring import AdapterRegistry, MonitoringScheduler, RuntimeMetricsStore
 from wavemonitor_backend.notifier import TelegramNotifier
 from wavemonitor_backend.settings import Settings
-from wavemonitor_backend.symbol_catalog import (
-    SymbolCatalog,
-    default_binance_futures_clients,
-    default_symbol_catalog,
-)
+from wavemonitor_backend.symbol_catalog import default_binance_futures_clients
 
 POLL_INTERVAL_SECONDS_ENV: Final[str] = "WAVEMONITOR_POLL_INTERVAL_SECONDS"
 DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 120.0
@@ -65,10 +56,6 @@ def build_adapter_registry() -> AdapterRegistry:
     )
 
 
-def build_symbol_catalog() -> SymbolCatalog:
-    return default_symbol_catalog()
-
-
 def build_monitoring_lifecycle(
     *,
     engine: Engine,
@@ -78,7 +65,7 @@ def build_monitoring_lifecycle(
 ) -> MonitoringLifecycle:
     registry = build_adapter_registry()
     notifier = TelegramNotifier(settings)
-    scheduler = MonitoringScheduler(SourcePoller(registry), notifier, metrics_store=metrics_store)
+    scheduler = MonitoringScheduler(registry, notifier, metrics_store=metrics_store)
 
     @contextmanager
     def session_factory() -> Iterator:

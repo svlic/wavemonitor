@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc
@@ -177,7 +176,7 @@ def source_status(session: Session, source: SourceMapping) -> SourceStatusRespon
         market_type=source.market_type,
         symbol=source.symbol,
         enabled=source.enabled,
-        last_price=decimal_to_api_string(successful_observation.price)
+        last_price=str(successful_observation.price)
         if successful_observation is not None
         else None,
         last_observed_at=successful_observation.observed_at
@@ -194,7 +193,7 @@ def alert_response(alert: AlertEvent) -> AlertResponse:
         instrument_id=alert.instrument_id,
         source_mapping_id=alert.source_mapping_id,
         alert_kind=alert.alert_kind,
-        price=decimal_to_api_string(alert.price),
+        price=str(alert.price),
         message=alert.message,
         triggered_at=alert.triggered_at,
     )
@@ -354,5 +353,3 @@ def require_id(value: int | None) -> int:
     return value
 
 
-def decimal_to_api_string(value: Decimal) -> str:
-    return str(value)
