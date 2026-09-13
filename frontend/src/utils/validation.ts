@@ -14,6 +14,14 @@ export function validateRiskRewardThreshold(value: string): string | null {
   return null;
 }
 
+export function validatePositivePrice(value: string, name: string): string | null {
+  if (!value.trim()) return `${name}不能为空`;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return `${name}必须是数字`;
+  if (num <= 0) return `${name}必须为正数`;
+  return null;
+}
+
 export function validateSupportResistance(
   supports: readonly string[],
   resistances: readonly string[],

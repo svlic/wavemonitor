@@ -318,6 +318,7 @@ describe("InstrumentForm", () => {
       expect(onSubmit).toHaveBeenCalledWith({
         name: "Test",
         enabled: true,
+        alert_mode: "static",
         supports: ["50"],
         resistances: ["100"],
         near_support_threshold: "0.05",

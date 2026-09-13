@@ -5,7 +5,6 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
 from sqlmodel import select
 
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
@@ -210,7 +209,7 @@ def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path:
     create_schema(engine)
     create_schema(engine)
 
-    # Then: boundaries are backfilled and claims are unique only inside one cycle.
+    # Then: cycle identity is backfilled and same-cycle historical rows are kept.
     with sqlite3.connect(database_path) as connection:
         cycle = connection.execute(
             "SELECT rule_cycle_started_at FROM instrument WHERE id = 1"
@@ -231,22 +230,11 @@ def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path:
         assert rows == [
             (1, "before edit", "2026-01-02"),
             (2, "first", "2026-01-03"),
+            (3, "duplicate", "2026-01-03"),
         ]
         assert "rule_cycle_started_at" in table_sql
+        assert "uq_alert_event_source_rule_cycle" not in table_sql
         assert foreign_keys == {"instrument_id", "source_mapping_id"}
-        with pytest.raises(sqlite3.IntegrityError):
-            connection.execute(
-                """
-                INSERT INTO alertevent (
-                    id, instrument_id, source_mapping_id, alert_kind, price,
-                    support, resistance, threshold, message, triggered_at,
-                    rule_cycle_started_at
-                ) VALUES (
-                    3, 1, 1, 'near_support', 103, 100, 120, 0.02, 'same cycle',
-                    '2026-01-06', '2026-01-03'
-                )
-                """
-            )
         connection.execute(
             """
             INSERT INTO alertevent (
@@ -254,12 +242,24 @@ def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path:
                 support, resistance, threshold, message, triggered_at,
                 rule_cycle_started_at
             ) VALUES (
-                4, 1, 1, 'near_support', 104, 100, 120, 0.02, 'new cycle',
+                4, 1, 1, 'near_support', 103, 100, 120, 0.02, 'same cycle',
+                '2026-01-06', '2026-01-03'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO alertevent (
+                id, instrument_id, source_mapping_id, alert_kind, price,
+                support, resistance, threshold, message, triggered_at,
+                rule_cycle_started_at
+            ) VALUES (
+                5, 1, 1, 'near_support', 104, 100, 120, 0.02, 'new cycle',
                 '2026-02-01', '2026-02-01'
             )
             """
         )
-        assert connection.execute("SELECT COUNT(*) FROM alertevent").fetchone()[0] == 3
+        assert connection.execute("SELECT COUNT(*) FROM alertevent").fetchone()[0] == 5
 
 
 def test_create_schema_preserves_orphan_alert_history(tmp_path: Path):

@@ -110,7 +110,7 @@ def migrate_sqlite_schema(connection: Connection) -> None:
     alert_event_sql = _sqlite_table_sql(connection, "alertevent")
     if alert_event_sql is not None and (
         not _sqlite_column_exists(connection, "alertevent", "rule_cycle_started_at")
-        or "uq_alert_event_source_rule_cycle" not in alert_event_sql
+        or "uq_alert_event_source_rule_cycle" in alert_event_sql
     ):
         _rebuild_sqlite_alert_event_table(connection)
 
@@ -251,9 +251,6 @@ def _rebuild_sqlite_alert_event_table(connection: Connection) -> None:
             message VARCHAR(1000) NOT NULL,
             triggered_at DATETIME NOT NULL,
             rule_cycle_started_at DATETIME NOT NULL,
-            CONSTRAINT uq_alert_event_source_rule_cycle UNIQUE (
-                instrument_id, source_mapping_id, alert_kind, rule_cycle_started_at
-            ),
             FOREIGN KEY(instrument_id) REFERENCES instrument (id),
             FOREIGN KEY(source_mapping_id) REFERENCES sourcemapping (id)
         )
@@ -264,9 +261,7 @@ def _rebuild_sqlite_alert_event_table(connection: Connection) -> None:
         "id, instrument_id, source_mapping_id, alert_kind, price, support, resistance, "
         "threshold, message, triggered_at, rule_cycle_started_at) "
         "SELECT id, instrument_id, source_mapping_id, alert_kind, price, support, resistance, "
-        f"threshold, message, triggered_at, {cycle_value} FROM alertevent "
-        "WHERE id IN (SELECT MIN(id) FROM alertevent GROUP BY "
-        f"instrument_id, source_mapping_id, alert_kind, {cycle_value}) ORDER BY id"
+        f"threshold, message, triggered_at, {cycle_value} FROM alertevent ORDER BY id"
     )
     connection.exec_driver_sql("DROP TABLE alertevent")
     connection.exec_driver_sql("ALTER TABLE alertevent_new RENAME TO alertevent")

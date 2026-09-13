@@ -213,9 +213,12 @@ describe("ApiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/runtime",
       expect.objectContaining({
-        headers: { "Content-Type": "application/json" },
+        headers: expect.any(Headers),
       }),
     );
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(init.headers);
+    expect(headers.get("Content-Type")).toBeNull();
   });
 
   it("surfaces backend error detail for failed telegram test requests", async () => {
@@ -230,5 +233,28 @@ describe("ApiClient", () => {
     await expect(sameOriginClient.testTelegram()).rejects.toEqual(
       new ApiError(502, "Telegram delivery failed with HTTP 401."),
     );
+  });
+
+  it("surfaces FastAPI 422 loc/msg array details", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: [{ loc: ["body", "near_support_threshold"], msg: "near_support_threshold is required", type: "value_error" }],
+        }),
+        { status: 422, statusText: "Unprocessable Entity" },
+      ),
+    );
+
+    await expect(
+      client.createInstrument({
+        name: "X",
+        enabled: true,
+        supports: ["100"],
+        resistances: [],
+        near_support_threshold: "",
+        risk_reward_threshold: "",
+        source_mappings: [{ provider: "yfinance", market_type: "equity", symbol: "AAPL", enabled: true }],
+      }),
+    ).rejects.toEqual(new ApiError(422, "near_support_threshold is required"));
   });
 });

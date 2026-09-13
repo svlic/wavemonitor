@@ -100,4 +100,46 @@ describe("InstrumentForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("接近支撑阈值不能为空");
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("submits fixed-drawdown instruments with derived support fields", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<InstrumentForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "BTC drawdown" } });
+    fireEvent.change(screen.getByLabelText("告警模式"), { target: { value: "fixed_drawdown" } });
+    fireEvent.change(screen.getByLabelText("高水位"), { target: { value: "100000" } });
+    fireEvent.change(screen.getByLabelText("固定回撤"), { target: { value: "5000" } });
+    fireEvent.change(screen.getByLabelText("阻力位"), { target: { value: "120000" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
+    fireEvent.change(screen.getByLabelText("Symbol"), { target: { value: "BTC-USD" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存标的" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "BTC drawdown",
+        alert_mode: "fixed_drawdown",
+        supports: [],
+        resistances: ["120000"],
+        high_water: "100000",
+        fixed_drawdown: "5000",
+      }),
+    );
+  });
+
+  it("rejects a non-positive derived support in fixed-drawdown mode", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<InstrumentForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "BTC drawdown" } });
+    fireEvent.change(screen.getByLabelText("告警模式"), { target: { value: "fixed_drawdown" } });
+    fireEvent.change(screen.getByLabelText("高水位"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("固定回撤"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加来源" }));
+    fireEvent.change(screen.getByLabelText("Symbol"), { target: { value: "BTC-USD" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存标的" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("高水位减去固定回撤必须为正数");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

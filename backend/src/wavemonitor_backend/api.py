@@ -85,10 +85,10 @@ def update_instrument(
     instrument._assert_rule_contract()
     now = datetime.now(UTC)
     instrument.updated_at = now
-    instrument.rule_cycle_started_at = now
     try:
         sync_source_mappings(session, instrument_id, payload)
         if rule_fields_changed:
+            instrument.rule_cycle_started_at = now
             clear_last_rule_states_for_instrument(session, instrument_id)
         session.add(instrument)
         session.commit()

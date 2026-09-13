@@ -264,15 +264,6 @@ class PriceObservation(RuleDecimalMixin, table=True):
 
 
 class AlertEvent(RuleDecimalMixin, table=True):
-    __table_args__ = (
-        UniqueConstraint(
-            "instrument_id",
-            "source_mapping_id",
-            "alert_kind",
-            "rule_cycle_started_at",
-            name="uq_alert_event_source_rule_cycle",
-        ),
-    )
     model_config = ConfigDict(validate_assignment=True)
 
     id: int | None = Field(default=None, primary_key=True)

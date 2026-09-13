@@ -37,7 +37,16 @@ export const TelegramTestResponseSchema = z.object({
 export type TelegramTestResponse = z.infer<typeof TelegramTestResponseSchema>;
 
 export const ApiErrorResponseSchema = z.object({
-  detail: z.string(),
+  detail: z.union([z.string(), z.array(z.unknown())]).transform((detail) => {
+    if (typeof detail === "string") {
+      return detail;
+    }
+    const first = detail[0];
+    if (first && typeof first === "object" && "msg" in first && typeof first.msg === "string") {
+      return first.msg;
+    }
+    return JSON.stringify(detail);
+  }),
 });
 
 export const EmptyResponseSchema = z.object({});

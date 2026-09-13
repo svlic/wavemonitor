@@ -205,7 +205,7 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     assert [state.risk_reward_active for state in states] == [True, True, True]
 
 
-def test_poll_tick_sends_each_source_rule_only_once_after_condition_resets(session: Session):
+def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
     # Given: a first tick already emitted near-support alerts for all three sources.
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
@@ -248,7 +248,7 @@ def test_poll_tick_sends_each_source_rule_only_once_after_condition_resets(sessi
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
 
-    # Then: each source/rule tuple sends only once, even after the condition resets.
+    # Then: each source/rule tuple emits on the first tick and re-arms after a reset.
     alerts = session.exec(
         select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
     ).all()
@@ -256,15 +256,16 @@ def test_poll_tick_sends_each_source_rule_only_once_after_condition_resets(sessi
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
-    assert retrigger.alert_events_created == 0
-    assert len(alerts) == 3
+    assert retrigger.alert_events_created == 1
+    assert len(alerts) == 4
     assert len(observations) == 12
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
+        DeliveryStatus.SENT,
     ]
-    assert len(notifier.messages) == 3
+    assert len(notifier.messages) == 4
 
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):

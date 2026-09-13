@@ -67,13 +67,14 @@ export class ApiClient {
     schema: z.ZodType<T>,
     options?: RequestInit,
   ): Promise<T> {
+    const headers = new Headers(options?.headers);
+    if (options?.body !== undefined && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
     const response = await fetch(this.buildUrl(path), {
       ...options,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateThreshold, validateSupportResistance } from "../../src/utils/validation";
+import { validatePositivePrice, validateThreshold, validateSupportResistance } from "../../src/utils/validation";
 
 describe("validation", () => {
   describe("validateThreshold", () => {
@@ -22,6 +22,18 @@ describe("validation", () => {
       expect(validateThreshold("0.02")).toBeNull();
       expect(validateThreshold("0.5")).toBeNull();
       expect(validateThreshold("0.99")).toBeNull();
+    });
+  });
+
+  describe("validatePositivePrice", () => {
+    it("returns error for empty, non-numeric, and non-positive values", () => {
+      expect(validatePositivePrice("", "高水位")).toBe("高水位不能为空");
+      expect(validatePositivePrice("abc", "高水位")).toBe("高水位必须是数字");
+      expect(validatePositivePrice("0", "高水位")).toBe("高水位必须为正数");
+    });
+
+    it("returns null for a positive price", () => {
+      expect(validatePositivePrice("100000", "高水位")).toBeNull();
     });
   });
 

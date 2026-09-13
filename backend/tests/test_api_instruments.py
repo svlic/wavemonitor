@@ -694,10 +694,10 @@ def test_update_starts_new_crossing_cycle(client: TestClient, tmp_path: Path):
         )
         session.commit()
 
-    # When: the instrument is edited and the same source breaches support again.
+    # When: rule fields change and the same source breaches support again.
     update_response = client.put(
         f"/api/instruments/{instrument_id}",
-        json={**VALID_PAYLOAD, "name": "Bitcoin renamed"},
+        json={**VALID_PAYLOAD, "supports": ["91000.10"]},
     )
     assert update_response.status_code == 200
     with session_scope(engine) as session:
@@ -767,7 +767,7 @@ def test_pre_cycle_observation_does_not_replace_crossing_event(client: TestClien
 
     update_response = client.put(
         f"/api/instruments/{instrument_id}",
-        json={**VALID_PAYLOAD, "name": "Bitcoin renamed"},
+        json={**VALID_PAYLOAD, "supports": ["91000.10"]},
     )
     assert update_response.status_code == 200
 
@@ -812,6 +812,7 @@ def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path
     with session_scope(engine) as session:
         instrument = session.get(Instrument, instrument_id)
         assert instrument is not None
+        cycle_started_at = instrument.rule_cycle_started_at
         persist_rule_evaluation(
             session=session,
             instrument_id=instrument_id,
@@ -833,6 +834,9 @@ def test_update_name_only_preserves_last_rule_state(client: TestClient, tmp_path
     assert update_response.status_code == 200
 
     with session_scope(engine) as session:
+        instrument = session.get(Instrument, instrument_id)
+        assert instrument is not None
+        assert instrument.rule_cycle_started_at == cycle_started_at
         state = session.exec(
             select(LastRuleState).where(LastRuleState.instrument_id == instrument_id)
         ).one()

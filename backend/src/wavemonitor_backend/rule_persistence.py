@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from wavemonitor_backend.models import (
@@ -119,12 +118,8 @@ def persist_rule_evaluation(
             triggered_at=alert.triggered_at,
             rule_cycle_started_at=instrument.rule_cycle_started_at,
         )
-        try:
-            with session.begin_nested():
-                session.add(event)
-                session.flush()
-        except IntegrityError:
-            continue
+        session.add(event)
+        session.flush()
         events.append(event)
     state = load_or_create_state(
         session=session, instrument_id=instrument_id, source_mapping_id=source_mapping_id

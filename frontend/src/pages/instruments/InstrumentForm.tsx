@@ -5,7 +5,12 @@ import {
   marketTypeLabel,
   marketTypesForProvider,
 } from "../../utils/marketTypes";
-import { validateSupportResistance, validateThreshold, validateRiskRewardThreshold } from "../../utils/validation";
+import {
+  validatePositivePrice,
+  validateRiskRewardThreshold,
+  validateSupportResistance,
+  validateThreshold,
+} from "../../utils/validation";
 import { SymbolInput } from "./SymbolInput";
 
 type Props = {
@@ -21,11 +26,16 @@ type MappingForm = {
   enabled: boolean;
 };
 
+type AlertMode = "static" | "fixed_drawdown";
+
 export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
   const [name, setName] = useState(initialData?.name ?? "");
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
+  const [alertMode, setAlertMode] = useState<AlertMode>(initialData?.alert_mode ?? "static");
   const [supports, setSupports] = useState(initialData?.supports.join(", ") ?? "");
   const [resistances, setResistances] = useState(initialData?.resistances.join(", ") ?? "");
+  const [highWater, setHighWater] = useState(initialData?.high_water ?? "");
+  const [fixedDrawdown, setFixedDrawdown] = useState(initialData?.fixed_drawdown ?? "");
   const [nearSupportThreshold, setNearSupportThreshold] = useState(
     initialData?.near_support_threshold ?? "0.02",
   );
@@ -33,19 +43,21 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
     initialData?.risk_reward_threshold ?? "3",
   );
   const [mappings, setMappings] = useState<MappingForm[]>(
-    initialData?.source_mappings.map(m => ({
+    initialData?.source_mappings.map((m) => ({
       provider: m.provider,
       market_type: m.market_type,
       symbol: m.symbol,
       enabled: m.enabled,
-    })) ?? []
+    })) ?? [],
   );
-  
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const supportLevels = supports.split(/[,，\n]/).map((level) => level.trim()).filter(Boolean);
   const resistanceLevels = resistances.split(/[,，\n]/).map((level) => level.trim()).filter(Boolean);
+  const hasDerivedSupport = alertMode === "fixed_drawdown";
+  const hasSupport = hasDerivedSupport || supportLevels.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,13 +68,43 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       return;
     }
 
-    const srError = validateSupportResistance(supportLevels, resistanceLevels);
-    if (srError) {
-      setError(srError);
-      return;
+    if (alertMode === "static") {
+      const srError = validateSupportResistance(supportLevels, resistanceLevels);
+      if (srError) {
+        setError(srError);
+        return;
+      }
+    } else {
+      const highWaterError = validatePositivePrice(highWater, "高水位");
+      if (highWaterError) {
+        setError(highWaterError);
+        return;
+      }
+      const drawdownError = validatePositivePrice(fixedDrawdown, "固定回撤");
+      if (drawdownError) {
+        setError(drawdownError);
+        return;
+      }
+      const derivedSupport = Number(highWater) - Number(fixedDrawdown);
+      if (!Number.isFinite(derivedSupport) || derivedSupport <= 0) {
+        setError("高水位减去固定回撤必须为正数");
+        return;
+      }
+      if (resistanceLevels.length > 1) {
+        setError("固定回撤模式最多填写一个阻力位");
+        return;
+      }
+      const resistanceError = validateSupportResistance(
+        [String(derivedSupport)],
+        resistanceLevels,
+      );
+      if (resistanceError) {
+        setError(resistanceError);
+        return;
+      }
     }
 
-    if (supportLevels.length > 0) {
+    if (hasSupport) {
       const nstError = validateThreshold(nearSupportThreshold, "接近支撑阈值");
       if (nstError) {
         setError(nstError);
@@ -70,7 +112,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       }
     }
 
-    if (supportLevels.length > 0 && resistanceLevels.length > 0) {
+    if (hasSupport && resistanceLevels.length > 0) {
       const rrtError = validateRiskRewardThreshold(riskRewardThreshold);
       if (rrtError) {
         setError(rrtError);
@@ -95,8 +137,12 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
       await onSubmit({
         name,
         enabled,
-        supports: supportLevels,
+        alert_mode: alertMode,
+        supports: alertMode === "fixed_drawdown" ? [] : supportLevels,
         resistances: resistanceLevels,
+        ...(alertMode === "fixed_drawdown"
+          ? { high_water: highWater, fixed_drawdown: fixedDrawdown }
+          : {}),
         near_support_threshold: nearSupportThreshold,
         risk_reward_threshold: riskRewardThreshold,
         source_mappings: mappings,
@@ -122,12 +168,11 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
     if (!currentMapping) return;
 
     const updatedMapping = { ...currentMapping, [field]: value };
-    
-    // Auto-set market_type based on provider if needed
+
     if (field === "provider") {
       updatedMapping.market_type = defaultMarketTypeForProvider(String(value));
     }
-    
+
     newMappings[index] = updatedMapping;
     setMappings(newMappings);
   };
@@ -145,36 +190,90 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           id="name"
           type="text"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           placeholder="例如 BTC/USD"
         />
       </div>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="support">支撑位</label>
-          <input
-            id="support"
-            type="text"
-            inputMode="decimal"
-            value={supports}
-            onChange={e => setSupports(e.target.value)}
-          />
-          <span className="summary">多个数值用逗号分隔</span>
-        </div>
-        <div className="form-group">
-          <label htmlFor="resistance">阻力位</label>
-          <input
-            id="resistance"
-            type="text"
-            inputMode="decimal"
-            value={resistances}
-            onChange={e => setResistances(e.target.value)}
-          />
-          <span className="summary">多个数值用逗号分隔</span>
-        </div>
+      <div className="form-group">
+        <label htmlFor="alert_mode">告警模式</label>
+        <select
+          id="alert_mode"
+          value={alertMode}
+          onChange={(e) => setAlertMode(e.target.value as AlertMode)}
+        >
+          <option value="static">静态价位</option>
+          <option value="fixed_drawdown">固定回撤</option>
+        </select>
+        <span className="summary">
+          {alertMode === "static"
+            ? "直接填写支撑/阻力价位"
+            : "支撑由高水位减去固定回撤推导"}
+        </span>
       </div>
-      
+
+      {alertMode === "static" ? (
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="support">支撑位</label>
+            <input
+              id="support"
+              type="text"
+              inputMode="decimal"
+              value={supports}
+              onChange={(e) => setSupports(e.target.value)}
+            />
+            <span className="summary">多个数值用逗号分隔</span>
+          </div>
+          <div className="form-group">
+            <label htmlFor="resistance">阻力位</label>
+            <input
+              id="resistance"
+              type="text"
+              inputMode="decimal"
+              value={resistances}
+              onChange={(e) => setResistances(e.target.value)}
+            />
+            <span className="summary">多个数值用逗号分隔</span>
+          </div>
+        </div>
+      ) : (
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="high_water">高水位</label>
+            <input
+              id="high_water"
+              type="text"
+              inputMode="decimal"
+              value={highWater}
+              onChange={(e) => setHighWater(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="fixed_drawdown">固定回撤</label>
+            <input
+              id="fixed_drawdown"
+              type="text"
+              inputMode="decimal"
+              value={fixedDrawdown}
+              onChange={(e) => setFixedDrawdown(e.target.value)}
+            />
+            <span className="summary">绝对价格幅度，不是百分比</span>
+          </div>
+          <div className="form-group">
+            <label htmlFor="resistance">阻力位</label>
+            <input
+              id="resistance"
+              type="text"
+              inputMode="decimal"
+              value={resistances}
+              onChange={(e) => setResistances(e.target.value)}
+            />
+            <span className="summary">可选，最多一个</span>
+          </div>
+        </div>
+      )}
+
       <div className="form-row">
         <div className="form-group">
           <label htmlFor="near_support_threshold">接近支撑阈值 (0-1)</label>
@@ -185,7 +284,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
             min="0.01"
             max="0.99"
             value={nearSupportThreshold}
-            onChange={e => setNearSupportThreshold(e.target.value)}
+            onChange={(e) => setNearSupportThreshold(e.target.value)}
           />
         </div>
         <div className="form-group">
@@ -196,7 +295,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
             step="0.1"
             min="0.1"
             value={riskRewardThreshold}
-            onChange={e => setRiskRewardThreshold(e.target.value)}
+            onChange={(e) => setRiskRewardThreshold(e.target.value)}
           />
         </div>
       </div>
@@ -206,7 +305,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           <input
             type="checkbox"
             checked={enabled}
-            onChange={e => setEnabled(e.target.checked)}
+            onChange={(e) => setEnabled(e.target.checked)}
           />
           启用监控
         </label>
@@ -217,9 +316,9 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
           <h3>数据源映射</h3>
           <button type="button" onClick={addMapping} className="button small">添加来源</button>
         </div>
-        
+
         {mappings.length === 0 && <p className="summary">至少添加一个数据源来监控此标的。</p>}
-        
+
         {mappings.map((m, i) => (
           <div key={i} className="mapping-row">
             <div className="form-group">
@@ -227,7 +326,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
               <select
                 id={`provider-${i}`}
                 value={m.provider}
-                onChange={e => updateMapping(i, "provider", e.target.value)}
+                onChange={(e) => updateMapping(i, "provider", e.target.value)}
               >
                 <option value="yfinance">Yahoo Finance</option>
                 <option value="binance">Binance</option>
@@ -235,15 +334,15 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
               </select>
             </div>
             <div className="form-group">
-              <label htmlFor={`market_type-${i}`}>市场类型</label>
+              <label htmlFor={`market-type-${i}`}>市场类型</label>
               <select
-                id={`market_type-${i}`}
+                id={`market-type-${i}`}
                 value={m.market_type}
-                onChange={e => updateMapping(i, "market_type", e.target.value)}
+                onChange={(e) => updateMapping(i, "market_type", e.target.value)}
               >
-                {marketTypesForProvider(m.provider).map(mt => (
-                  <option key={mt} value={mt}>
-                    {marketTypeLabel(mt)}
+                {marketTypesForProvider(m.provider).map((marketType) => (
+                  <option key={marketType} value={marketType}>
+                    {marketTypeLabel(marketType)}
                   </option>
                 ))}
               </select>
@@ -258,12 +357,12 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
                 onChange={(value) => updateMapping(i, "symbol", value)}
               />
             </div>
-            <div className="form-group checkbox-group mapping-enabled">
+            <div className="form-group checkbox-group">
               <label>
                 <input
                   type="checkbox"
                   checked={m.enabled}
-                  onChange={e => updateMapping(i, "enabled", e.target.checked)}
+                  onChange={(e) => updateMapping(i, "enabled", e.target.checked)}
                 />
                 启用
               </label>
