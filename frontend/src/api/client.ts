@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   ApiErrorResponseSchema,
-  AppSettingsResponseSchema,
   AuthStatusResponseSchema,
   EmptyResponseSchema,
   InstrumentWithMappingsSchema,
@@ -15,7 +14,6 @@ import {
 } from "./schemas";
 import type {
   AuthStatusResponse,
-  AppSettingsResponse,
   CreateInstrumentRequest,
   InstrumentWithMappings,
   LatestPrice,
@@ -24,12 +22,9 @@ import type {
   SourceError,
   SymbolOption,
   TelegramTestResponse,
-  SetupRequest,
-  UpdateSettingsRequest,
 } from "./schemas";
 
 export type {
-  AppSettingsResponse,
   AuthStatusResponse,
   CreateInstrumentRequest,
   InstrumentWithMappings,
@@ -38,8 +33,6 @@ export type {
   RuntimeResponse,
   SourceError,
   SymbolOption,
-  SetupRequest,
-  UpdateSettingsRequest,
   TelegramTestResponse,
 } from "./schemas";
 export { serializeInstrumentLevelsForApi } from "./schemas";
@@ -134,28 +127,6 @@ export class ApiClient {
       "/api/auth/logout",
       AuthStatusResponseSchema,
       this.requestInit(signal, { method: "POST" }),
-    );
-  }
-  async setup(data: SetupRequest, signal?: AbortSignal): Promise<AuthStatusResponse> {
-    return this.fetch(
-      "/api/setup",
-      AuthStatusResponseSchema,
-      this.requestInit(signal, { method: "POST", body: JSON.stringify(data) }),
-    );
-  }
-
-  async getSettings(signal?: AbortSignal): Promise<AppSettingsResponse> {
-    return this.fetch("/api/settings", AppSettingsResponseSchema, this.requestInit(signal));
-  }
-
-  async updateSettings(
-    data: UpdateSettingsRequest,
-    signal?: AbortSignal,
-  ): Promise<AppSettingsResponse> {
-    return this.fetch(
-      "/api/settings",
-      AppSettingsResponseSchema,
-      this.requestInit(signal, { method: "PUT", body: JSON.stringify(data) }),
     );
   }
 

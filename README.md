@@ -14,10 +14,9 @@
 
 | 层级 | 说明 |
 | --- | --- |
-| 后端（传统部署） | Python 3.11+、FastAPI、SQLModel、SQLite |
-| 后端（Cloudflare） | TypeScript、Cloudflare Workers、D1、Cron Triggers |
+| 后端 | Python 3.11+、FastAPI、SQLModel、SQLite |
 | 前端 | React、TypeScript、Vite、Wouter |
-| 部署 | Docker Compose，或单个 Cloudflare Worker 同源托管 SPA 与 API |
+| 部署 | Docker Compose |
 
 API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 
@@ -167,59 +166,6 @@ docker compose up --build -d
 - `8000:8000` — 后端 FastAPI（可选直连；前端容器通过服务名 `backend:8000` 访问 API）
 
 修改对外端口时，请同步改 `docker-compose.yml` 与本 README。
-
----
-
-## Cloudflare 免费无服务器部署
-
-`worker/` 提供 Cloudflare Workers 实现：Workers Static Assets 托管前端，D1 保存业务和配置数据，Cron Trigger 每 2 分钟轮询行情。此路径不需要 Python、容器、常驻进程、持久磁盘，也不迁移原 SQLite 历史数据。
-
-### 方式一：通过 GitHub 绑定一键部署（推荐）
-
-<div align="center">
-  <a href="https://dash.cloudflare.com/?url=https://github.com/svlic/wavemonitor/tree/serverless">
-    <img src="https://img.shields.io/badge/Deploy_to_Cloudflare-FF6633?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Deploy to Cloudflare">
-  </a>
-  <p>跳转至 Cloudflare 控制台，授权 GitHub 后可完成部署，无需本地开发环境。</p>
-</div>
-
-1. Fork 本仓库到自己的 GitHub 账号。
-2. 点击上方按钮，或在 Cloudflare **Workers & Pages → Create application → Import a repository** 中选择 Fork。
-3. Production branch 选择 `serverless`；Root directory 填写 `worker`。
-4. Build command 填写 `npm run build:frontend`，Deploy command 填写 `npm run deploy`。
-5. 保存并部署。Wrangler 会自动创建并绑定名为 `wavemonitor` 的 D1；部署命令随后应用 D1 migrations。
-6. 打开部署生成的 `workers.dev` 地址，在“初始化配置”页设置访问密码，并可同时填写 Telegram Bot Token 与 Chat ID。
-
-后续推送到所选分支会自动重新构建和部署。自定义域名可在 Worker 的 **Settings → Domains & Routes** 中绑定。
-
-### 方式二：本地命令行部署
-
-```bash
-cd worker
-npm ci
-npm run build:frontend
-npx wrangler login
-npm run deploy
-```
-
-`npm run build:frontend` 安装并构建前端；`npm run deploy` 自动供应 D1、发布 Worker 并应用 migrations。部署后访问 Wrangler 输出的地址完成图形化初始化。`/`、`/api/*` 与 `/health` 同源，无需设置 `VITE_API_BASE_URL`。
-
-### 图形化配置
-
-- 首次访问必须设置至少 8 个字符的访问密码；该密码经 PBKDF2-SHA256 派生后保存，D1 不保存明文。
-- Telegram 可在首次初始化时填写，也可登录后进入“系统设置”启用、替换或停用。
-- Telegram Token 不会通过 API 或界面回显；更新时两项都留空表示沿用现有凭据。
-- 若旧部署已经通过 Wrangler secrets 设置 `WAVEMONITOR_WEB_PASSWORD`、`WAVEMONITOR_SESSION_SECRET` 和 `TELEGRAM_*`，仍可登录并在“系统设置”切换到 GUI 管理；切换后 D1 配置优先。
-- 修改访问密码会轮换 Cookie 签名密钥，使其他浏览器中的旧会话失效。
-
-首次 Cron 成功执行前，仪表盘显示“等待首次触发”。
-
-### 免费额度边界
-
-- 当前配置每 2 分钟执行一次 Cron，即每天 720 次；Worker 请求与 D1 读写仍受 Cloudflare 账户免费额度约束。
-- 每个启用来源每轮至少写一条价格观测；系统仅保留 3 天观测。来源数量较多或公开 API 流量较高时，免费额度不是无限容量保证。
-- Workers 不支持 `BINANCE_HTTPS_PROXY`。若 Cloudflare 出口访问 Binance 被地域限制，应停用该来源或改用可直接访问的数据源，不能依赖原 Docker 代理配置。
-- Cloudflare Cron 由平台调度，可能有触发延迟；本实现不是实时行情系统，也不保证恰好每 2 分钟执行。
 
 ---
 

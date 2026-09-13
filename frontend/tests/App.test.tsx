@@ -7,13 +7,10 @@ vi.mock("../src/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/api/client")>();
   return {
     ...actual,
-      apiClient: {
+    apiClient: {
       getAuthSession: vi.fn(),
       login: vi.fn(),
       logout: vi.fn(),
-      setup: vi.fn(),
-      getSettings: vi.fn(),
-      updateSettings: vi.fn(),
       getRuntime: vi.fn(),
       getLatestPrices: vi.fn(),
       getRecentAlerts: vi.fn(),
@@ -101,53 +98,6 @@ describe("App shell", () => {
       expect(screen.getByRole("heading", { name: "访问验证" })).toBeInTheDocument();
     });
     expect(screen.getByLabelText("访问密码")).toBeInTheDocument();
-  });
-
-  it("shows first-run configuration and enters after saving", async () => {
-    vi.mocked(apiClient.getAuthSession).mockResolvedValue({
-      authenticated: false,
-      auth_enabled: false,
-      setup_required: true,
-      configuration_available: true,
-    });
-    vi.mocked(apiClient.setup).mockResolvedValue({
-      authenticated: true,
-      auth_enabled: true,
-      setup_required: false,
-      configuration_available: true,
-    });
-    vi.mocked(apiClient.getRuntime).mockResolvedValue({
-      scheduler_ready: false,
-      providers_ready: false,
-      telegram_ready: false,
-      enabled_sources: 0,
-      polled_sources: 0,
-      observations_written: 0,
-      source_errors: 0,
-      alert_events_created: 0,
-      telegram_deliveries_attempted: 0,
-      last_tick_started_at: null,
-      last_tick_finished_at: null,
-    });
-    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
-    vi.mocked(apiClient.getRecentAlerts).mockResolvedValue([]);
-    vi.mocked(apiClient.getSourceErrors).mockResolvedValue([]);
-    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
-
-    render(<App />);
-    fireEvent.change(await screen.findByLabelText("访问密码"), { target: { value: "initial-password" } });
-    fireEvent.change(screen.getByLabelText("确认访问密码"), { target: { value: "initial-password" } });
-    fireEvent.change(screen.getByLabelText("Bot Token"), { target: { value: "123:token" } });
-    fireEvent.change(screen.getByLabelText("Chat ID"), { target: { value: "123456" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存并进入" }));
-
-    await waitFor(() => expect(apiClient.setup).toHaveBeenCalledWith({
-      password: "initial-password",
-      telegram_bot_token: "123:token",
-      telegram_chat_id: "123456",
-    }));
-    expect(await screen.findByRole("navigation", { name: "主导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "系统设置" })).toBeInTheDocument();
   });
 
   it("logs in and reveals the Chinese dashboard", async () => {

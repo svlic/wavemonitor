@@ -7,11 +7,9 @@ import { InstrumentCreate } from "./pages/instruments/InstrumentCreate";
 import { InstrumentEdit } from "./pages/instruments/InstrumentEdit";
 import { Dashboard } from "./pages/dashboard/Dashboard";
 import { OpsPanel } from "./pages/ops/OpsPanel";
-import { SettingsPage } from "./pages/settings/SettingsPage";
-import { SetupPage } from "./pages/settings/SetupPage";
 import "./styles.css";
 
-type AuthState = "checking" | "authenticated" | "password-required" | "setup-required";
+type AuthState = "checking" | "authenticated" | "password-required";
 
 type PageMeta = {
   title: string;
@@ -29,12 +27,6 @@ function getPageMeta(path: string): PageMeta {
     return {
       title: "告警与诊断",
       description: "最近告警、Telegram 测试与各数据源最近错误。",
-    };
-  }
-  if (path === "/settings") {
-    return {
-      title: "系统设置",
-      description: "更新访问密码与 Telegram 告警凭据。",
     };
   }
   if (path === "/instruments") {
@@ -137,12 +129,11 @@ function LoginGate({ onAuthenticated }: { onAuthenticated: () => void }) {
 
 type AppShellProps = {
   authEnabled: boolean;
-  configurationAvailable: boolean;
   onLogout: () => void;
   logoutPending: boolean;
 };
 
-function AppShell({ authEnabled, configurationAvailable, onLogout, logoutPending }: AppShellProps) {
+function AppShell({ authEnabled, onLogout, logoutPending }: AppShellProps) {
   const [location] = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const page = getPageMeta(location);
@@ -188,13 +179,6 @@ function AppShell({ authEnabled, configurationAvailable, onLogout, logoutPending
               标的管理
             </NavLink>
           </li>
-          {configurationAvailable && (
-            <li>
-              <NavLink href="/settings" onNavigate={() => setMobileNavOpen(false)}>
-                系统设置
-              </NavLink>
-            </li>
-          )}
         </ul>
         {authEnabled && (
           <div className="sidebar-footer">
@@ -223,7 +207,6 @@ function AppShell({ authEnabled, configurationAvailable, onLogout, logoutPending
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/diagnostics" component={OpsPanel} />
-            <Route path="/settings" component={SettingsPage} />
             <Route path="/instruments" component={InstrumentList} />
             <Route path="/instruments/new" component={InstrumentCreate} />
             <Route path="/instruments/:id/edit">
@@ -250,7 +233,6 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [authEnabled, setAuthEnabled] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
-  const [configurationAvailable, setConfigurationAvailable] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -259,8 +241,7 @@ export function App() {
       try {
         const status = await apiClient.getAuthSession(controller.signal);
         setAuthEnabled(status.auth_enabled);
-        setConfigurationAvailable(status.configuration_available === true);
-        setAuthState(status.setup_required ? "setup-required" : status.auth_enabled && !status.authenticated ? "password-required" : "authenticated");
+        setAuthState(status.auth_enabled && !status.authenticated ? "password-required" : "authenticated");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
@@ -295,19 +276,11 @@ export function App() {
       </main>
     );
   }
-  if (authState === "setup-required") {
-    return <SetupPage onConfigured={() => {
-      setAuthEnabled(true);
-      setAuthState("authenticated");
-    }} />;
-  }
-
-
   if (authState === "password-required") {
     return <LoginGate onAuthenticated={() => setAuthState("authenticated")} />;
   }
 
   return (
-    <AppShell authEnabled={authEnabled} configurationAvailable={configurationAvailable} onLogout={handleLogout} logoutPending={logoutPending} />
+    <AppShell authEnabled={authEnabled} onLogout={handleLogout} logoutPending={logoutPending} />
   );
 }
