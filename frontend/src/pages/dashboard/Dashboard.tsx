@@ -1,15 +1,10 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiClient, ApiError } from "../../api/client";
 import type {
   RuntimeResponse,
   LatestPrice,
   InstrumentWithMappings,
 } from "../../api/client";
-import { usePollingRefresh } from "../../hooks/usePollingRefresh";
-import {
-  getInstrumentRevision,
-  subscribeInstrumentRevision,
-} from "../../state/instrumentRevision";
 import { formatDateTime } from "../../utils/format";
 import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
@@ -85,25 +80,12 @@ export function Dashboard() {
     return () => controller.abort();
   }, [loadData]);
 
-  const instrumentRevision = useSyncExternalStore(
-    subscribeInstrumentRevision,
-    getInstrumentRevision,
-  );
-  const loadedInstrumentRevisionRef = useRef(instrumentRevision);
-
   useEffect(() => {
-    if (instrumentRevision === loadedInstrumentRevisionRef.current) {
-      return;
-    }
-    loadedInstrumentRevisionRef.current = instrumentRevision;
-    void loadData(undefined, { refresh: true });
-  }, [instrumentRevision, loadData]);
-
-  const pollPrices = useCallback(() => {
-    void loadData(undefined, { refresh: true });
+    const id = window.setInterval(() => {
+      void loadData(undefined, { refresh: true });
+    }, 120_000);
+    return () => window.clearInterval(id);
   }, [loadData]);
-
-  usePollingRefresh(pollPrices, 120_000);
 
   const handleRefresh = () => {
     void loadData(undefined, { refresh: true });

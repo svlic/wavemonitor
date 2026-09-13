@@ -16,8 +16,7 @@ from wavemonitor_backend.models import (
     SourceMapping,
 )
 from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules
-from wavemonitor_backend.rule_types import InvalidRuleState
-from wavemonitor_backend.rules import RuleState, evaluate_rules
+from wavemonitor_backend.rules import InvalidRuleState, RuleState, evaluate_rules
 
 OBSERVED_AT = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 

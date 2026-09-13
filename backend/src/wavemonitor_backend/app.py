@@ -19,7 +19,9 @@ from wavemonitor_backend.api import (
     delete_instrument,
     get_instrument_status,
     list_instruments,
+    list_latest_prices,
     list_recent_alerts,
+    list_source_errors,
     patch_instrument_enabled,
     update_instrument,
 )
@@ -30,7 +32,6 @@ from wavemonitor_backend.db import (
     database_url_from_env,
     session_scope,
 )
-from wavemonitor_backend.lifecycle import ImmediateTickRequester
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
 from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
@@ -44,7 +45,6 @@ from wavemonitor_backend.notifier import (
     message_for_kind,
     sanitize_telegram_failure,
 )
-from wavemonitor_backend.operational_api import list_latest_prices, list_source_errors
 from wavemonitor_backend.schemas import (
     AlertResponse,
     InstrumentEnabledPatch,
@@ -209,7 +209,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
 
     def request_monitoring_tick() -> None:
         lifecycle = app_runtime.monitoring_lifecycle
-        if isinstance(lifecycle, ImmediateTickRequester):
+        if lifecycle is not None:
             lifecycle.request_tick()
 
     @asynccontextmanager
@@ -480,8 +480,3 @@ def api_timestamp(value: datetime | None) -> str | None:
 def get_application() -> FastAPI:
     return create_app()
 
-
-def __getattr__(name: str) -> object:
-    if name == "app":
-        return get_application()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

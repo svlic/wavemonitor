@@ -24,8 +24,7 @@ from wavemonitor_backend.rule_persistence import (
     evaluate_and_persist_rules,
     persist_rule_evaluation,
 )
-from wavemonitor_backend.rule_types import RuleEvaluation
-from wavemonitor_backend.rules import RuleState
+from wavemonitor_backend.rules import RuleEvaluation, RuleState
 from wavemonitor_backend.settings import Settings
 
 

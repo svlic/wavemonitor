@@ -1,8 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/pages/dashboard/Dashboard";
 import { apiClient } from "../src/api/client";
-import { bumpInstrumentRevision } from "../src/state/instrumentRevision";
 import type { InstrumentWithMappings } from "../src/api/client";
 
 vi.mock("../src/api/client", async (importOriginal) => {
@@ -39,6 +38,7 @@ describe("Dashboard", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -268,7 +268,8 @@ describe("Dashboard", () => {
     expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
   });
 
-  it("refetches dashboard data when instrument configuration changes", async () => {
+  it("refetches dashboard data on the two-minute interval", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
     vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
     vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
@@ -279,7 +280,9 @@ describe("Dashboard", () => {
       expect(apiClient.getInstruments).toHaveBeenCalledTimes(1);
     });
 
-    bumpInstrumentRevision();
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
 
     await waitFor(() => {
       expect(apiClient.getInstruments).toHaveBeenCalledTimes(2);

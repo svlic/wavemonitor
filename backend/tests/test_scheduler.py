@@ -10,7 +10,7 @@ from typing import Final
 import pytest
 from sqlmodel import Session, select
 
-from wavemonitor_backend.adapter_types import (
+from wavemonitor_backend.adapters import (
     AdapterError,
     AdapterErrorKind,
     PriceAdapterResult,

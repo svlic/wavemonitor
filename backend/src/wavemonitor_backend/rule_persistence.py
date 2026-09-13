@@ -14,7 +14,7 @@ from wavemonitor_backend.models import (
     LastRuleState,
     SourceMapping,
 )
-from wavemonitor_backend.rule_types import RuleEvaluation, RuleState
+from wavemonitor_backend.rules import RuleEvaluation, RuleState
 from wavemonitor_backend.support_resistance import nearest_pair
 
 

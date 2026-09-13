@@ -7,7 +7,7 @@ from typing import Final, Protocol, assert_never
 
 from sqlmodel import Session, col, select
 
-from wavemonitor_backend.adapter_types import (
+from wavemonitor_backend.adapters import (
     AdapterError,
     AdapterErrorKind,
     PriceAdapterResult,

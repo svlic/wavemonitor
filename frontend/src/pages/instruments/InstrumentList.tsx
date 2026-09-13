@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { apiClient } from "../../api/client";
-import { bumpInstrumentRevision } from "../../state/instrumentRevision";
 import type { InstrumentWithMappings } from "../../api/client";
 import { formatLevels, formatOptionalLevel } from "../../utils/format";
 
@@ -41,7 +40,6 @@ export function InstrumentList() {
     try {
       const updated = await apiClient.patchInstrumentEnabled(id, enabled);
       setInstruments((current) => current.map((i) => (i.id === id ? updated : i)));
-      bumpInstrumentRevision();
     } catch {
       setToggleError(enabled ? "恢复监控失败，请稍后重试。" : "暂停监控失败，请稍后重试。");
     } finally {
@@ -56,7 +54,6 @@ export function InstrumentList() {
       await apiClient.deleteInstrument(id);
       setInstruments((current) => current.filter((i) => i.id !== id));
       setPendingDeleteId(null);
-      bumpInstrumentRevision();
     } catch {
       setDeleteError("删除标的失败，请稍后重试。");
     } finally {

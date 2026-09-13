@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-from wavemonitor_backend.adapter_types import BinanceFuturesClient, HyperliquidInfoClient
+from wavemonitor_backend.adapters import BinanceFuturesClient, HyperliquidInfoClient
 from wavemonitor_backend.models import MarketType, Provider
 
 SYMBOL_QUERY_MAX_RESULTS: Final[int] = 25
