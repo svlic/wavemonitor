@@ -15,12 +15,6 @@ const MARKET_TYPES_BY_PROVIDER: Record<ProviderId, readonly MarketTypeId[]> = {
   hyperliquid: ["perpetual"],
 };
 
-const DEFAULT_MARKET_TYPE: Record<ProviderId, MarketTypeId> = {
-  yfinance: "equity",
-  binance: "usd_m_futures",
-  hyperliquid: "perpetual",
-};
-
 export function marketTypesForProvider(provider: string): readonly MarketTypeId[] {
   if (provider === "yfinance" || provider === "binance" || provider === "hyperliquid") {
     return MARKET_TYPES_BY_PROVIDER[provider];
@@ -29,10 +23,7 @@ export function marketTypesForProvider(provider: string): readonly MarketTypeId[
 }
 
 export function defaultMarketTypeForProvider(provider: string): MarketTypeId {
-  if (provider === "yfinance" || provider === "binance" || provider === "hyperliquid") {
-    return DEFAULT_MARKET_TYPE[provider];
-  }
-  return "equity";
+  return marketTypesForProvider(provider)[0]!;
 }
 
 export function marketTypeLabel(marketType: string): string {
