@@ -83,14 +83,3 @@ def build_monitoring_lifecycle(
         session_factory,
         WakingTicker(interval_seconds=interval),
     )
-
-
-def default_monitoring_lifecycle(
-    *,
-    engine: Engine,
-    settings: Settings,
-    metrics_store: RuntimeMetricsStore,
-) -> MonitoringLifecycle | None:
-    if monitoring_disabled_from_env():
-        return None
-    return build_monitoring_lifecycle(engine=engine, settings=settings, metrics_store=metrics_store)

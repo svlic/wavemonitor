@@ -2,7 +2,7 @@ import base64
 import hmac
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Final, Protocol
@@ -34,7 +34,10 @@ from wavemonitor_backend.db import (
 )
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
-from wavemonitor_backend.monitoring_bootstrap import default_monitoring_lifecycle
+from wavemonitor_backend.monitoring_bootstrap import (
+    build_monitoring_lifecycle,
+    monitoring_disabled_from_env,
+)
 from wavemonitor_backend.notifier import (
     MessageKind,
     TelegramAlert,
@@ -182,20 +185,15 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         base_runtime = runtime
     engine = create_database_engine(base_runtime.database_url)
     monitoring_lifecycle = base_runtime.monitoring_lifecycle
-    if monitoring_lifecycle is None and runtime is None:
-        monitoring_lifecycle = default_monitoring_lifecycle(
+    if monitoring_lifecycle is None and runtime is None and not monitoring_disabled_from_env():
+        monitoring_lifecycle = build_monitoring_lifecycle(
             engine=engine,
             settings=base_runtime.settings,
             metrics_store=base_runtime.metrics_store,
         )
-    symbol_catalog: SymbolCatalog | None = base_runtime.symbol_catalog
-    app_runtime = AppRuntime(
-        settings=base_runtime.settings,
-        database_url=base_runtime.database_url,
-        telegram_transport=base_runtime.telegram_transport,
-        metrics_store=base_runtime.metrics_store,
+    app_runtime = replace(
+        base_runtime,
         monitoring_lifecycle=monitoring_lifecycle,
-        symbol_catalog=symbol_catalog,
     )
 
     def resolved_symbol_catalog() -> SymbolCatalog | None:
@@ -479,4 +477,3 @@ def api_timestamp(value: datetime | None) -> str | None:
 
 def get_application() -> FastAPI:
     return create_app()
-
