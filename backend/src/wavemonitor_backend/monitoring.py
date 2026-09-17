@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Final, Protocol, assert_never
+from typing import Final, Protocol, TypeAlias, assert_never
 
 from sqlmodel import Session, col, select
 
@@ -41,8 +41,7 @@ class AlertNotifier(Protocol):
     def send_text(self, text: str) -> TelegramSendResult | None: ...
 
 
-class Clock(Protocol):
-    def __call__(self) -> datetime: ...
+Clock: TypeAlias = Callable[[], datetime]
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +230,6 @@ class TickCounts:
     polled_sources: int = 0
     observations_written: int = 0
     source_errors: int = 0
-    source_successes: int = 0
     alert_events_created: int = 0
     telegram_deliveries_attempted: int = 0
 
@@ -244,25 +242,19 @@ class TickCounts:
         return self.source_errors == 0
 
     def with_success(self, alerts: int, deliveries: int) -> TickCounts:
-        return TickCounts(
-            enabled_sources=self.enabled_sources,
+        return replace(
+            self,
             polled_sources=self.polled_sources + 1,
             observations_written=self.observations_written + 1,
-            source_errors=self.source_errors,
-            source_successes=self.source_successes + 1,
             alert_events_created=self.alert_events_created + alerts,
             telegram_deliveries_attempted=self.telegram_deliveries_attempted + deliveries,
         )
 
     def with_error(self) -> TickCounts:
-        return TickCounts(
-            enabled_sources=self.enabled_sources,
+        return replace(
+            self,
             polled_sources=self.polled_sources + 1,
-            observations_written=self.observations_written,
             source_errors=self.source_errors + 1,
-            source_successes=self.source_successes,
-            alert_events_created=self.alert_events_created,
-            telegram_deliveries_attempted=self.telegram_deliveries_attempted,
         )
 
 
