@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final, Protocol
 
 from wavemonitor_backend.adapters import BinanceFuturesClient, HyperliquidInfoClient
+from wavemonitor_backend.data_source_proxy import (
+    configure_yfinance_proxy,
+    data_source_socks5_proxy,
+    default_hyperliquid_info_client,
+    proxy_mapping,
+)
 from wavemonitor_backend.models import MarketType, Provider
 
 SYMBOL_QUERY_MAX_RESULTS: Final[int] = 25
-BINANCE_HTTPS_PROXY_ENV: Final[str] = "BINANCE_HTTPS_PROXY"
 BINANCE_TIMEOUT_SECONDS: Final[int] = 5
 
 
@@ -232,6 +236,7 @@ def _default_yfinance_search(query: str, limit: int) -> list[SymbolOption]:
 
     import yfinance as yf
 
+    configure_yfinance_proxy(yf)
     try:
         quotes = yf.Search(query, max_results=limit).quotes
     except Exception:
@@ -262,18 +267,16 @@ def default_binance_futures_clients() -> tuple[BinanceExchangeListing, BinanceEx
     from binance.um_futures import UMFutures
 
     kwargs: dict[str, object] = {"timeout": BINANCE_TIMEOUT_SECONDS}
-    proxy = os.getenv(BINANCE_HTTPS_PROXY_ENV, "").strip()
-    if proxy:
-        kwargs["proxies"] = {"https": proxy}
+    socks5_proxy = data_source_socks5_proxy()
+    if socks5_proxy is not None:
+        kwargs["proxies"] = proxy_mapping(socks5_proxy)
     return UMFutures(**kwargs), CMFutures(**kwargs)
 
 
 def default_symbol_catalog() -> SymbolCatalog:
-    from hyperliquid.info import Info
-
     usd_m, coin_m = default_binance_futures_clients()
     return SymbolCatalog(
         usd_m_client=usd_m,
         coin_m_client=coin_m,
-        hyperliquid_client=Info(),
+        hyperliquid_client=default_hyperliquid_info_client(),
     )

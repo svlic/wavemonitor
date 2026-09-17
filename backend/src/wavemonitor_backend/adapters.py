@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Protocol, TypeAlias
 
+from wavemonitor_backend.data_source_proxy import configure_yfinance_proxy
 from wavemonitor_backend.models import MarketType, Provider
 
 RawMetadata: TypeAlias = dict[str, object]
@@ -259,6 +260,7 @@ class YFinanceAdapter:
     def _default_ticker_factory(self, symbol: str) -> YFinanceTicker:
         import yfinance as yf
 
+        configure_yfinance_proxy(yf)
         return yf.Ticker(symbol)
 
 
