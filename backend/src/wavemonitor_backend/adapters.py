@@ -53,13 +53,6 @@ class PriceIdentity:
 
 
 @dataclass(frozen=True, slots=True)
-class PricePayload:
-    path: str
-    raw_price: object
-    price: Decimal
-
-
-@dataclass(frozen=True, slots=True)
 class MalformedProviderPriceError(Exception):
     path: str
     raw_price: object
@@ -112,12 +105,7 @@ def _normalize_hyperliquid_symbol(symbol: str) -> str:
     return f"{dex.lower()}:{coin.upper()}"
 
 
-def _metadata(payload: PricePayload) -> dict[str, object]:
-
-    return {"path": payload.path, "raw_price": payload.raw_price}
-
-
-def _parse_price(raw_price: object, path: str) -> PricePayload | None:
+def _parse_price(raw_price: object, path: str) -> Decimal | None:
     if raw_price is None:
         return None
     if isinstance(raw_price, Decimal):
@@ -145,7 +133,7 @@ def _parse_price(raw_price: object, path: str) -> PricePayload | None:
         price = Decimal(str(as_float))
     if not price.is_finite():
         raise MalformedProviderPriceError(path, raw_price)
-    return PricePayload(path=path, raw_price=raw_price, price=price)
+    return price
 
 
 def _error_kind_from_exception(exc: Exception) -> AdapterErrorKind:
@@ -176,14 +164,22 @@ def _adapter_error(identity: PriceIdentity, exc: Exception) -> AdapterError:
     )
 
 
-def _price_result(identity: PriceIdentity, payload: PricePayload, clock: Clock) -> PriceResult:
+def _price_result(
+    identity: PriceIdentity,
+    raw_price: object,
+    path: str,
+    clock: Clock,
+) -> PriceResult | None:
+    price = _parse_price(raw_price, path)
+    if price is None:
+        return None
     return PriceResult(
         source=identity.source,
         market_type=identity.market_type,
         symbol=identity.symbol,
-        price=payload.price,
+        price=price,
         timestamp=clock(),
-        raw_metadata=_metadata(payload),
+        raw_metadata={"path": path, "raw_price": raw_price},
     )
 
 
@@ -225,8 +221,7 @@ class YFinanceAdapter:
             if isinstance(fast_info, dict)
             else getattr(fast_info, "last_price", None)
         )
-        payload = _parse_price(raw_price, "fast_info.last_price")
-        return None if payload is None else _price_result(identity, payload, self._clock)
+        return _price_result(identity, raw_price, "fast_info.last_price", self._clock)
 
     def _history_result(
         self,
@@ -246,16 +241,7 @@ class YFinanceAdapter:
                     raw_price = row["Close"]
                 except (KeyError, TypeError, IndexError):
                     raw_price = None
-        payload = _parse_price(raw_price, "history.close")
-        return (
-            None
-            if payload is None
-            else _price_result(
-                identity,
-                payload,
-                self._clock,
-            )
-        )
+        return _price_result(identity, raw_price, "history.close", self._clock)
 
     def _default_ticker_factory(self, symbol: str) -> YFinanceTicker:
         import yfinance as yf
@@ -321,10 +307,7 @@ class BinanceFuturesAdapter:
         price_key: str,
         path: str,
     ) -> PriceResult | None:
-        parsed_payload = _parse_price(payload.get(price_key), path)
-        return (
-            None if parsed_payload is None else _price_result(identity, parsed_payload, self._clock)
-        )
+        return _price_result(identity, payload.get(price_key), path, self._clock)
 
 
 def _hyperliquid_mids_scope(symbol: str) -> tuple[str, str]:
@@ -353,10 +336,15 @@ class HyperliquidAdapter:
         )
         dex, path = _hyperliquid_mids_scope(identity.symbol)
         try:
-            payload = _parse_price(self._info_client.all_mids(dex).get(identity.symbol), path)
+            result = _price_result(
+                identity,
+                self._info_client.all_mids(dex).get(identity.symbol),
+                path,
+                self._clock,
+            )
         except Exception as exc:
             return _adapter_error(identity, exc)
-        if payload is None:
+        if result is None:
             return AdapterError(
                 identity.source,
                 identity.market_type,
@@ -365,4 +353,4 @@ class HyperliquidAdapter:
                 f"{identity.symbol} price was not present in Hyperliquid all_mids",
                 {"path": path},
             )
-        return _price_result(identity, payload, self._clock)
+        return result
