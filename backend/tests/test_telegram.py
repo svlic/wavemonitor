@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
@@ -87,6 +88,8 @@ def make_alert() -> TelegramAlert:
         price=Decimal("100.25"),
         support=Decimal("98.00"),
         resistance=Decimal("130.00"),
+        threshold=Decimal("0.02"),
+        triggered_at=datetime(2026, 6, 30, 12, 0, tzinfo=UTC),
     )
 
 
@@ -266,14 +269,46 @@ def test_formatter_includes_instrument_source_rule_price_support_and_resistance(
     # When: the Telegram message is formatted.
     message = format_telegram_alert(alert)
 
-    # Then: MarkdownV2 payload includes escaped field values (dots/underscores escaped).
-    assert "*WaveMonitor alert*" in message
+    # Then: MarkdownV2 payload is a Chinese summary with escaped numbers and source labels.
+    assert "*WaveMonitor 告警*" in message
+    assert "*接近支撑*" in message
     assert "Bitcoin" in message
-    assert "binance:usd\\_m\\_futures:BTCUSDT" in message
-    assert "near\\_support" in message
-    assert "100\\.25" in message
-    assert "98\\.00" in message
-    assert "130\\.00" in message
+    assert r"Binance · USD\-M 合约 · BTCUSDT" in message
+    assert r"现价 100\.25 已贴近支撑 98\.00，相差 2\.25 / 2\.24%，接近阈值 2\.00%。" in message
+    assert r"*现价* 100\.25" in message
+    assert r"*支撑* 98\.00（相差 2\.25 / 2\.24%）" in message
+    assert r"*阻力* 130\.00（相差 29\.75 / 29\.68%）" in message
+    assert r"*风险回报* 13\.22" in message
+    assert r"*时间* 2026\-06\-30 20:00:00 UTC\+8" in message
+    assert "near_support" not in message
+
+
+def test_formatter_describes_breakout_and_support_breach():
+    breakout = TelegramAlert(
+        instrument="Bitcoin",
+        source="binance:usd_m_futures:BTCUSDT",
+        rule=AlertKind.RESISTANCE_BREAKOUT,
+        price=Decimal("131.50"),
+        support=Decimal("98.00"),
+        resistance=Decimal("130.00"),
+    )
+    breach = TelegramAlert(
+        instrument="Bitcoin",
+        source="hyperliquid:perpetual:BTC",
+        rule=AlertKind.SUPPORT_BREACH,
+        price=Decimal("97.40"),
+        support=Decimal("98.00"),
+        resistance=Decimal("130.00"),
+    )
+
+    breakout_message = format_telegram_alert(breakout)
+    breach_message = format_telegram_alert(breach)
+
+    assert "*突破阻力*" in breakout_message
+    assert r"现价 131\.50 已上破阻力 130\.00，高出 1\.50。" in breakout_message
+    assert "*跌破支撑*" in breach_message
+    assert r"现价 97\.40 已跌破支撑 98\.00，低出 0\.60。" in breach_message
+    assert "Hyperliquid · 永续合约 · BTC" in breach_message
 
 
 def test_send_alert_persists_delivery_result_without_storing_credentials(

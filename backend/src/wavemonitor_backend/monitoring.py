@@ -205,6 +205,9 @@ class MonitoringScheduler:
                     price=alert.price,
                     support=alert.support,
                     resistance=alert.resistance,
+                    threshold=alert.threshold,
+                    metric=alert.metric,
+                    triggered_at=alert.triggered_at,
                 ),
             )
             send_result = self._notifier.send_text(message)
