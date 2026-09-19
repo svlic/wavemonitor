@@ -100,11 +100,6 @@ class AdapterRegistry:
             )
         return adapter.get_latest_price(source.symbol, source.market_type)
 
-    def replace(
-        self, provider: Provider, market_type: MarketType, adapter: PollingPriceAdapter
-    ) -> None:
-        self._adapters[(provider, market_type)] = adapter
-
 
 class MonitoringScheduler:
     def __init__(
@@ -177,7 +172,7 @@ class MonitoringScheduler:
             case AdapterError() as error:
                 self._price_store.record_error(
                     require_id(source.id),
-                    error=format_source_error(error),
+                    error=f"{error.kind.value}: {error.message}"[:SOURCE_ERROR_MAX_LENGTH],
                     observed_at=self._clock(),
                 )
                 return counts.with_error()
@@ -287,7 +282,3 @@ def enabled_sources(session: Session) -> list[tuple[Instrument, SourceMapping]]:
         ).all()
         pairs.extend((instrument, source) for source in sources)
     return pairs
-
-
-def format_source_error(error: AdapterError) -> str:
-    return f"{error.kind.value}: {error.message}"[:SOURCE_ERROR_MAX_LENGTH]

@@ -42,7 +42,7 @@ from wavemonitor_backend.notifier import (
 BASE_TIME: Final[datetime] = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FakePriceAdapter:
     result: PriceAdapterResult
 
@@ -209,14 +209,15 @@ def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
     seed_instrument(session)
     clock = FakeClock(BASE_TIME)
     notifier = FakeNotifier()
+    binance_adapter = FakePriceAdapter(
+        price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", BASE_TIME)
+    )
     registry = AdapterRegistry(
         adapters={
             (Provider.YFINANCE, MarketType.EQUITY): FakePriceAdapter(
                 price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "100", BASE_TIME)
             ),
-            (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
-                price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", BASE_TIME)
-            ),
+            (Provider.BINANCE, MarketType.USD_M_FUTURES): binance_adapter,
             (Provider.HYPERLIQUID, MarketType.PERPETUAL): FakePriceAdapter(
                 price(Provider.HYPERLIQUID, MarketType.PERPETUAL, "BTC", "100", BASE_TIME)
             ),
@@ -228,21 +229,13 @@ def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
     # When: price repeats, resets away from support, then returns near support.
     clock.set(BASE_TIME + timedelta(minutes=1))
     second = scheduler.run_tick(session)
-    registry.replace(
-        Provider.BINANCE,
-        MarketType.USD_M_FUTURES,
-        FakePriceAdapter(
-            price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", clock.current)
-        ),
+    binance_adapter.result = price(
+        Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", clock.current
     )
     clock.set(BASE_TIME + timedelta(minutes=2))
     reset = scheduler.run_tick(session)
-    registry.replace(
-        Provider.BINANCE,
-        MarketType.USD_M_FUTURES,
-        FakePriceAdapter(
-            price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", clock.current)
-        ),
+    binance_adapter.result = price(
+        Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "100", clock.current
     )
     clock.set(BASE_TIME + timedelta(minutes=3))
     retrigger = scheduler.run_tick(session)
@@ -357,11 +350,12 @@ def test_poll_tick_keeps_last_success_in_memory_after_newer_error(session: Sessi
     # Given: all sources first return successful prices.
     _instrument, sources = seed_instrument(session)
     clock = FakeClock(BASE_TIME)
+    yfinance_adapter = FakePriceAdapter(
+        price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "120", BASE_TIME)
+    )
     registry = AdapterRegistry(
         adapters={
-            (Provider.YFINANCE, MarketType.EQUITY): FakePriceAdapter(
-                price(Provider.YFINANCE, MarketType.EQUITY, "BTC", "120", BASE_TIME)
-            ),
+            (Provider.YFINANCE, MarketType.EQUITY): yfinance_adapter,
             (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
                 price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "120", BASE_TIME)
             ),
@@ -375,19 +369,13 @@ def test_poll_tick_keeps_last_success_in_memory_after_newer_error(session: Sessi
 
     # When: one source fails on the next tick.
     clock.set(BASE_TIME + timedelta(minutes=1))
-    registry.replace(
-        Provider.YFINANCE,
-        MarketType.EQUITY,
-        FakePriceAdapter(
-            AdapterError(
-                source=Provider.YFINANCE,
-                market_type=MarketType.EQUITY,
-                symbol="BTC",
-                kind=AdapterErrorKind.PROVIDER_ERROR,
-                message="provider down",
-                raw_metadata={},
-            )
-        ),
+    yfinance_adapter.result = AdapterError(
+        source=Provider.YFINANCE,
+        market_type=MarketType.EQUITY,
+        symbol="BTC",
+        kind=AdapterErrorKind.PROVIDER_ERROR,
+        message="provider down",
+        raw_metadata={},
     )
     scheduler.run_tick(session)
 
