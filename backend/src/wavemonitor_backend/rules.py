@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 from enum import StrEnum
 from typing import Final
 
@@ -10,6 +10,7 @@ from wavemonitor_backend.models import AlertKind
 from wavemonitor_backend.support_resistance import levels_for_alerts
 
 ZERO: Final[Decimal] = Decimal("0")
+PERCENTAGE_POINT: Final[Decimal] = Decimal("0.01")
 
 
 class InvalidRuleState(StrEnum):
@@ -20,6 +21,7 @@ class InvalidRuleState(StrEnum):
 class RuleState:
     last_price: Decimal | None = None
     near_support_active: bool = False
+    near_support_alert_bucket: int | None = None
     risk_reward_active: bool = False
     above_resistance_active: bool = False
     support_breach_active: bool = False
@@ -67,7 +69,7 @@ def evaluate_rules(
         support=support, resistance=resistance, price=price
     )
 
-    if support is not None and price <= support:
+    if support is not None and price < support:
         support_breach_active = True
         breach_alert = support_breach_alert(
             active=support_breach_active,
@@ -83,7 +85,8 @@ def evaluate_rules(
             next_state=RuleState(
                 last_price=price,
                 support_breach_active=support_breach_active,
-                # Other conditions are inactive while price is at/below support → re-arm.
+                # Other conditions are inactive while price is below support → re-arm.
+                near_support_alert_bucket=None,
                 near_support_last_alert_at=None,
                 risk_reward_last_alert_at=None,
                 breakout_last_alert_at=None,
@@ -102,6 +105,11 @@ def evaluate_rules(
     if support is not None and near_support_threshold is not None:
         near_support_metric = (price - support) / price
         near_support_active = near_support_metric <= near_support_threshold
+    near_support_bucket = (
+        percentage_point_bucket(near_support_metric)
+        if near_support_active and near_support_metric is not None
+        else None
+    )
 
     risk_reward_metric: Decimal | None = None
     risk_reward_active = False
@@ -118,6 +126,7 @@ def evaluate_rules(
         for alert in (
             near_support_alert(
                 active=near_support_active,
+                bucket=near_support_bucket,
                 previous_state=previous_state,
                 observed_at=observed_at,
                 price=price,
@@ -159,6 +168,12 @@ def evaluate_rules(
         next_state=RuleState(
             last_price=price,
             near_support_active=near_support_active,
+            near_support_alert_bucket=next_near_support_bucket(
+                active=near_support_active,
+                bucket=near_support_bucket,
+                alerts=alerts,
+                previous=previous_state.near_support_alert_bucket,
+            ),
             risk_reward_active=risk_reward_active,
             above_resistance_active=above_resistance_active,
             support_breach_active=False,
@@ -198,6 +213,7 @@ def risk_reward_ratio(*, price: Decimal, support: Decimal, resistance: Decimal) 
 def near_support_alert(
     *,
     active: bool,
+    bucket: int | None,
     previous_state: RuleState,
     observed_at: datetime,
     price: Decimal,
@@ -206,9 +222,10 @@ def near_support_alert(
     threshold: Decimal,
     metric: Decimal,
 ) -> AlertDecision | None:
-    can_emit = should_emit(
+    can_emit = should_emit_near_support(
         active=active,
-        last_alert_at=previous_state.near_support_last_alert_at,
+        bucket=bucket,
+        previous_state=previous_state,
     )
     if not can_emit:
         return None
@@ -266,7 +283,7 @@ def breakout_alert(
     resistance_level: Decimal,
 ) -> AlertDecision | None:
     previous_price = previous_state.last_price
-    crossed = previous_price is not None and previous_price <= resistance_level and active
+    crossed = (previous_price is None or previous_price <= resistance_level) and active
     can_emit = should_emit(
         active=crossed,
         last_alert_at=previous_state.breakout_last_alert_at,
@@ -317,6 +334,37 @@ def should_emit(*, active: bool, last_alert_at: datetime | None) -> bool:
     if not active:
         return False
     return last_alert_at is None
+
+
+def percentage_point_bucket(metric: Decimal) -> int:
+    return int((metric / PERCENTAGE_POINT).to_integral_value(rounding=ROUND_CEILING))
+
+
+def should_emit_near_support(
+    *, active: bool, bucket: int | None, previous_state: RuleState
+) -> bool:
+    if not active or bucket is None:
+        return False
+    previous_bucket = previous_state.near_support_alert_bucket
+    if previous_bucket is not None:
+        return bucket < previous_bucket
+    # A legacy active state has an alert timestamp but no bucket.
+    # Preserve its dedupe until re-armed.
+    return previous_state.near_support_last_alert_at is None
+
+
+def next_near_support_bucket(
+    *,
+    active: bool,
+    bucket: int | None,
+    alerts: tuple[AlertDecision, ...],
+    previous: int | None,
+) -> int | None:
+    if not active:
+        return None
+    if any(alert.kind == AlertKind.NEAR_SUPPORT for alert in alerts):
+        return bucket
+    return previous
 
 
 def next_alert_time(

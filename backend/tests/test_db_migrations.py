@@ -154,15 +154,20 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
         columns = {row[1] for row in connection.execute("PRAGMA table_info(lastrulestate)")}
         state = connection.execute(
             """
-            SELECT support_breach_active, support_breach_last_alert_at
+            SELECT support_breach_active, support_breach_last_alert_at,
+                   near_support_alert_bucket
             FROM lastrulestate WHERE id = 1
             """
         ).fetchone()
         observation_indexes = {
             row[1] for row in connection.execute("PRAGMA index_list(priceobservation)")
         }
-    assert {"support_breach_active", "support_breach_last_alert_at"} <= columns
-    assert state == (0, None)
+    assert {
+        "support_breach_active",
+        "support_breach_last_alert_at",
+        "near_support_alert_bucket",
+    } <= columns
+    assert state == (0, None, None)
     assert "ix_priceobservation_observed_at" in observation_indexes
 
 

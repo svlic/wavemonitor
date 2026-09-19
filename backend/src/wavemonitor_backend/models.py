@@ -290,6 +290,7 @@ class LastRuleState(RuleDecimalMixin, table=True):
     source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
     last_price: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
     near_support_active: bool = Field(default=False)
+    near_support_alert_bucket: int | None = Field(default=None)
     risk_reward_active: bool = Field(default=False)
     above_resistance_active: bool = Field(default=False)
     support_breach_active: bool = Field(default=False)

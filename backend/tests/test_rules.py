@@ -75,7 +75,7 @@ def test_near_support_true_and_false_threshold_boundary():
     assert far_result.next_state.near_support_active is False
 
 
-def test_breakout_requires_crossing_from_at_or_below_resistance():
+def test_breakout_triggers_on_first_observation_above_resistance_or_crossing():
     # Given: resistance is 110 and prior observations can be absent, below, or already above.
     first_observation = RuleState()
     below_previous = RuleState(last_price=Decimal("100"))
@@ -110,14 +110,14 @@ def test_breakout_requires_crossing_from_at_or_below_resistance():
         observed_at=OBSERVED_AT,
     )
 
-    # Then: only the true crossing emits resistance-breakout.
-    assert AlertKind.RESISTANCE_BREAKOUT not in {alert.kind for alert in first.alerts}
+    # Then: first observation above and a later crossing both emit; staying above does not.
+    assert [alert.kind for alert in first.alerts] == [AlertKind.RESISTANCE_BREAKOUT]
     assert [alert.kind for alert in crossing.alerts] == [AlertKind.RESISTANCE_BREAKOUT]
     assert crossing.next_state.above_resistance_active is True
     assert already_above.alerts == ()
 
 
-def test_price_at_or_below_support_emits_support_breach_and_invalid_state():
+def test_only_price_strictly_below_support_emits_support_breach():
     # Given: prices at and below support make the long risk denominator zero or negative.
     state = RuleState(
         last_price=Decimal("101"),
@@ -144,17 +144,20 @@ def test_price_at_or_below_support_emits_support_breach_and_invalid_state():
         observed_at=OBSERVED_AT + timedelta(seconds=30),
     )
 
-    # Then: support-breach emits once, other stamps re-arm, no divide-by-zero.
-    assert [alert.kind for alert in equal_support.alerts] == [AlertKind.SUPPORT_BREACH]
-    assert equal_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
-    assert equal_support.next_state.support_breach_active is True
-    assert equal_support.next_state.support_breach_last_alert_at == OBSERVED_AT
-    assert equal_support.next_state.near_support_last_alert_at is None
+    # Then: equality is not a breach, while a strictly lower price emits support-breach.
+    # Near-support was already stamped in the supplied state, so equality remains deduplicated.
+    assert equal_support.alerts == ()
+    assert equal_support.invalid_state is None
+    assert equal_support.next_state.support_breach_active is False
+    assert equal_support.next_state.support_breach_last_alert_at is None
+    assert equal_support.next_state.near_support_last_alert_at == OBSERVED_AT - timedelta(minutes=1)
     assert equal_support.next_state.risk_reward_last_alert_at is None
     assert equal_support.next_state.breakout_last_alert_at is None
-    assert below_support.alerts == ()
+    assert [alert.kind for alert in below_support.alerts] == [AlertKind.SUPPORT_BREACH]
     assert below_support.invalid_state == InvalidRuleState.PRICE_NOT_ABOVE_SUPPORT
-    assert below_support.next_state.support_breach_last_alert_at == OBSERVED_AT
+    assert below_support.next_state.support_breach_last_alert_at == (
+        OBSERVED_AT + timedelta(seconds=30)
+    )
 
 
 def test_support_breach_rearms_after_price_recovers_above_support():
@@ -263,6 +266,72 @@ def test_repeated_near_support_suppressed_until_condition_resets():
     assert reset.next_state.near_support_active is False
     assert reset.next_state.near_support_last_alert_at is None
     assert [alert.kind for alert in retriggered.alerts] == [AlertKind.NEAR_SUPPORT]
+
+
+def test_near_support_emits_once_per_percentage_point_while_approaching():
+    # Given: the near-support region extends to 5% and price moves through finer distance bands.
+    state = RuleState()
+    emitted_metrics: list[Decimal] = []
+
+    # When: observations repeat within a band, move away, then cross the 4%, 3%, 2%, and 1% bands.
+    for index, metric in enumerate(
+        ("0.05", "0.049", "0.041", "0.04", "0.035", "0.03", "0.039", "0.02", "0.01")
+    ):
+        distance = Decimal(metric)
+        evaluation = evaluate_rules(
+            price=Decimal("100"),
+            support=Decimal("100") * (Decimal("1") - distance),
+            resistance=None,
+            near_support_threshold=Decimal("0.05"),
+            risk_reward_threshold=None,
+            previous_state=state,
+            observed_at=OBSERVED_AT + timedelta(seconds=index),
+        )
+        emitted_metrics.extend(alert.metric for alert in evaluation.alerts)
+        state = evaluation.next_state
+
+    # Then: each newly reached whole percentage-point band emits once.
+    assert emitted_metrics == [
+        Decimal("0.05"),
+        Decimal("0.04"),
+        Decimal("0.03"),
+        Decimal("0.02"),
+        Decimal("0.01"),
+    ]
+
+
+def test_near_support_percentage_bands_rearm_after_leaving_threshold():
+    first = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("96"),
+        resistance=None,
+        near_support_threshold=Decimal("0.05"),
+        risk_reward_threshold=None,
+        previous_state=RuleState(),
+        observed_at=OBSERVED_AT,
+    )
+    outside = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("94"),
+        resistance=None,
+        near_support_threshold=Decimal("0.05"),
+        risk_reward_threshold=None,
+        previous_state=first.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=1),
+    )
+    reentered = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("96"),
+        resistance=None,
+        near_support_threshold=Decimal("0.05"),
+        risk_reward_threshold=None,
+        previous_state=outside.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=2),
+    )
+
+    assert first.next_state.near_support_alert_bucket == 4
+    assert outside.next_state.near_support_alert_bucket is None
+    assert [alert.kind for alert in reentered.alerts] == [AlertKind.NEAR_SUPPORT]
 
 
 def test_active_near_support_never_re_alerts_while_condition_stays_true():

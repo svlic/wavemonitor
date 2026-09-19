@@ -102,6 +102,10 @@ def migrate_sqlite_schema(connection: Connection) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE lastrulestate ADD COLUMN support_breach_last_alert_at DATETIME"
             )
+        if not _sqlite_column_exists(connection, "lastrulestate", "near_support_alert_bucket"):
+            connection.exec_driver_sql(
+                "ALTER TABLE lastrulestate ADD COLUMN near_support_alert_bucket INTEGER"
+            )
     if _sqlite_table_sql(connection, "priceobservation") is not None:
         connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_priceobservation_observed_at "

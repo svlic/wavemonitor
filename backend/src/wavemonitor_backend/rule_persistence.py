@@ -55,6 +55,13 @@ def evaluate_and_persist_rules(
     support, resistance = nearest_pair(instrument.supports, instrument.resistances, price)
     if support is None and instrument.supports:
         support = min(instrument.supports)
+    previous_price = previous_state.last_price
+    crossed_resistances = (
+        level
+        for level in instrument.resistances
+        if price > level and (previous_price is None or previous_price <= level)
+    )
+    resistance = max(crossed_resistances, default=resistance)
     evaluation = evaluate_rules(
         price=price,
         support=support,
@@ -126,6 +133,7 @@ def persist_rule_evaluation(
     )
     state.last_price = evaluation.next_state.last_price
     state.near_support_active = evaluation.next_state.near_support_active
+    state.near_support_alert_bucket = evaluation.next_state.near_support_alert_bucket
     state.risk_reward_active = evaluation.next_state.risk_reward_active
     state.above_resistance_active = evaluation.next_state.above_resistance_active
     state.support_breach_active = evaluation.next_state.support_breach_active
@@ -154,6 +162,7 @@ def rule_state_from_persisted(state: LastRuleState) -> RuleState:
     return RuleState(
         last_price=state.last_price,
         near_support_active=state.near_support_active,
+        near_support_alert_bucket=state.near_support_alert_bucket,
         risk_reward_active=state.risk_reward_active,
         above_resistance_active=state.above_resistance_active,
         support_breach_active=state.support_breach_active,
