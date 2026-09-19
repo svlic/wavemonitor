@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Final
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from wavemonitor_backend.latest_prices import LatestPriceStore, SourcePriceStatus
 from wavemonitor_backend.models import (
     AlertEvent,
     AlertKind,
@@ -29,6 +32,8 @@ from wavemonitor_backend.schemas import (
     SourceMappingResponse,
     SourceStatusResponse,
 )
+
+PRICE_QUANTUM: Final[Decimal] = Decimal("0.0000000001")
 
 
 def list_instruments(session: Session) -> list[InstrumentResponse]:
@@ -69,7 +74,10 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
 
 
 def update_instrument(
-    session: Session, instrument_id: int, payload: InstrumentRequest
+    session: Session,
+    instrument_id: int,
+    payload: InstrumentRequest,
+    price_store: LatestPriceStore,
 ) -> InstrumentResponse:
     instrument = get_instrument(session, instrument_id)
     rule_fields_changed = instrument_rule_fields_changed(instrument, payload)
@@ -85,8 +93,9 @@ def update_instrument(
     instrument._assert_rule_contract()
     now = datetime.now(UTC)
     instrument.updated_at = now
+    removed_source_ids: set[int] = set()
     try:
-        sync_source_mappings(session, instrument_id, payload)
+        removed_source_ids = sync_source_mappings(session, instrument_id, payload)
         if rule_fields_changed:
             instrument.rule_cycle_started_at = now
             clear_last_rule_states_for_instrument(session, instrument_id)
@@ -98,6 +107,7 @@ def update_instrument(
             status_code=status.HTTP_409_CONFLICT,
             detail="Source mapping already exists",
         ) from exc
+    price_store.remove(removed_source_ids)
     session.refresh(instrument)
     return instrument_response(session, instrument)
 
@@ -114,17 +124,23 @@ def patch_instrument_enabled(
     return instrument_response(session, instrument)
 
 
-def delete_instrument(session: Session, instrument_id: int) -> None:
+def delete_instrument(
+    session: Session, instrument_id: int, price_store: LatestPriceStore
+) -> None:
     instrument = get_instrument(session, instrument_id)
-    delete_instrument_cascade(session, instrument_id)
+    removed_source_ids = delete_instrument_cascade(session, instrument_id)
     session.delete(instrument)
     session.commit()
+    price_store.remove(removed_source_ids)
 
 
-def get_instrument_status(session: Session, instrument_id: int) -> InstrumentStatusResponse:
+def get_instrument_status(
+    session: Session, instrument_id: int, price_store: LatestPriceStore
+) -> InstrumentStatusResponse:
     instrument = get_instrument(session, instrument_id)
     source_statuses = tuple(
-        source_status(session, source) for source in source_mappings_for(session, instrument_id)
+        source_status(session, source, price_store)
+        for source in source_mappings_for(session, instrument_id)
     )
     alerts = tuple(alert_response(alert) for alert in recent_alerts_for(session, instrument_id))
     return InstrumentStatusResponse(
@@ -140,7 +156,9 @@ def list_recent_alerts(session: Session) -> list[AlertResponse]:
     return [alert_response(alert) for alert in session.exec(statement).all()]
 
 
-def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
+def list_latest_prices(
+    session: Session, price_store: LatestPriceStore
+) -> list[LatestPriceResponse]:
     crossing_kinds_by_source: dict[int, set[AlertKind]] = {}
     crossing_events = session.exec(
         select(AlertEvent.source_mapping_id, AlertEvent.alert_kind)
@@ -160,10 +178,11 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
         for source in source_mappings_for(session, require_id(instrument.id)):
             if not source.enabled:
                 continue
-            observation = latest_successful_observation_for(session, source)
-            if observation is None:
-                continue
             source_id = require_id(source.id)
+            status = price_store.get(source_id)
+            if status is None or status.latest_success is None:
+                continue
+            latest_success = status.latest_success
             crossing_kinds = crossing_kinds_by_source.get(source_id, set())
             prices.append(
                 LatestPriceResponse(
@@ -173,9 +192,9 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
                     provider=source.provider,
                     market_type=source.market_type,
                     symbol=source.symbol,
-                    last_price=str(observation.price) if observation.price is not None else "",
-                    last_observed_at=observation.observed_at,
-                    last_error=observation.error,
+                    last_price=format_price(latest_success.price),
+                    last_observed_at=response_timestamp(latest_success.observed_at),
+                    last_error=None,
                     support_breached=AlertKind.SUPPORT_BREACH in crossing_kinds,
                     resistance_broken=AlertKind.RESISTANCE_BREAKOUT in crossing_kinds,
                 )
@@ -183,7 +202,9 @@ def list_latest_prices(session: Session) -> list[LatestPriceResponse]:
     return prices
 
 
-def list_source_errors(session: Session) -> list[SourceErrorResponse]:
+def list_source_errors(
+    session: Session, price_store: LatestPriceStore
+) -> list[SourceErrorResponse]:
     errors: list[SourceErrorResponse] = []
     for instrument in session.exec(select(Instrument).order_by(Instrument.id)).all():
         if not instrument.enabled:
@@ -191,22 +212,28 @@ def list_source_errors(session: Session) -> list[SourceErrorResponse]:
         for source in source_mappings_for(session, require_id(instrument.id)):
             if not source.enabled:
                 continue
-            observation = latest_observation_for(session, source)
-            if observation is not None and observation.error is not None:
-                errors.append(source_error_response(instrument, source, observation))
+            source_id = require_id(source.id)
+            source_price_status = price_store.get(source_id)
+            if (
+                source_price_status is not None
+                and source_price_status.last_error is not None
+                and source_price_status.last_attempt_at is not None
+            ):
+                errors.append(source_error_response(instrument, source, source_price_status))
     return errors
 
 
 def source_error_response(
     instrument: Instrument,
     source: SourceMapping,
-    observation: PriceObservation,
+    source_price_status: SourcePriceStatus,
 ) -> SourceErrorResponse:
-    error = observation.error
-    if error is None:
+    error = source_price_status.last_error
+    observed_at = source_price_status.last_attempt_at
+    if error is None or observed_at is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Source error row is missing error text",
+            detail="Source error status is incomplete",
         )
     return SourceErrorResponse(
         instrument_id=require_id(instrument.id),
@@ -215,7 +242,7 @@ def source_error_response(
         provider=source.provider,
         market_type=source.market_type,
         symbol=source.symbol,
-        last_observed_at=observation.observed_at,
+        last_observed_at=response_timestamp(observed_at),
         last_error=error,
     )
 
@@ -249,9 +276,11 @@ def source_response(source: SourceMapping) -> SourceMappingResponse:
     )
 
 
-def source_status(session: Session, source: SourceMapping) -> SourceStatusResponse:
-    observation = latest_observation_for(session, source)
-    successful_observation = latest_successful_observation_for(session, source)
+def source_status(
+    session: Session, source: SourceMapping, price_store: LatestPriceStore
+) -> SourceStatusResponse:
+    price_status = price_store.get(require_id(source.id))
+    latest_success = price_status.latest_success if price_status is not None else None
     rule_state = latest_rule_state_for(session, source)
     return SourceStatusResponse(
         id=require_id(source.id),
@@ -259,13 +288,13 @@ def source_status(session: Session, source: SourceMapping) -> SourceStatusRespon
         market_type=source.market_type,
         symbol=source.symbol,
         enabled=source.enabled,
-        last_price=str(successful_observation.price)
-        if successful_observation is not None
-        else None,
-        last_observed_at=successful_observation.observed_at
-        if successful_observation is not None
-        else None,
-        last_error=observation.error if observation is not None else None,
+        last_price=format_price(latest_success.price) if latest_success is not None else None,
+        last_observed_at=(
+            response_timestamp(latest_success.observed_at)
+            if latest_success is not None
+            else None
+        ),
+        last_error=price_status.last_error if price_status is not None else None,
         last_invalid_state=rule_state.last_invalid_state if rule_state is not None else None,
     )
 
@@ -289,32 +318,6 @@ def source_mappings_for(session: Session, instrument_id: int) -> list[SourceMapp
         .order_by(SourceMapping.id)
     )
     return list(session.exec(statement).all())
-
-
-def latest_observation_for(session: Session, source: SourceMapping) -> PriceObservation | None:
-    statement = (
-        select(PriceObservation)
-        .where(PriceObservation.source_mapping_id == require_id(source.id))
-        .order_by(desc(PriceObservation.observed_at), desc(PriceObservation.id))
-        .limit(1)
-    )
-    return session.exec(statement).first()
-
-
-def latest_successful_observation_for(
-    session: Session, source: SourceMapping
-) -> PriceObservation | None:
-    statement = (
-        select(PriceObservation)
-        .where(
-            PriceObservation.source_mapping_id == require_id(source.id),
-            PriceObservation.error.is_(None),
-            PriceObservation.price.is_not(None),
-        )
-        .order_by(desc(PriceObservation.observed_at), desc(PriceObservation.id))
-        .limit(1)
-    )
-    return session.exec(statement).first()
 
 
 def recent_alerts_for(session: Session, instrument_id: int) -> list[AlertEvent]:
@@ -359,14 +362,18 @@ def add_source_mappings(session: Session, instrument_id: int, payload: Instrumen
         )
 
 
-def sync_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:
+def sync_source_mappings(
+    session: Session, instrument_id: int, payload: InstrumentRequest
+) -> set[int]:
     existing = {
         mapping_identity_key(source): source
         for source in source_mappings_for(session, instrument_id)
     }
     desired_keys = {mapping_identity_key(source) for source in payload.source_mappings}
+    removed_source_ids: set[int] = set()
     for key, row in list(existing.items()):
         if key not in desired_keys:
+            removed_source_ids.add(require_id(row.id))
             delete_source_mapping_cascade(session, row)
     for source in payload.source_mappings:
         key = mapping_identity_key(source)
@@ -384,6 +391,7 @@ def sync_source_mappings(session: Session, instrument_id: int, payload: Instrume
         else:
             row.enabled = source.enabled
             session.add(row)
+    return removed_source_ids
 
 
 def mapping_identity_key(
@@ -399,9 +407,12 @@ def latest_rule_state_for(session: Session, source: SourceMapping) -> LastRuleSt
     return session.exec(statement).first()
 
 
-def delete_instrument_cascade(session: Session, instrument_id: int) -> None:
+def delete_instrument_cascade(session: Session, instrument_id: int) -> set[int]:
+    removed_source_ids: set[int] = set()
     for source in source_mappings_for(session, instrument_id):
+        removed_source_ids.add(require_id(source.id))
         delete_source_mapping_cascade(session, source)
+    return removed_source_ids
 
 
 def delete_source_mapping_cascade(session: Session, source: SourceMapping) -> None:
@@ -436,3 +447,9 @@ def require_id(value: int | None) -> int:
     return value
 
 
+def format_price(value: Decimal) -> str:
+    return str(value.quantize(PRICE_QUANTUM))
+
+
+def response_timestamp(value: datetime) -> datetime:
+    return value.replace(tzinfo=None)

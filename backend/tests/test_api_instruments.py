@@ -12,6 +12,7 @@ from sqlmodel import select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, session_scope
+from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.models import (
     AlertEvent,
     AlertKind,
@@ -124,6 +125,54 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
     assert list_response.json()[0]["name"] == "Bitcoin long setup"
     assert delete_response.status_code == 204
     assert list_after_delete.json() == []
+
+
+def test_update_and_delete_remove_stale_in_memory_prices(tmp_path: Path):
+    price_store = LatestPriceStore()
+    database_url = f"sqlite:///{tmp_path / 'price-cleanup.sqlite3'}"
+    with TestClient(
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
+    ) as client:
+        created = client.post("/api/instruments", json=VALID_PAYLOAD).json()
+        instrument_id = created["id"]
+        old_source_id = created["source_mappings"][0]["id"]
+        price_store.record_success(
+            old_source_id,
+            price=Decimal("100"),
+            observed_at=datetime(2026, 7, 2, 4, 0, tzinfo=UTC),
+        )
+
+        updated = client.put(
+            f"/api/instruments/{instrument_id}",
+            json={
+                **VALID_PAYLOAD,
+                "source_mappings": [
+                    {
+                        "provider": "hyperliquid",
+                        "market_type": "perpetual",
+                        "symbol": "BTC",
+                        "enabled": True,
+                    }
+                ],
+            },
+        ).json()
+        new_source_id = updated["source_mappings"][0]["id"]
+
+        assert price_store.get(old_source_id) is None
+
+        price_store.record_success(
+            new_source_id,
+            price=Decimal("101"),
+            observed_at=datetime(2026, 7, 2, 4, 1, tzinfo=UTC),
+        )
+        response = client.delete(f"/api/instruments/{instrument_id}")
+
+        assert response.status_code == 204
+        assert price_store.get(new_source_id) is None
 
 
 def test_create_instrument_with_support_only(client: TestClient):

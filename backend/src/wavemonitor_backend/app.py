@@ -32,6 +32,7 @@ from wavemonitor_backend.db import (
     database_url_from_env,
     session_scope,
 )
+from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
 from wavemonitor_backend.monitoring_bootstrap import (
@@ -170,6 +171,7 @@ class AppRuntime:
     database_url: str = DEFAULT_DATABASE_URL
     telegram_transport: TelegramTransport | None = None
     metrics_store: RuntimeMetricsStore = field(default_factory=RuntimeMetricsStore)
+    price_store: LatestPriceStore = field(default_factory=LatestPriceStore)
     monitoring_lifecycle: AppLifecycle | None = None
     symbol_catalog: SymbolCatalog | None = None
 
@@ -190,6 +192,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
             engine=engine,
             settings=base_runtime.settings,
             metrics_store=base_runtime.metrics_store,
+            price_store=base_runtime.price_store,
         )
     app_runtime = replace(
         base_runtime,
@@ -336,7 +339,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         payload: InstrumentRequest,
         session: Session = Depends(get_session),
     ) -> InstrumentResponse:
-        response = update_instrument(session, instrument_id, payload)
+        response = update_instrument(session, instrument_id, payload, app_runtime.price_store)
         request_monitoring_tick()
         return response
 
@@ -354,7 +357,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     def delete_instrument_endpoint(
         instrument_id: int, session: Session = Depends(get_session)
     ) -> Response:
-        delete_instrument(session, instrument_id)
+        delete_instrument(session, instrument_id, app_runtime.price_store)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/instruments/{instrument_id}/status", response_model=InstrumentStatusResponse)
@@ -362,7 +365,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         instrument_id: int,
         session: Session = Depends(get_session),
     ) -> InstrumentStatusResponse:
-        return get_instrument_status(session, instrument_id)
+        return get_instrument_status(session, instrument_id, app_runtime.price_store)
 
     @app.get("/api/alerts", response_model=list[AlertResponse])
     def list_alerts_endpoint(session: Session = Depends(get_session)) -> list[AlertResponse]:
@@ -372,13 +375,13 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     def list_latest_prices_endpoint(
         session: Session = Depends(get_session),
     ) -> list[LatestPriceResponse]:
-        return list_latest_prices(session)
+        return list_latest_prices(session, app_runtime.price_store)
 
     @app.get("/api/source-errors", response_model=list[SourceErrorResponse])
     def list_source_errors_endpoint(
         session: Session = Depends(get_session),
     ) -> list[SourceErrorResponse]:
-        return list_source_errors(session)
+        return list_source_errors(session, app_runtime.price_store)
 
     @app.get("/api/runtime", response_model=RuntimeResponse)
     def runtime() -> RuntimeResponse:

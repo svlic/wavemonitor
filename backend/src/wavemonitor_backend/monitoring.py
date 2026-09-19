@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Final, Protocol, TypeAlias, assert_never
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, select
 
 from wavemonitor_backend.adapters import (
     AdapterError,
@@ -13,10 +13,10 @@ from wavemonitor_backend.adapters import (
     PriceAdapterResult,
     PriceResult,
 )
+from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.models import (
     Instrument,
     MarketType,
-    PriceObservation,
     Provider,
     SourceMapping,
 )
@@ -29,8 +29,7 @@ from wavemonitor_backend.notifier import (
 from wavemonitor_backend.rule_persistence import evaluate_and_persist_rules, require_id
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
-OBSERVATION_RETENTION: Final[timedelta] = timedelta(days=3)
-PERSISTED_ERROR_MAX_LENGTH: Final[int] = 500
+SOURCE_ERROR_MAX_LENGTH: Final[int] = 500
 
 
 class PollingPriceAdapter(Protocol):
@@ -115,19 +114,24 @@ class MonitoringScheduler:
         *,
         clock: Clock | None = None,
         metrics_store: RuntimeMetricsStore | None = None,
+        price_store: LatestPriceStore | None = None,
     ) -> None:
         self._poller = poller
         self._notifier = notifier
         self._clock = clock or utc_now
         self._metrics_store = metrics_store or RuntimeMetricsStore()
+        self._price_store = price_store or LatestPriceStore()
 
     @property
     def metrics(self) -> RuntimeMetrics:
         return self._metrics_store.metrics
 
+    @property
+    def price_store(self) -> LatestPriceStore:
+        return self._price_store
+
     def run_tick(self, session: Session) -> RuntimeMetrics:
         started_at = self._clock()
-        prune_old_observations(session, older_than=started_at - OBSERVATION_RETENTION)
         sources = enabled_sources(session)
         counts = TickCounts(enabled_sources=len(sources))
         for instrument, source in sources:
@@ -171,7 +175,11 @@ class MonitoringScheduler:
             case PriceResult() as price_result:
                 return self._handle_price(session, instrument, source, price_result, counts)
             case AdapterError() as error:
-                record_source_error(session, source, error, self._clock())
+                self._price_store.record_error(
+                    require_id(source.id),
+                    error=format_source_error(error),
+                    observed_at=self._clock(),
+                )
                 return counts.with_error()
             case unreachable:
                 assert_never(unreachable)
@@ -184,7 +192,11 @@ class MonitoringScheduler:
         result: PriceResult,
         counts: TickCounts,
     ) -> TickCounts:
-        record_price_observation(session, source, result)
+        self._price_store.record_success(
+            require_id(source.id),
+            price=result.price,
+            observed_at=result.timestamp,
+        )
         if not instrument.enabled:
             return counts.with_success(0, 0)
         evaluation = evaluate_and_persist_rules(
@@ -277,42 +289,5 @@ def enabled_sources(session: Session) -> list[tuple[Instrument, SourceMapping]]:
     return pairs
 
 
-def record_price_observation(session: Session, source: SourceMapping, result: PriceResult) -> None:
-    path = result.raw_metadata.get("path")
-    session.add(
-        PriceObservation(
-            source_mapping_id=require_id(source.id),
-            price=result.price,
-            observed_at=result.timestamp,
-            raw_path=path if isinstance(path, str) else None,
-        )
-    )
-    session.commit()
-
-
-def record_source_error(
-    session: Session, source: SourceMapping, error: AdapterError, observed_at: datetime
-) -> None:
-    session.add(
-        PriceObservation(
-            source_mapping_id=require_id(source.id),
-            price=None,
-            observed_at=observed_at,
-            error=f"{error.kind.value}: {error.message}"[:PERSISTED_ERROR_MAX_LENGTH],
-        )
-    )
-    session.commit()
-
-
-def prune_old_observations(session: Session, *, older_than: datetime) -> int:
-    cutoff = older_than if older_than.tzinfo is not None else older_than.replace(tzinfo=UTC)
-    stale = session.exec(
-        select(PriceObservation).where(col(PriceObservation.observed_at) < cutoff)
-    ).all()
-    deleted = 0
-    for observation in stale:
-        session.delete(observation)
-        deleted += 1
-    if deleted:
-        session.commit()
-    return deleted
+def format_source_error(error: AdapterError) -> str:
+    return f"{error.kind.value}: {error.message}"[:SOURCE_ERROR_MAX_LENGTH]

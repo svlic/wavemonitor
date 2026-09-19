@@ -12,12 +12,12 @@ from sqlmodel import Session, select
 
 from wavemonitor_backend.app import AppRuntime, create_app
 from wavemonitor_backend.db import create_database_engine, create_schema, session_scope
+from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.models import (
     AlertEvent,
     AlertKind,
     Instrument,
     MarketType,
-    PriceObservation,
     Provider,
     SourceMapping,
 )
@@ -46,7 +46,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         yield test_client
 
 
-def seed_operational_rows(session: Session) -> None:
+def seed_operational_rows(session: Session, price_store: LatestPriceStore) -> None:
     instrument = Instrument(
         name="Bitcoin",
         supports=[Decimal("98")],
@@ -76,21 +76,15 @@ def seed_operational_rows(session: Session) -> None:
     session.commit()
     session.refresh(source)
     session.refresh(failing_source)
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("100"),
-            observed_at=BASE_TIME,
-            raw_path="fake.price",
-        )
+    price_store.record_success(
+        source.id,
+        price=Decimal("100"),
+        observed_at=BASE_TIME,
     )
-    session.add(
-        PriceObservation(
-            source_mapping_id=failing_source.id,
-            price=Decimal("0"),
-            observed_at=BASE_TIME,
-            error="provider_error: provider down",
-        )
+    price_store.record_error(
+        failing_source.id,
+        error="provider_error: provider down",
+        observed_at=BASE_TIME,
     )
     session.add(
         AlertEvent(
@@ -111,8 +105,9 @@ def seed_operational_rows(session: Session) -> None:
 def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
     tmp_path: Path, session: Session
 ):
-    # Given: scheduler metrics and operational persistence rows exist.
-    seed_operational_rows(session)
+    # Given: scheduler metrics, in-memory prices, and operational persistence rows exist.
+    price_store = LatestPriceStore()
+    seed_operational_rows(session, price_store)
     metrics_store = RuntimeMetricsStore()
     metrics_store.update(
         RuntimeMetrics(
@@ -131,7 +126,12 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
         create_app(
-            AppRuntime(settings=Settings(), database_url=database_url, metrics_store=metrics_store)
+            AppRuntime(
+                settings=Settings(),
+                database_url=database_url,
+                metrics_store=metrics_store,
+                price_store=price_store,
+            )
         )
     ) as test_client:
         # When: operational read endpoints are queried.
@@ -186,7 +186,8 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
     tmp_path: Path, session: Session
 ):
     # Given: one source crossed both levels before its instrument's latest edit.
-    seed_operational_rows(session)
+    price_store = LatestPriceStore()
+    seed_operational_rows(session, price_store)
     instrument = session.exec(select(Instrument)).one()
     source = session.exec(
         select(SourceMapping).where(SourceMapping.provider == Provider.BINANCE)
@@ -229,7 +230,11 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
     # When: latest prices are requested after a new-cycle resistance breakout.
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 
@@ -242,7 +247,8 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
 
 
 def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, session: Session):
-    seed_operational_rows(session)
+    price_store = LatestPriceStore()
+    seed_operational_rows(session, price_store)
     failing_source = session.exec(
         select(SourceMapping).where(
             SourceMapping.symbol == "BTC", SourceMapping.provider == Provider.YFINANCE
@@ -254,7 +260,11 @@ def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, sessi
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         errors_response = test_client.get("/api/source-errors")
 
@@ -262,7 +272,7 @@ def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, sessi
     assert errors_response.json() == []
 
 
-def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Session):
+def test_latest_price_store_replaces_previous_value(tmp_path: Path, session: Session):
     instrument = Instrument(
         name="Tie break",
         supports=[Decimal("98")],
@@ -284,27 +294,25 @@ def test_latest_observation_tie_breaks_on_highest_id(tmp_path: Path, session: Se
     session.add(source)
     session.commit()
     session.refresh(source)
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("99"),
-            observed_at=BASE_TIME,
-            raw_path="older",
-        )
+    price_store = LatestPriceStore()
+    price_store.record_success(
+        source.id,
+        price=Decimal("99"),
+        observed_at=BASE_TIME,
     )
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("101"),
-            observed_at=BASE_TIME,
-            raw_path="newer",
-        )
+    price_store.record_success(
+        source.id,
+        price=Decimal("101"),
+        observed_at=BASE_TIME,
     )
-    session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 
@@ -336,27 +344,25 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
     session.add(source)
     session.commit()
     session.refresh(source)
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("100"),
-            observed_at=BASE_TIME,
-            raw_path="success.price",
-        )
+    price_store = LatestPriceStore()
+    price_store.record_success(
+        source.id,
+        price=Decimal("100"),
+        observed_at=BASE_TIME,
     )
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("0"),
-            observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
-            error="provider_error: provider down",
-        )
+    price_store.record_error(
+        source.id,
+        error="provider_error: provider down",
+        observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
     )
-    session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 
@@ -404,27 +410,25 @@ def test_instrument_status_keeps_last_success_after_newer_source_error(
     session.add(source)
     session.commit()
     session.refresh(source)
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("100"),
-            observed_at=BASE_TIME,
-            raw_path="success.price",
-        )
+    price_store = LatestPriceStore()
+    price_store.record_success(
+        source.id,
+        price=Decimal("100"),
+        observed_at=BASE_TIME,
     )
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("0"),
-            observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
-            error="provider_error: provider down",
-        )
+    price_store.record_error(
+        source.id,
+        error="provider_error: provider down",
+        observed_at=datetime(2026, 6, 30, 12, 1, tzinfo=UTC),
     )
-    session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         response = test_client.get(f"/api/instruments/{instrument.id}/status")
 
@@ -490,24 +494,25 @@ def test_latest_prices_omit_disabled_instruments_and_sources(tmp_path: Path, ses
     session.refresh(active_source)
     session.refresh(disabled_source)
     session.refresh(paused_source)
+    price_store = LatestPriceStore()
     for source, price in (
         (active_source, Decimal("200")),
         (disabled_source, Decimal("199")),
         (paused_source, Decimal("100")),
     ):
-        session.add(
-            PriceObservation(
-                source_mapping_id=source.id,
-                price=price,
-                observed_at=BASE_TIME,
-                raw_path="test",
-            )
+        price_store.record_success(
+            source.id,
+            price=price,
+            observed_at=BASE_TIME,
         )
-    session.commit()
 
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
-        create_app(AppRuntime(settings=Settings(), database_url=database_url))
+        create_app(
+            AppRuntime(
+                settings=Settings(), database_url=database_url, price_store=price_store
+            )
+        )
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 

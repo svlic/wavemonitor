@@ -10,6 +10,7 @@ from sqlalchemy import Engine
 from wavemonitor_backend.adapters import BinanceFuturesAdapter, HyperliquidAdapter, YFinanceAdapter
 from wavemonitor_backend.data_source_proxy import default_hyperliquid_info_client
 from wavemonitor_backend.db import session_scope
+from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.lifecycle import MonitoringLifecycle, WakingTicker
 from wavemonitor_backend.models import MarketType, Provider
 from wavemonitor_backend.monitoring import AdapterRegistry, MonitoringScheduler, RuntimeMetricsStore
@@ -62,11 +63,17 @@ def build_monitoring_lifecycle(
     engine: Engine,
     settings: Settings,
     metrics_store: RuntimeMetricsStore,
+    price_store: LatestPriceStore,
     poll_interval_seconds: float | None = None,
 ) -> MonitoringLifecycle:
     registry = build_adapter_registry()
     notifier = TelegramNotifier(settings)
-    scheduler = MonitoringScheduler(registry, notifier, metrics_store=metrics_store)
+    scheduler = MonitoringScheduler(
+        registry,
+        notifier,
+        metrics_store=metrics_store,
+        price_store=price_store,
+    )
 
     @contextmanager
     def session_factory() -> Iterator:

@@ -30,7 +30,6 @@ from wavemonitor_backend.models import (
     TelegramDelivery,
 )
 from wavemonitor_backend.monitoring import (
-    OBSERVATION_RETENTION,
     AdapterRegistry,
     MonitoringScheduler,
     RuntimeMetrics,
@@ -148,7 +147,9 @@ def price(
     )
 
 
-def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Session):
+def test_poll_tick_keeps_prices_in_memory_and_persists_alerts_deliveries_and_states(
+    session: Session,
+):
     # Given: one enabled instrument has three enabled source mappings and fake prices near support.
     instrument, sources = seed_instrument(session)
     instrument.risk_reward_threshold = Decimal("10")
@@ -174,16 +175,16 @@ def test_poll_tick_writes_observations_alerts_deliveries_and_metrics(session: Se
     # When: the scheduler runs one deterministic polling tick.
     metrics = scheduler.run_tick(session)
 
-    # Then: every new alert event is persisted and delivered once per source/rule.
-    observations = session.exec(
-        select(PriceObservation).order_by(PriceObservation.source_mapping_id)
-    ).all()
+    # Then: prices stay in memory while alerts, deliveries, and rule states are persisted.
+    price_statuses = [scheduler.price_store.get(source.id) for source in sources]
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
     deliveries = session.exec(select(TelegramDelivery).order_by(TelegramDelivery.id)).all()
     states = session.exec(select(LastRuleState).order_by(LastRuleState.source_mapping_id)).all()
-    assert [observation.price for observation in observations] == [Decimal("100.0000000000")] * 3
-    assert [observation.raw_path for observation in observations] == ["fake.price"] * 3
-    assert [observation.error for observation in observations] == [None, None, None]
+    assert session.exec(select(PriceObservation)).all() == []
+    assert [status.latest_success.price for status in price_statuses if status is not None] == [
+        Decimal("100")
+    ] * 3
+    assert [status.last_error for status in price_statuses if status is not None] == [None] * 3
     assert len(alerts) == 6
     assert {alert.instrument_id for alert in alerts} == {instrument.id}
     assert {alert.source_mapping_id for alert in alerts} == {source.id for source in sources}
@@ -252,13 +253,12 @@ def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
     alerts = session.exec(
         select(AlertEvent).order_by(AlertEvent.triggered_at, AlertEvent.source_mapping_id)
     ).all()
-    observations = session.exec(select(PriceObservation)).all()
     assert first.alert_events_created == 3
     assert second.alert_events_created == 0
     assert reset.alert_events_created == 0
     assert retrigger.alert_events_created == 1
     assert len(alerts) == 4
-    assert len(observations) == 12
+    assert session.exec(select(PriceObservation)).all() == []
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
@@ -270,7 +270,7 @@ def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
 
 def test_poll_tick_records_one_source_error_and_continues_other_sources(session: Session):
     # Given: one source adapter fails while two other fake adapters return prices.
-    seed_instrument(session)
+    _instrument, sources = seed_instrument(session)
     clock = FakeClock(BASE_TIME)
     notifier = FakeNotifier()
     registry = AdapterRegistry(
@@ -298,20 +298,22 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     # When: the scheduler polls all enabled mappings.
     metrics = scheduler.run_tick(session)
 
-    # Then: the failing source records an observation error and other sources still alert/deliver.
-    observations = session.exec(
-        select(PriceObservation).order_by(PriceObservation.source_mapping_id)
-    ).all()
+    # Then: the failing source records an in-memory error and other sources still alert/deliver.
+    statuses = [scheduler.price_store.get(source.id) for source in sources]
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
-    assert [observation.error for observation in observations] == [
+    assert session.exec(select(PriceObservation)).all() == []
+    assert [status.last_error for status in statuses if status is not None] == [
         f"provider_error: {'provider down; ' * 50}"[:500],
         None,
         None,
     ]
-    assert [observation.price for observation in observations] == [
+    assert [
+        status.latest_success.price if status is not None and status.latest_success else None
+        for status in statuses
+    ] == [
         None,
-        Decimal("100.0000000000"),
-        Decimal("100.0000000000"),
+        Decimal("100"),
+        Decimal("100"),
     ]
     assert len(alerts) == 2
     assert metrics.providers_ready is False
@@ -356,27 +358,9 @@ def test_poll_tick_does_not_poll_disabled_instrument(session: Session):
     assert metrics.telegram_deliveries_attempted == 0
 
 
-def test_poll_tick_prunes_observations_older_than_retention(session: Session):
-    # Given: one stale observation older than retention and one recent observation.
-    instrument, sources = seed_instrument(session)
-    source = sources[0]
-    stale_at = BASE_TIME - OBSERVATION_RETENTION - timedelta(hours=1)
-    recent_at = BASE_TIME - timedelta(hours=1)
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("90"),
-            observed_at=stale_at,
-        )
-    )
-    session.add(
-        PriceObservation(
-            source_mapping_id=source.id,
-            price=Decimal("95"),
-            observed_at=recent_at,
-        )
-    )
-    session.commit()
+def test_poll_tick_keeps_last_success_in_memory_after_newer_error(session: Session):
+    # Given: all sources first return successful prices.
+    _instrument, sources = seed_instrument(session)
     clock = FakeClock(BASE_TIME)
     registry = AdapterRegistry(
         adapters={
@@ -392,18 +376,35 @@ def test_poll_tick_prunes_observations_older_than_retention(session: Session):
         }
     )
     scheduler = MonitoringScheduler(registry, FakeNotifier(), clock=clock)
-
-    # When: a tick runs with the retention window relative to the clock.
     scheduler.run_tick(session)
 
-    # Then: only the stale row is removed; recent and new observations remain.
-    observed_ats = sorted(
-        observation.observed_at for observation in session.exec(select(PriceObservation)).all()
+    # When: one source fails on the next tick.
+    clock.set(BASE_TIME + timedelta(minutes=1))
+    registry.replace(
+        Provider.YFINANCE,
+        MarketType.EQUITY,
+        FakePriceAdapter(
+            AdapterError(
+                source=Provider.YFINANCE,
+                market_type=MarketType.EQUITY,
+                symbol="BTC",
+                kind=AdapterErrorKind.PROVIDER_ERROR,
+                message="provider down",
+                raw_metadata={},
+            )
+        ),
     )
-    assert stale_at.replace(tzinfo=None) not in observed_ats
-    assert recent_at.replace(tzinfo=None) in observed_ats
-    assert BASE_TIME.replace(tzinfo=None) in observed_ats
-    assert instrument.id is not None
+    scheduler.run_tick(session)
+
+    # Then: the successful price remains available beside the latest error without DB rows.
+    status = scheduler.price_store.get(sources[0].id)
+    assert status is not None
+    assert status.latest_success is not None
+    assert status.latest_success.price == Decimal("120")
+    assert status.latest_success.observed_at == BASE_TIME
+    assert status.last_attempt_at == BASE_TIME + timedelta(minutes=1)
+    assert status.last_error == "provider_error: provider down"
+    assert session.exec(select(PriceObservation)).all() == []
 
 
 def test_edit_during_poll_uses_new_rule_cycle(session: Session):
@@ -437,8 +438,12 @@ def test_edit_during_poll_uses_new_rule_cycle(session: Session):
     # When: the scheduler completes the poll that straddled the edit.
     metrics = scheduler.run_tick(session)
 
-    # Then: the price observation remains, but old-cycle rule side effects are suppressed.
-    assert len(session.exec(select(PriceObservation)).all()) == 1
+    # Then: the price remains in memory, but old-cycle rule side effects are suppressed.
+    assert session.exec(select(PriceObservation)).all() == []
+    price_status = scheduler.price_store.get(sources[0].id)
+    assert price_status is not None
+    assert price_status.latest_success is not None
+    assert price_status.latest_success.price == Decimal("90")
     assert session.exec(select(AlertEvent)).all() == []
     assert session.exec(select(LastRuleState)).all() == []
     assert metrics.observations_written == 1
