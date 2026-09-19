@@ -1,9 +1,5 @@
 import { z } from "zod";
 
-const isoDateTime = z.union([z.string(), z.number()]).transform((v) =>
-  typeof v === "number" ? new Date(v).toISOString() : v,
-);
-
 export const RuntimeResponseSchema = z.object({
   scheduler_ready: z.boolean(),
   providers_ready: z.boolean(),
@@ -59,7 +55,7 @@ export const LatestPriceSchema = z.object({
   market_type: z.string(),
   symbol: z.string(),
   last_price: z.string(),
-  last_observed_at: isoDateTime,
+  last_observed_at: z.string(),
   last_error: z.string().nullable(),
   support_breached: z.boolean(),
   resistance_broken: z.boolean(),
@@ -74,7 +70,7 @@ export const RecentAlertSchema = z.object({
   alert_kind: z.string(),
   price: z.string(),
   message: z.string(),
-  triggered_at: isoDateTime,
+  triggered_at: z.string(),
 });
 
 export type RecentAlert = z.infer<typeof RecentAlertSchema>;
@@ -86,7 +82,7 @@ export const SourceErrorSchema = z.object({
   provider: z.string(),
   market_type: z.string(),
   symbol: z.string(),
-  last_observed_at: isoDateTime,
+  last_observed_at: z.string(),
   last_error: z.string(),
 });
 

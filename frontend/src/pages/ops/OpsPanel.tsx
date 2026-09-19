@@ -15,21 +15,6 @@ import {
 
 type OpsState = "loading" | "ready" | "error";
 
-async function fetchOpsBundle(signal?: AbortSignal) {
-  const [runtimeData, errorsData, alertsData, instrumentsData] = await Promise.all([
-    apiClient.getRuntime(signal),
-    apiClient.getSourceErrors(signal),
-    apiClient.getRecentAlerts(signal),
-    apiClient.getInstruments(signal),
-  ]);
-  return {
-    runtime: runtimeData,
-    errors: errorsData,
-    alerts: alertsData,
-    instruments: instrumentsData,
-  };
-}
-
 export function OpsPanel() {
   const [state, setState] = useState<OpsState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,12 +35,17 @@ export function OpsPanel() {
       setState("loading");
     }
     try {
-      const bundle = await fetchOpsBundle(signal);
+      const [runtimeData, errorsData, alertsData, instrumentsData] = await Promise.all([
+        apiClient.getRuntime(signal),
+        apiClient.getSourceErrors(signal),
+        apiClient.getRecentAlerts(signal),
+        apiClient.getInstruments(signal),
+      ]);
       if (signal?.aborted) return;
-      setRuntime(bundle.runtime);
-      setErrors(bundle.errors);
-      setAlerts(bundle.alerts);
-      setInstruments(bundle.instruments);
+      setRuntime(runtimeData);
+      setErrors(errorsData);
+      setAlerts(alertsData);
+      setInstruments(instrumentsData);
       setState("ready");
       setErrorMessage(null);
     } catch (error) {

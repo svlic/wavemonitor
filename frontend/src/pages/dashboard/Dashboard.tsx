@@ -10,19 +10,6 @@ import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
 type DashboardState = "loading" | "ready" | "error";
 
-async function fetchDashboardBundle(signal?: AbortSignal) {
-  const [runtimeData, pricesData, instrumentsData] = await Promise.all([
-    apiClient.getRuntime(signal),
-    apiClient.getLatestPrices(signal),
-    apiClient.getInstruments(signal),
-  ]);
-  return {
-    runtime: runtimeData,
-    prices: pricesData,
-    instruments: instrumentsData,
-  };
-}
-
 export function Dashboard() {
   const [state, setState] = useState<DashboardState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -31,17 +18,6 @@ export function Dashboard() {
   const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
   const [prices, setPrices] = useState<readonly LatestPrice[]>([]);
   const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
-
-  const applyBundle = useCallback(
-    (bundle: Awaited<ReturnType<typeof fetchDashboardBundle>>) => {
-      setRuntime(bundle.runtime);
-      setPrices(bundle.prices);
-      setInstruments(bundle.instruments);
-      setState("ready");
-      setErrorMessage(null);
-    },
-    [],
-  );
 
   const loadData = useCallback(
     async (signal?: AbortSignal, options?: { refresh?: boolean }) => {
@@ -52,9 +28,17 @@ export function Dashboard() {
         setState("loading");
       }
       try {
-        const bundle = await fetchDashboardBundle(signal);
+        const [runtimeData, pricesData, instrumentsData] = await Promise.all([
+          apiClient.getRuntime(signal),
+          apiClient.getLatestPrices(signal),
+          apiClient.getInstruments(signal),
+        ]);
         if (signal?.aborted) return;
-        applyBundle(bundle);
+        setRuntime(runtimeData);
+        setPrices(pricesData);
+        setInstruments(instrumentsData);
+        setState("ready");
+        setErrorMessage(null);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
@@ -71,7 +55,7 @@ export function Dashboard() {
         }
       }
     },
-    [applyBundle],
+    [],
   );
 
   useEffect(() => {
