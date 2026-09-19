@@ -119,6 +119,10 @@ docker compose up --build -d
 
 首次会构建 `backend`、`frontend` 镜像。`frontend` 会等待 `backend` 健康检查通过后再启动。
 
+**升级提醒**：从曾持久化行情观测的旧版本升级时，后端启动迁移会删除已废弃的
+`priceobservation` 表。该表不再用于产品功能；如需自行留存其中的历史行情，请先备份
+SQLite 数据库再升级。
+
 ### 4. 访问与验证
 
 | 入口 | 地址 | 说明 |
@@ -159,7 +163,9 @@ docker compose down -v
 docker compose up --build -d
 ```
 
-**数据持久化**：SQLite 保存在 Docker 命名卷 `wavemonitor-sqlite`，挂载到后端容器 `/data/wavemonitor.sqlite3`。删除卷会丢失全部标的与历史观测数据。
+**数据持久化**：SQLite 保存在 Docker 命名卷 `wavemonitor-sqlite`，挂载到后端容器
+`/data/wavemonitor.sqlite3`。标的、告警、规则状态和 Telegram 投递记录会持久化；最新行情
+和数据源错误仅保存在后端进程内存中。删除卷会丢失全部持久化数据。
 
 **端口说明**：
 

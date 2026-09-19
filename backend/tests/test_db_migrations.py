@@ -109,8 +109,8 @@ def test_create_schema_migrates_legacy_sqlite_rule_and_source_constraints(tmp_pa
         assert migrated_rows == 2
 
 
-def test_create_schema_updates_support_breach_state_and_observation_index(tmp_path: Path):
-    # Given: a database created before support-breach alerts were introduced.
+def test_create_schema_updates_support_breach_state_and_removes_observation_table(tmp_path: Path):
+    # Given: a database created before support-breach alerts and in-memory prices were introduced.
     database_path = tmp_path / "legacy-rule-state.sqlite3"
     with sqlite3.connect(database_path) as connection:
         connection.executescript(
@@ -137,6 +137,9 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
                 raw_path VARCHAR(120),
                 error VARCHAR(500)
             );
+            INSERT INTO priceobservation (
+                id, source_mapping_id, price, observed_at, raw_path, error
+            ) VALUES (1, 1, 100.25, '2026-01-01 00:00:00', 'legacy.price', NULL);
             INSERT INTO lastrulestate (
                 id, instrument_id, source_mapping_id, near_support_active,
                 risk_reward_active, above_resistance_active, updated_at
@@ -149,7 +152,7 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
     create_schema(engine)
     create_schema(engine)
 
-    # Then: new columns exist and existing rows receive safe defaults.
+    # Then: rule columns are migrated and the discontinued observation table is removed.
     with sqlite3.connect(database_path) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(lastrulestate)")}
         state = connection.execute(
@@ -159,16 +162,16 @@ def test_create_schema_updates_support_breach_state_and_observation_index(tmp_pa
             FROM lastrulestate WHERE id = 1
             """
         ).fetchone()
-        observation_indexes = {
-            row[1] for row in connection.execute("PRAGMA index_list(priceobservation)")
-        }
+        observation_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'priceobservation'"
+        ).fetchone()
     assert {
         "support_breach_active",
         "support_breach_last_alert_at",
         "near_support_alert_bucket",
     } <= columns
     assert state == (0, None, None)
-    assert "ix_priceobservation_observed_at" in observation_indexes
+    assert observation_table is None
 
 
 def test_create_schema_migrates_alert_claims_to_instrument_rule_cycles(tmp_path: Path):

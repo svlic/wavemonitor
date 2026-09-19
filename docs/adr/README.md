@@ -26,6 +26,7 @@
 | [0010](0010-cloudflare-workers-experiment.md) | Cloudflare Workers 与 D1 部署实验 | 已取代 |
 | [0011](0011-in-memory-latest-price-state.md) | 将最新行情状态保存在进程内存 | 已接受 |
 | [0012](0012-avoid-redundant-thin-layers.md) | 避免没有独立职责的薄抽象层 | 已接受 |
+| [0013](0013-remove-legacy-price-observation-storage.md) | 删除遗留行情观测持久化结构 | 已接受 |
 
 ## 重建说明
 

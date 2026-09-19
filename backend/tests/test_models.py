@@ -12,7 +12,6 @@ from wavemonitor_backend.models import (
     Instrument,
     LastRuleState,
     MarketType,
-    PriceObservation,
     Provider,
     SourceMapping,
 )
@@ -315,13 +314,8 @@ def test_source_mapping_preserves_hyperliquid_dex_prefix_case():
     assert mapping.identity_key == "hyperliquid:perpetual:xyz:CRCL"
 
 
-def test_observation_and_alert_models_keep_rule_amounts_decimal():
+def test_alert_and_rule_state_models_keep_rule_amounts_decimal():
     # Given: persisted event-like domain objects with rule amounts.
-    observation = PriceObservation(
-        source_mapping_id=7,
-        price="101.25",
-        observed_at="2026-06-30T12:00:00Z",
-    )
     alert = AlertEvent(
         instrument_id=3,
         source_mapping_id=7,
@@ -344,9 +338,19 @@ def test_observation_and_alert_models_keep_rule_amounts_decimal():
     )
 
     # When / Then: Decimal values survive parsing across model contracts.
-    assert observation.price == Decimal("101.25")
     assert alert.threshold == Decimal("0.02")
     assert state.last_price == Decimal("101.25")
+
+
+def test_database_schema_excludes_transient_price_observations():
+    # Given: metadata for the current persistence models.
+    engine = create_engine("sqlite:///:memory:")
+
+    # When: the schema is created.
+    SQLModel.metadata.create_all(engine)
+
+    # Then: transient prices do not get a database table.
+    assert "priceobservation" not in inspect(engine).get_table_names()
 
 
 def test_database_schema_does_not_persist_telegram_credentials():

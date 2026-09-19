@@ -252,17 +252,6 @@ class SourceMapping(SQLModel, table=True):
         return f"{self.provider.value}:{self.market_type.value}:{self.symbol}"
 
 
-class PriceObservation(RuleDecimalMixin, table=True):
-    model_config = ConfigDict(validate_assignment=True)
-
-    id: int | None = Field(default=None, primary_key=True)
-    source_mapping_id: int = Field(foreign_key="sourcemapping.id", index=True)
-    price: Decimal | None = Field(default=None, sa_column=decimal_column(nullable=True))
-    observed_at: datetime = Field(sa_column=timestamp_column(index=True))
-    raw_path: str | None = Field(default=None, max_length=120)
-    error: str | None = Field(default=None, max_length=500)
-
-
 class AlertEvent(RuleDecimalMixin, table=True):
     model_config = ConfigDict(validate_assignment=True)
 

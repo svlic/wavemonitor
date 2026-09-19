@@ -39,6 +39,7 @@ def create_schema(engine: Engine) -> None:
 
 
 def migrate_sqlite_schema(connection: Connection) -> None:
+    connection.exec_driver_sql("DROP TABLE IF EXISTS priceobservation")
     instrument_sql = _sqlite_table_sql(connection, "instrument")
     if instrument_sql is not None:
         if not _sqlite_column_exists(connection, "instrument", "alert_mode"):
@@ -106,11 +107,6 @@ def migrate_sqlite_schema(connection: Connection) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE lastrulestate ADD COLUMN near_support_alert_bucket INTEGER"
             )
-    if _sqlite_table_sql(connection, "priceobservation") is not None:
-        connection.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_priceobservation_observed_at "
-            "ON priceobservation (observed_at)"
-        )
     alert_event_sql = _sqlite_table_sql(connection, "alertevent")
     if alert_event_sql is not None and (
         not _sqlite_column_exists(connection, "alertevent", "rule_cycle_started_at")

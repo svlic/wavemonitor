@@ -16,7 +16,6 @@ from wavemonitor_backend.models import (
     Instrument,
     LastRuleState,
     MarketType,
-    PriceObservation,
     Provider,
     SourceMapping,
 )
@@ -417,10 +416,6 @@ def delete_instrument_cascade(session: Session, instrument_id: int) -> set[int]:
 
 def delete_source_mapping_cascade(session: Session, source: SourceMapping) -> None:
     source_id = require_id(source.id)
-    for observation in session.exec(
-        select(PriceObservation).where(PriceObservation.source_mapping_id == source_id)
-    ).all():
-        session.delete(observation)
     for alert in session.exec(
         select(AlertEvent).where(AlertEvent.source_mapping_id == source_id)
     ).all():

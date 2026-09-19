@@ -41,10 +41,11 @@
 - 多进程时每个进程拥有不同快照，再次强化单 worker 限制。
 - `observations_written` 名称与实际语义不一致，是兼容性债务。
 
-## 遗留事项
+## 后续决策
 
-`PriceObservation` 模型、旧表和部分清理路径目前仍可能因历史兼容而存在。删除前需要决定
-是否继续支持读取或迁移旧观测；不能仅因运行时不再写入就直接删除用户数据。
+[ADR 0013](0013-remove-legacy-price-observation-storage.md) 完成了该迁移：删除
+`PriceObservation` ORM 模型和死清理路径，并在 SQLite 启动迁移中删除遗留表。旧行情观测
+不再属于需要保留的业务记录。
 
 ## 历史依据
 

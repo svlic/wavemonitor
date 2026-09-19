@@ -24,7 +24,6 @@ from wavemonitor_backend.models import (
     Instrument,
     LastRuleState,
     MarketType,
-    PriceObservation,
     Provider,
     SourceMapping,
     TelegramDelivery,
@@ -180,7 +179,6 @@ def test_poll_tick_keeps_prices_in_memory_and_persists_alerts_deliveries_and_sta
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
     deliveries = session.exec(select(TelegramDelivery).order_by(TelegramDelivery.id)).all()
     states = session.exec(select(LastRuleState).order_by(LastRuleState.source_mapping_id)).all()
-    assert session.exec(select(PriceObservation)).all() == []
     assert [status.latest_success.price for status in price_statuses if status is not None] == [
         Decimal("100")
     ] * 3
@@ -258,7 +256,6 @@ def test_poll_tick_rearms_source_rule_after_condition_resets(session: Session):
     assert reset.alert_events_created == 0
     assert retrigger.alert_events_created == 1
     assert len(alerts) == 4
-    assert session.exec(select(PriceObservation)).all() == []
     assert [delivery.status for delivery in session.exec(select(TelegramDelivery)).all()] == [
         DeliveryStatus.SENT,
         DeliveryStatus.SENT,
@@ -301,7 +298,6 @@ def test_poll_tick_records_one_source_error_and_continues_other_sources(session:
     # Then: the failing source records an in-memory error and other sources still alert/deliver.
     statuses = [scheduler.price_store.get(source.id) for source in sources]
     alerts = session.exec(select(AlertEvent).order_by(AlertEvent.source_mapping_id)).all()
-    assert session.exec(select(PriceObservation)).all() == []
     assert [status.last_error for status in statuses if status is not None] == [
         f"provider_error: {'provider down; ' * 50}"[:500],
         None,
@@ -347,7 +343,6 @@ def test_poll_tick_does_not_poll_disabled_instrument(session: Session):
 
     metrics = scheduler.run_tick(session)
 
-    assert session.exec(select(PriceObservation)).all() == []
     assert session.exec(select(AlertEvent)).all() == []
     assert session.exec(select(LastRuleState)).all() == []
     assert notifier.messages == []
@@ -404,7 +399,6 @@ def test_poll_tick_keeps_last_success_in_memory_after_newer_error(session: Sessi
     assert status.latest_success.observed_at == BASE_TIME
     assert status.last_attempt_at == BASE_TIME + timedelta(minutes=1)
     assert status.last_error == "provider_error: provider down"
-    assert session.exec(select(PriceObservation)).all() == []
 
 
 def test_edit_during_poll_uses_new_rule_cycle(session: Session):
@@ -439,7 +433,6 @@ def test_edit_during_poll_uses_new_rule_cycle(session: Session):
     metrics = scheduler.run_tick(session)
 
     # Then: the price remains in memory, but old-cycle rule side effects are suppressed.
-    assert session.exec(select(PriceObservation)).all() == []
     price_status = scheduler.price_store.get(sources[0].id)
     assert price_status is not None
     assert price_status.latest_success is not None
