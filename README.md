@@ -19,6 +19,7 @@
 | 部署 | Docker Compose |
 
 API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
+架构决策及其历史背景见 [`docs/adr/`](docs/adr/README.md)。
 
 ---
 
