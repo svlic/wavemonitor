@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiClient, ApiError } from "../../api/client";
-import type {
-  InstrumentWithMappings,
-  RecentAlert,
-  RuntimeResponse,
-  SourceError,
-} from "../../api/client";
+import { useLoadData } from "../../hooks/useLoadData";
 import {
   formatAlertKindLabel,
   formatDateTime,
@@ -13,67 +8,21 @@ import {
   formatSourceLabel,
 } from "../../utils/format";
 
-type OpsState = "loading" | "ready" | "error";
+function loadOpsData(signal?: AbortSignal) {
+  return Promise.all([
+    apiClient.getRuntime(signal),
+    apiClient.getSourceErrors(signal),
+    apiClient.getRecentAlerts(signal),
+    apiClient.getInstruments(signal),
+  ]);
+}
 
 export function OpsPanel() {
-  const [state, setState] = useState<OpsState>("loading");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
-  const [errors, setErrors] = useState<readonly SourceError[]>([]);
-  const [alerts, setAlerts] = useState<readonly RecentAlert[]>([]);
-  const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
+  const { state, errorMessage, refreshing, data, refresh } = useLoadData(loadOpsData);
+  const [runtime, errors, alerts, instruments] = data ?? [null, [], [], []];
 
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
-
-  const loadData = useCallback(async (signal?: AbortSignal, options?: { refresh?: boolean }) => {
-    const isRefresh = options?.refresh === true;
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setState("loading");
-    }
-    try {
-      const [runtimeData, errorsData, alertsData, instrumentsData] = await Promise.all([
-        apiClient.getRuntime(signal),
-        apiClient.getSourceErrors(signal),
-        apiClient.getRecentAlerts(signal),
-        apiClient.getInstruments(signal),
-      ]);
-      if (signal?.aborted) return;
-      setRuntime(runtimeData);
-      setErrors(errorsData);
-      setAlerts(alertsData);
-      setInstruments(instrumentsData);
-      setState("ready");
-      setErrorMessage(null);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      setState("error");
-      if (error instanceof ApiError) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("发生未知错误。");
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setRefreshing(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [loadData]);
-
-  const handleRefresh = () => {
-    void loadData(undefined, { refresh: true });
-  };
 
   const handleTestTelegram = async () => {
     setTestStatus("sending");
@@ -122,7 +71,7 @@ export function OpsPanel() {
         <div className="error-banner" role="alert">
           <p className="error-text">{errorMessage ?? "加载失败。"}</p>
         </div>
-        <button type="button" className="button primary" onClick={handleRefresh}>
+        <button type="button" className="button primary" onClick={refresh}>
           重试加载
         </button>
       </section>
@@ -138,7 +87,7 @@ export function OpsPanel() {
         <button
           type="button"
           className="button small"
-          onClick={handleRefresh}
+          onClick={refresh}
           disabled={refreshing}
           aria-busy={refreshing}
         >

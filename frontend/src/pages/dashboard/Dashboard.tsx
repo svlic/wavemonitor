@@ -1,79 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
-import { apiClient, ApiError } from "../../api/client";
-import type {
-  RuntimeResponse,
-  LatestPrice,
-  InstrumentWithMappings,
-} from "../../api/client";
+import { useEffect } from "react";
+import { apiClient } from "../../api/client";
+import { useLoadData } from "../../hooks/useLoadData";
 import { formatDateTime } from "../../utils/format";
 import { PriceMonitorPanel } from "./PriceMonitorPanel";
 
-type DashboardState = "loading" | "ready" | "error";
+function loadDashboardData(signal?: AbortSignal) {
+  return Promise.all([
+    apiClient.getRuntime(signal),
+    apiClient.getLatestPrices(signal),
+    apiClient.getInstruments(signal),
+  ]);
+}
 
 export function Dashboard() {
-  const [state, setState] = useState<DashboardState>("loading");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
-  const [prices, setPrices] = useState<readonly LatestPrice[]>([]);
-  const [instruments, setInstruments] = useState<readonly InstrumentWithMappings[]>([]);
-
-  const loadData = useCallback(
-    async (signal?: AbortSignal, options?: { refresh?: boolean }) => {
-      const isRefresh = options?.refresh === true;
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setState("loading");
-      }
-      try {
-        const [runtimeData, pricesData, instrumentsData] = await Promise.all([
-          apiClient.getRuntime(signal),
-          apiClient.getLatestPrices(signal),
-          apiClient.getInstruments(signal),
-        ]);
-        if (signal?.aborted) return;
-        setRuntime(runtimeData);
-        setPrices(pricesData);
-        setInstruments(instrumentsData);
-        setState("ready");
-        setErrorMessage(null);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        setState("error");
-        if (error instanceof ApiError) {
-          setErrorMessage(error.message);
-        } else {
-          setErrorMessage("发生未知错误。");
-        }
-      } finally {
-        if (!signal?.aborted) {
-          setRefreshing(false);
-        }
-      }
-    },
-    [],
-  );
+  const { state, errorMessage, refreshing, data, refresh } = useLoadData(loadDashboardData);
+  const [runtime, prices, instruments] = data ?? [null, [], []];
 
   useEffect(() => {
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [loadData]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      void loadData(undefined, { refresh: true });
-    }, 120_000);
+    const id = window.setInterval(refresh, 120_000);
     return () => window.clearInterval(id);
-  }, [loadData]);
-
-  const handleRefresh = () => {
-    void loadData(undefined, { refresh: true });
-  };
+  }, [refresh]);
 
   if (state === "loading") {
     return (
@@ -100,7 +46,7 @@ export function Dashboard() {
         <div className="error-banner" role="alert">
           <p className="error-text">{errorMessage ?? "仪表盘加载失败。"}</p>
         </div>
-        <button type="button" className="button primary" onClick={handleRefresh}>
+        <button type="button" className="button primary" onClick={refresh}>
           重试加载
         </button>
       </section>
@@ -130,7 +76,7 @@ export function Dashboard() {
             <button
               type="button"
               className="button small"
-              onClick={handleRefresh}
+              onClick={refresh}
               disabled={refreshing}
               aria-busy={refreshing}
             >
