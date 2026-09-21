@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+log() {
+    printf '[wavemonitor setup] %s\n' "$*"
+}
+
+fail() {
+    printf '[wavemonitor setup] ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+command -v python3 >/dev/null 2>&1 || fail "Python 3.11 or newer is required, but python3 is not on PATH. Install it without changing another project's runtime, then rerun .agents/setup."
+command -v node >/dev/null 2>&1 || fail "A supported Node.js release (20.19+, 22.12+, or 24+) is required, but node is not on PATH. Install it at user or project scope, then rerun .agents/setup."
+command -v npm >/dev/null 2>&1 || fail "npm is required, but it is not on PATH. Install it with the supported Node.js runtime, then rerun .agents/setup."
+
+python3 - <<'PY' || fail "Python 3.11 or newer is required."
+import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit(f"found unsupported Python {sys.version.split()[0]}")
+PY
+
+node - <<'JS' || fail "The locked frontend dependencies require Node.js 20.19+, 22.12+, or 24+."
+const [major, minor] = process.versions.node.split(".").map(Number);
+const supported =
+  (major === 20 && minor >= 19) ||
+  (major === 22 && minor >= 12) ||
+  major >= 24;
+if (!supported) {
+  throw new Error(`found unsupported Node.js ${process.versions.node}`);
+}
+JS
+
+if [[ ! -x .venv/bin/python ]]; then
+    log "Creating the project Python virtual environment"
+    if [[ -e .venv ]]; then
+        fail ".venv exists but does not contain an executable Python interpreter. Move or remove this generated environment and rerun .agents/setup."
+    fi
+    python3 -m venv .venv || fail "Could not create .venv. Install the venv module for this Python (for Debian 12: python3-venv) and rerun .agents/setup; the script does not use sudo."
+fi
+
+.venv/bin/python - <<'PY' || fail "The existing .venv uses Python older than 3.11. Recreate this generated environment with a supported Python and rerun .agents/setup."
+import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit(f"found unsupported venv Python {sys.version.split()[0]}")
+PY
+
+python_fingerprint="$(sha256sum pyproject.toml | awk '{print $1}')"
+python_marker=".venv/.wavemonitor-pyproject.sha256"
+python_ready=false
+if [[ -f "$python_marker" ]] && [[ "$(<"$python_marker")" == "$python_fingerprint" ]]; then
+    if .venv/bin/python -m pip check >/dev/null 2>&1 \
+        && .venv/bin/python -c 'import fastapi, httpx, pytest, ruff, sqlmodel, vulture, wavemonitor_backend' 2>/dev/null; then
+        python_ready=true
+    fi
+fi
+
+if [[ "$python_ready" == false ]]; then
+    log "Installing backend and development dependencies"
+    .venv/bin/python -m pip install --disable-pip-version-check -e '.[test]'
+    .venv/bin/python -m pip check
+    printf '%s\n' "$python_fingerprint" > "$python_marker"
+else
+    log "Backend dependencies already match pyproject.toml"
+fi
+
+frontend_fingerprint="$(sha256sum frontend/package.json frontend/package-lock.json | sha256sum | awk '{print $1}')"
+frontend_marker="frontend/node_modules/.wavemonitor-lock.sha256"
+frontend_ready=false
+if [[ -f "$frontend_marker" ]] && [[ "$(<"$frontend_marker")" == "$frontend_fingerprint" ]]; then
+    if (cd frontend && npm ls --depth=0 >/dev/null 2>&1); then
+        frontend_ready=true
+    fi
+fi
+
+if [[ "$frontend_ready" == false ]]; then
+    log "Installing frontend dependencies from package-lock.json"
+    (cd frontend && npm ci)
+    printf '%s\n' "$frontend_fingerprint" > "$frontend_marker"
+else
+    log "Frontend dependencies already match package-lock.json"
+fi
+
+log "Environment ready: $(.venv/bin/python --version 2>&1); Node.js $(node --version); npm $(npm --version)"

@@ -17,6 +17,7 @@ dependencies = [
 test = [
     "httpx>=0.27.0",
     "pytest>=8.0.0",
+    "ruff>=0.8.0",
     "vulture>=2.11",
 ]
 
