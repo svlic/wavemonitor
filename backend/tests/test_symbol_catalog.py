@@ -60,11 +60,12 @@ class FakeHyperliquid:
         return self._dexs
 
 
-def test_binance_filters_trading_symbols_and_ranks_prefix_matches() -> None:
+@pytest.mark.parametrize("query", ["btc", " BTC ", "\t bTc\n"])
+def test_binance_filters_trading_symbols_and_ranks_prefix_matches(query: str) -> None:
     catalog = SymbolCatalog(
         usd_m_client=FakeBinanceExchange(["ETHUSDT", "BTCUSDT", "HALTED", "WBTCUSDT"]),
     )
-    options = catalog.search(Provider.BINANCE, MarketType.USD_M_FUTURES, "btc")
+    options = catalog.search(Provider.BINANCE, MarketType.USD_M_FUTURES, query)
     assert [option.symbol for option in options] == ["BTCUSDT", "WBTCUSDT"]
 
 
@@ -197,7 +198,8 @@ def test_hyperliquid_searches_trade_xyz_assets_from_perp_dex_metadata() -> None:
     ]
 
 
-def test_yfinance_uses_injected_search_factory() -> None:
+@pytest.mark.parametrize("query", ["aapl", " AaPl\t", "\u3000aapl\u3000"])
+def test_yfinance_uses_injected_search_factory(query: str) -> None:
     def fake_search(query: str, limit: int) -> list[SymbolOption]:
         assert query == "AAPL"
         assert limit == 25
@@ -211,6 +213,15 @@ def test_yfinance_uses_injected_search_factory() -> None:
         ]
 
     catalog = SymbolCatalog(yfinance_search=fake_search)
-    options = catalog.search(Provider.YFINANCE, MarketType.EQUITY, "aapl")
+    options = catalog.search(Provider.YFINANCE, MarketType.EQUITY, query)
     assert len(options) == 1
     assert options[0].symbol == "AAPL"
+
+
+@pytest.mark.parametrize("query", ["", " \t\n", "\u3000"])
+def test_blank_query_does_not_call_provider(query: str) -> None:
+    def unexpected_search(_query: str, _limit: int) -> list[SymbolOption]:
+        pytest.fail("A blank query must not call the provider")
+
+    catalog = SymbolCatalog(yfinance_search=unexpected_search)
+    assert catalog.search(Provider.YFINANCE, MarketType.EQUITY, query) == []

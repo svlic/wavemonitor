@@ -127,6 +127,45 @@ def test_create_list_update_delete_instrument_with_temp_sqlite(client: TestClien
     assert list_after_delete.json() == []
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize(
+    ("provider", "market_type", "symbol", "normalized"),
+    [
+        ("yfinance", "equity", " aapl ", "AAPL"),
+        ("binance", "usd_m_futures", " ethusdt ", "ETHUSDT"),
+        ("binance", "coin_m_futures", " ethusd_perp ", "ETHUSD_PERP"),
+        ("hyperliquid", "perpetual", " XYZ:aapl ", "xyz:AAPL"),
+    ],
+)
+def test_create_and_update_add_identical_source_fields(
+    client: TestClient,
+    enabled: bool,
+    provider: str,
+    market_type: str,
+    symbol: str,
+    normalized: str,
+) -> None:
+    source = dict(provider=provider, market_type=market_type, symbol=symbol, enabled=enabled)
+    payload = VALID_PAYLOAD | {"source_mappings": [source]}
+    response = client.post("/api/instruments", json=payload)
+    assert response.status_code == 201
+    created_source = response.json()["source_mappings"][0]
+    assert created_source == source | {"id": created_source["id"], "symbol": normalized}
+
+    other = client.post("/api/instruments", json=VALID_PAYLOAD)
+    assert other.status_code == 201
+    existing = other.json()["source_mappings"][0]
+    updated = client.put(
+        f"/api/instruments/{other.json()['id']}",
+        json=VALID_PAYLOAD | {"source_mappings": [existing, source]},
+    )
+    assert updated.status_code == 200
+    retained, added = updated.json()["source_mappings"]
+    assert retained == existing
+    assert added == created_source | {"id": added["id"]}
+    assert added["id"] not in {created_source["id"], existing["id"]}
+
+
 def test_update_and_delete_remove_stale_in_memory_prices(tmp_path: Path):
     price_store = LatestPriceStore()
     database_url = f"sqlite:///{tmp_path / 'price-cleanup.sqlite3'}"
@@ -411,15 +450,44 @@ def test_enabled_and_disabled_source_mappings_round_trip(client: TestClient):
     ]
 
 
-def test_status_endpoint_reports_sources_and_recent_alerts(client: TestClient):
-    # Given: one persisted instrument and no rule engine alerts yet.
+@pytest.mark.parametrize("has_state", [False, True])
+def test_status_endpoint_reports_sources_and_recent_alerts(
+    client: TestClient,
+    tmp_path: Path,
+    has_state: bool,
+):
+    # Given: two sources with distinct state, including an optionally missing state.
     create_response = client.post("/api/instruments", json=VALID_PAYLOAD)
     instrument_id = create_response.json()["id"]
+    other = client.post("/api/instruments", json=VALID_PAYLOAD).json()
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    try:
+        with session_scope(engine) as session:
+            session.add(
+                LastRuleState(
+                    instrument_id=other["id"],
+                    source_mapping_id=other["source_mappings"][0]["id"],
+                    last_invalid_state="other-source-state",
+                    updated_at=datetime(2026, 7, 2, tzinfo=UTC),
+                )
+            )
+            if has_state:
+                session.add(
+                    LastRuleState(
+                        instrument_id=instrument_id,
+                        source_mapping_id=create_response.json()["source_mappings"][0]["id"],
+                        last_invalid_state="price_not_above_support",
+                        updated_at=datetime(2026, 7, 2, tzinfo=UTC),
+                    )
+                )
+            session.commit()
+    finally:
+        engine.dispose()
 
     # When: its status endpoint is requested.
     response = client.get(f"/api/instruments/{instrument_id}/status")
 
-    # Then: status is database-backed and includes runtime-safe empty alert state.
+    # Then: status reads only this source's state and preserves the empty alert state.
     assert response.status_code == 200
     assert response.json() == {
         "instrument_id": instrument_id,
@@ -434,7 +502,7 @@ def test_status_endpoint_reports_sources_and_recent_alerts(client: TestClient):
                 "last_price": None,
                 "last_observed_at": None,
                 "last_error": None,
-                "last_invalid_state": None,
+                "last_invalid_state": "price_not_above_support" if has_state else None,
             }
         ],
         "recent_alerts": [],

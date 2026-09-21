@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Final
 
 from sqlalchemy import Engine
@@ -75,11 +73,6 @@ def build_monitoring_lifecycle(
         price_store=price_store,
     )
 
-    @contextmanager
-    def session_factory() -> Iterator:
-        with session_scope(engine) as session:
-            yield session
-
     interval = (
         poll_interval_seconds
         if poll_interval_seconds is not None
@@ -87,6 +80,6 @@ def build_monitoring_lifecycle(
     )
     return MonitoringLifecycle(
         scheduler,
-        session_factory,
+        lambda: session_scope(engine),
         WakingTicker(interval_seconds=interval),
     )

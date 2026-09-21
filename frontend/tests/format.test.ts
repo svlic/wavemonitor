@@ -1,5 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DISPLAY_TIME_ZONE, formatDateTime } from "../src/utils/format";
+import { DISPLAY_TIME_ZONE, formatDateTime, formatSourceLabel } from "../src/utils/format";
+
+describe("formatSourceLabel", () => {
+  it.each([
+    ["yfinance", "equity", "AAPL", "Yahoo Finance · 股票 · AAPL"],
+    ["binance", "usd_m_futures", "BTCUSDT", "Binance · USD-M 合约 · BTCUSDT"],
+    ["binance", "coin_m_futures", "BTCUSD_PERP", "Binance · COIN-M 合约 · BTCUSD_PERP"],
+    ["hyperliquid", "perpetual", "xyz:AAPL", "Hyperliquid · 永续合约 · xyz:AAPL"],
+    ["custom", "custom-market", " mixed:Symbol ", "custom · custom-market ·  mixed:Symbol "],
+    ["", "", "", " ·  · "],
+  ])("preserves source label for %s / %s", (provider, market, symbol, expected) => {
+    expect(formatSourceLabel(provider, market, symbol)).toBe(expected);
+  });
+});
 
 describe("formatDateTime", () => {
   afterEach(() => {

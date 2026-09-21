@@ -60,7 +60,8 @@ def create_instrument(session: Session, payload: InstrumentRequest) -> Instrumen
         session.add(instrument)
         session.flush()
         instrument_id = require_id(instrument.id)
-        add_source_mappings(session, instrument_id, payload)
+        for source in payload.source_mappings:
+            add_source_mapping(session, instrument_id, source)
         session.commit()
     except IntegrityError as exc:
         session.rollback()
@@ -280,7 +281,10 @@ def source_status(
 ) -> SourceStatusResponse:
     price_status = price_store.get(require_id(source.id))
     latest_success = price_status.latest_success if price_status is not None else None
-    rule_state = latest_rule_state_for(session, source)
+    statement = select(LastRuleState).where(
+        LastRuleState.source_mapping_id == require_id(source.id)
+    )
+    rule_state = session.exec(statement).first()
     return SourceStatusResponse(
         id=require_id(source.id),
         provider=source.provider,
@@ -348,17 +352,16 @@ def clear_last_rule_states_for_instrument(session: Session, instrument_id: int) 
         session.delete(state)
 
 
-def add_source_mappings(session: Session, instrument_id: int, payload: InstrumentRequest) -> None:
-    for source in payload.source_mappings:
-        session.add(
-            SourceMapping(
-                instrument_id=instrument_id,
-                provider=source.provider,
-                market_type=source.market_type,
-                symbol=source.symbol,
-                enabled=source.enabled,
-            )
+def add_source_mapping(session: Session, instrument_id: int, source: SourceMappingRequest) -> None:
+    session.add(
+        SourceMapping(
+            instrument_id=instrument_id,
+            provider=source.provider,
+            market_type=source.market_type,
+            symbol=source.symbol,
+            enabled=source.enabled,
         )
+    )
 
 
 def sync_source_mappings(
@@ -378,15 +381,7 @@ def sync_source_mappings(
         key = mapping_identity_key(source)
         row = existing.get(key)
         if row is None:
-            session.add(
-                SourceMapping(
-                    instrument_id=instrument_id,
-                    provider=source.provider,
-                    market_type=source.market_type,
-                    symbol=source.symbol,
-                    enabled=source.enabled,
-                )
-            )
+            add_source_mapping(session, instrument_id, source)
         else:
             row.enabled = source.enabled
             session.add(row)
@@ -397,13 +392,6 @@ def mapping_identity_key(
     source: SourceMapping | SourceMappingRequest,
 ) -> tuple[Provider, MarketType, str]:
     return (source.provider, source.market_type, source.symbol)
-
-
-def latest_rule_state_for(session: Session, source: SourceMapping) -> LastRuleState | None:
-    statement = select(LastRuleState).where(
-        LastRuleState.source_mapping_id == require_id(source.id)
-    )
-    return session.exec(statement).first()
 
 
 def delete_instrument_cascade(session: Session, instrument_id: int) -> set[int]:

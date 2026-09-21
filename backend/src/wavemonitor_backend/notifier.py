@@ -201,7 +201,7 @@ def _alert_summary(alert: TelegramAlert) -> str:
         case AlertKind.NEAR_SUPPORT:
             distance = _distance_detail(alert.price, alert.support, below=True)
             threshold = (
-                f"，接近阈值 {_format_percent_from_ratio(alert.threshold)}"
+                f"，接近阈值 {_format_percent(alert.threshold * HUNDRED)}"
                 if alert.threshold is not None
                 else ""
             )
@@ -286,10 +286,6 @@ def _format_decimal(value: Decimal, places: int = 2) -> str:
 
 def _format_percent(value: Decimal) -> str:
     return f"{_format_decimal(value)}%"
-
-
-def _format_percent_from_ratio(ratio: Decimal) -> str:
-    return _format_percent(ratio * HUNDRED)
 
 
 def _format_triggered_at(value: datetime) -> str:

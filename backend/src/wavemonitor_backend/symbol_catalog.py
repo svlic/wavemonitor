@@ -32,10 +32,6 @@ class BinanceExchangeListing(BinanceFuturesClient, Protocol):
 YFinanceSearchFactory = Callable[[str, int], list[SymbolOption]]
 
 
-def _normalize_query(query: str) -> str:
-    return query.strip().upper()
-
-
 def _rank_key(symbol: str, query: str) -> tuple[int, str]:
     upper = symbol.upper()
     if upper.startswith(query):
@@ -111,7 +107,7 @@ class SymbolCatalog:
         self._yfinance_search = yfinance_search or _default_yfinance_search
 
     def search(self, provider: Provider, market_type: MarketType, query: str) -> list[SymbolOption]:
-        normalized = _normalize_query(query)
+        normalized = query.strip().upper()
         if not normalized:
             return []
         match (provider, market_type):

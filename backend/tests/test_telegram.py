@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -281,6 +281,29 @@ def test_formatter_includes_instrument_source_rule_price_support_and_resistance(
     assert r"*风险回报* 13\.22" in message
     assert r"*时间* 2026\-06\-30 20:00:00 UTC\+8" in message
     assert "near_support" not in message
+
+
+@pytest.mark.parametrize(
+    ("threshold", "percent"),
+    [
+        (None, None),
+        ("0", "0.00%"),
+        ("0.000049", "0.00%"),
+        ("0.00005", "0.01%"),
+        ("0.02005", "2.01%"),
+        ("0.99999", "100.00%"),
+    ],
+)
+def test_formatter_preserves_threshold_ratio_rounding(
+    threshold: str | None,
+    percent: str | None,
+) -> None:
+    alert = replace(make_alert(), threshold=None if threshold is None else Decimal(threshold))
+    message = format_telegram_alert(alert)
+    if percent is None:
+        assert "接近阈值" not in message
+    else:
+        assert escape_telegram_markdown_v2(f"，接近阈值 {percent}。") in message
 
 
 def test_formatter_describes_breakout_and_support_breach():
