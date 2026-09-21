@@ -25,8 +25,6 @@ def normalize_optional_level(value: Decimal | str | int | float | None) -> Decim
         return value
     if isinstance(value, int):
         return Decimal(value)
-    if isinstance(value, float):
-        raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
     raise ValueError("Decimal values must be provided as strings, Decimal, or integers")
 
 

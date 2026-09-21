@@ -15,6 +15,31 @@ from wavemonitor_backend.models import (
     Provider,
     SourceMapping,
 )
+from wavemonitor_backend.support_resistance import normalize_optional_level
+
+
+@pytest.mark.parametrize("value", [0.0, 90000.10, float("inf"), float("nan")])
+def test_normalize_optional_level_rejects_floats(value: float):
+    with pytest.raises(ValueError) as error:
+        normalize_optional_level(value)
+    assert str(error.value) == ("Decimal values must be provided as strings, Decimal, or integers")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("  ", None),
+        (" 1.20 ", Decimal("1.20")),
+        (2, Decimal(2)),
+        (Decimal("3.40"), Decimal("3.40")),
+    ],
+)
+def test_normalize_optional_level_preserves_supported_inputs(
+    value: Decimal | str | int | None,
+    expected: Decimal | None,
+):
+    assert normalize_optional_level(value) == expected
 
 
 def test_instrument_accepts_decimal_string_levels_and_fraction_thresholds():
