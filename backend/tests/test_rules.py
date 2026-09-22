@@ -76,10 +76,14 @@ def test_near_support_true_and_false_threshold_boundary():
 
 
 def test_breakout_triggers_on_first_observation_above_resistance_or_crossing():
-    # Given: resistance is 110 and prior observations can be absent, below, or already above.
+    # Given: prior observations can be absent, below resistance, or already alerted above it.
     first_observation = RuleState()
     below_previous = RuleState(last_price=Decimal("100"))
-    above_previous = RuleState(last_price=Decimal("111"), above_resistance_active=True)
+    above_previous = RuleState(
+        last_price=Decimal("111"),
+        above_resistance_active=True,
+        breakout_last_alert_at=OBSERVED_AT - timedelta(minutes=1),
+    )
 
     # When: observations are evaluated around the resistance crossing.
     first = evaluate_rules(

@@ -375,6 +375,39 @@ def test_create_update_list_fixed_drawdown_instrument_derives_support(client: Te
     assert updated["supports"] == ["90000.1000000000"]
 
 
+def test_fixed_drawdown_name_only_update_preserves_rule_cycle(
+    client: TestClient, tmp_path: Path
+):
+    payload = {
+        "name": "Bitcoin trail",
+        "enabled": True,
+        "alert_mode": "fixed_drawdown",
+        "high_water": "100000",
+        "fixed_drawdown": "5000",
+        "resistances": [],
+        "near_support_threshold": "0.02",
+        "risk_reward_threshold": None,
+        "source_mappings": VALID_PAYLOAD["source_mappings"],
+    }
+    created = client.post("/api/instruments", json=payload).json()
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'api.sqlite3'}")
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, created["id"])
+        assert instrument is not None
+        cycle_started_at = instrument.rule_cycle_started_at
+
+    response = client.put(
+        f"/api/instruments/{created['id']}",
+        json={**payload, "name": "Bitcoin trail renamed"},
+    )
+
+    assert response.status_code == 200
+    with session_scope(engine) as session:
+        instrument = session.get(Instrument, created["id"])
+        assert instrument is not None
+        assert instrument.rule_cycle_started_at == cycle_started_at
+
+
 def test_create_instrument_fixed_drawdown_rejects_client_support(client: TestClient):
     payload = {
         "name": "Bitcoin",

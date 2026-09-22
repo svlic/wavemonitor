@@ -31,6 +31,7 @@ from wavemonitor_backend.schemas import (
     SourceMappingResponse,
     SourceStatusResponse,
 )
+from wavemonitor_backend.support_resistance import AlertMode
 
 PRICE_QUANTUM: Final[Decimal] = Decimal("0.0000000001")
 
@@ -336,7 +337,10 @@ def recent_alerts_for(session: Session, instrument_id: int) -> list[AlertEvent]:
 def instrument_rule_fields_changed(instrument: Instrument, payload: InstrumentRequest) -> bool:
     return (
         instrument.alert_mode != payload.alert_mode
-        or instrument.supports != payload.supports
+        or (
+            (instrument.alert_mode == AlertMode.STATIC or payload.alert_mode == AlertMode.STATIC)
+            and instrument.supports != payload.supports
+        )
         or instrument.resistances != payload.resistances
         or instrument.high_water != payload.high_water
         or instrument.fixed_drawdown != payload.fixed_drawdown

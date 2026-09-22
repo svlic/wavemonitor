@@ -378,3 +378,188 @@ def test_first_persisted_observation_above_resistance_emits_breakout(tmp_path: P
 
         assert [alert.kind for alert in evaluation.alerts] == [AlertKind.RESISTANCE_BREAKOUT]
         assert session.exec(select(AlertEvent)).one().resistance == Decimal("110.0000000000")
+
+
+def test_persisted_state_above_resistance_without_prior_alert_self_heals(tmp_path: Path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'missed-breakout.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument, source = persisted_instrument_and_source(session)
+        session.add(
+            LastRuleState(
+                instrument_id=instrument.id,
+                source_mapping_id=source.id,
+                last_price=Decimal("131"),
+                updated_at=OBSERVED_AT,
+            )
+        )
+        session.commit()
+
+        first = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("132"),
+            observed_at=OBSERVED_AT + timedelta(minutes=1),
+        )
+        repeated = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("133"),
+            observed_at=OBSERVED_AT + timedelta(minutes=2),
+        )
+        after_rearm = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("134"),
+            observed_at=OBSERVED_AT + timedelta(minutes=3),
+        )
+
+        assert [alert.kind for alert in first.alerts] == [AlertKind.RESISTANCE_BREAKOUT]
+        assert repeated.alerts == ()
+        assert after_rearm.alerts == ()
+        assert [event.alert_kind for event in session.exec(select(AlertEvent)).all()] == [
+            AlertKind.RESISTANCE_BREAKOUT
+        ]
+
+
+def test_multiple_support_levels_emit_each_downward_crossing(tmp_path: Path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'support-levels.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin",
+            supports=["90", "98"],
+            resistances=[],
+            near_support_threshold="0.01",
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+            rule_cycle_started_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        for minute, price in enumerate(("100", "95", "89")):
+            evaluate_and_persist_rules(
+                session=session,
+                instrument=instrument,
+                source_mapping=source,
+                price=Decimal(price),
+                observed_at=OBSERVED_AT + timedelta(minutes=minute),
+            )
+
+        breaches = session.exec(
+            select(AlertEvent).where(AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH)
+        ).all()
+        assert [event.support for event in breaches] == [Decimal("98"), Decimal("90")]
+
+
+def test_multiple_resistance_levels_emit_each_upward_crossing(tmp_path: Path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'resistance-levels.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin",
+            supports=[],
+            resistances=["110", "130"],
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+            rule_cycle_started_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        for minute, price in enumerate(("100", "120", "140")):
+            evaluate_and_persist_rules(
+                session=session,
+                instrument=instrument,
+                source_mapping=source,
+                price=Decimal(price),
+                observed_at=OBSERVED_AT + timedelta(minutes=minute),
+            )
+
+        breakouts = session.exec(
+            select(AlertEvent).where(AlertEvent.alert_kind == AlertKind.RESISTANCE_BREAKOUT)
+        ).all()
+        assert [event.resistance for event in breakouts] == [Decimal("110"), Decimal("130")]
+
+
+def test_fixed_drawdown_derived_support_emits_breach(tmp_path: Path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'fixed-drawdown.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin trail",
+            alert_mode="fixed_drawdown",
+            high_water="100",
+            fixed_drawdown="10",
+            near_support_threshold="0.01",
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+            rule_cycle_started_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT,
+        )
+        evaluation = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("89"),
+            observed_at=OBSERVED_AT + timedelta(minutes=1),
+        )
+
+        assert instrument.supports == [Decimal("90")]
+        assert [alert.kind for alert in evaluation.alerts] == [AlertKind.SUPPORT_BREACH]
+        assert session.exec(select(AlertEvent)).one().support == Decimal("90")

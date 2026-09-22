@@ -283,10 +283,9 @@ def breakout_alert(
     resistance_level: Decimal,
 ) -> AlertDecision | None:
     previous_price = previous_state.last_price
-    crossed = (previous_price is None or previous_price <= resistance_level) and active
-    can_emit = should_emit(
-        active=crossed,
-        last_alert_at=previous_state.breakout_last_alert_at,
+    can_emit = active and (
+        previous_state.breakout_last_alert_at is None
+        or (previous_price is not None and previous_price <= resistance_level)
     )
     if not can_emit:
         return None
@@ -311,9 +310,10 @@ def support_breach_alert(
     support: Decimal,
     resistance: Decimal,
 ) -> AlertDecision | None:
-    can_emit = should_emit(
-        active=active,
-        last_alert_at=previous_state.support_breach_last_alert_at,
+    previous_price = previous_state.last_price
+    can_emit = active and (
+        previous_state.support_breach_last_alert_at is None
+        or (previous_price is not None and previous_price >= support)
     )
     if not can_emit:
         return None
