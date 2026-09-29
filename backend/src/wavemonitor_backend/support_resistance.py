@@ -46,6 +46,16 @@ def nearest_pair(
     return (max(below) if below else None, min(above) if above else None)
 
 
+def unbreached_supports(
+    supports: Sequence[Decimal], breached_supports: Sequence[Decimal]
+) -> tuple[Decimal, ...]:
+    """Exclude every support at or above the lowest level already breached."""
+    lowest_breached = min(breached_supports, default=None)
+    return tuple(
+        level for level in supports if lowest_breached is None or level < lowest_breached
+    )
+
+
 def validate_instrument_levels(
     *,
     supports: Sequence[Decimal],

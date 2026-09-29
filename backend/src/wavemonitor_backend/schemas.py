@@ -214,6 +214,7 @@ class LatestPriceResponse(BaseModel):
     last_price: str
     last_observed_at: datetime
     last_error: str | None
+    effective_support: str | None
     support_breached: bool
     resistance_broken: bool
 

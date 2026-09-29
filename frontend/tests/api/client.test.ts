@@ -64,6 +64,7 @@ describe("ApiClient", () => {
             last_price: "100",
             last_observed_at: "2026-06-30T12:00:00Z",
             last_error: null,
+            effective_support: "90",
             support_breached: true,
             resistance_broken: false,
           },
@@ -74,7 +75,11 @@ describe("ApiClient", () => {
 
     const result = await client.getLatestPrices();
 
-    expect(result[0]).toMatchObject({ support_breached: true, resistance_broken: false });
+    expect(result[0]).toMatchObject({
+      effective_support: "90",
+      support_breached: true,
+      resistance_broken: false,
+    });
   });
 
   it("returns parsed data on success", async () => {

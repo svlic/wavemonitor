@@ -6,6 +6,7 @@ from wavemonitor_backend.models import AlertMode
 from wavemonitor_backend.support_resistance import (
     derived_support,
     nearest_pair,
+    unbreached_supports,
     validate_instrument_levels,
 )
 
@@ -78,6 +79,13 @@ def test_nearest_pair_returns_none_when_no_level_is_on_the_correct_side():
 
     assert support is None
     assert resistance is None
+
+
+def test_unbreached_supports_excludes_breached_level_and_every_level_above_it():
+    assert unbreached_supports(
+        supports=(Decimal("80"), Decimal("90"), Decimal("98")),
+        breached_supports=(Decimal("90"),),
+    ) == (Decimal("80"),)
 
 
 def test_validate_instrument_levels_accepts_multiple_static_levels():

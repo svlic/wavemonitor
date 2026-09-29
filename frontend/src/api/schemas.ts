@@ -57,6 +57,7 @@ export const LatestPriceSchema = z.object({
   last_price: z.string(),
   last_observed_at: z.string(),
   last_error: z.string().nullable(),
+  effective_support: z.string().nullable(),
   support_breached: z.boolean(),
   resistance_broken: z.boolean(),
 });

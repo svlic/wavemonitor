@@ -15,7 +15,7 @@ from wavemonitor_backend.models import (
     SourceMapping,
 )
 from wavemonitor_backend.rules import RuleEvaluation, RuleState
-from wavemonitor_backend.support_resistance import nearest_pair
+from wavemonitor_backend.support_resistance import nearest_pair, unbreached_supports
 
 
 def evaluate_and_persist_rules(
@@ -53,30 +53,30 @@ def evaluate_and_persist_rules(
         and state_updated_at < cycle_started_at
         else rule_state_from_persisted(persisted_state)
     )
-    support, resistance = nearest_pair(instrument.supports, instrument.resistances, price)
+    breached_supports = session.exec(
+        select(AlertEvent.support).where(
+            AlertEvent.instrument_id == instrument_id,
+            AlertEvent.source_mapping_id == source_mapping_id,
+            AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH,
+            AlertEvent.rule_cycle_started_at == evaluation_cycle_started_at,
+        )
+    ).all()
+    eligible_supports = unbreached_supports(instrument.supports, breached_supports)
+    support, resistance = nearest_pair(eligible_supports, instrument.resistances, price)
     previous_price = previous_state.last_price
     crossed_supports = tuple(
         level
-        for level in instrument.supports
+        for level in eligible_supports
         if price < level and (previous_price is None or previous_price >= level)
     )
     if crossed_supports:
         support = min(crossed_supports)
     elif (
         previous_state.support_breach_last_alert_at is None
-        and any(price < level for level in instrument.supports)
+        and any(price < level for level in eligible_supports)
     ):
         # Recover legacy state that moved below a level without recording the crossing.
-        prior_breach_id = session.exec(
-            select(AlertEvent.id).where(
-                AlertEvent.instrument_id == instrument_id,
-                AlertEvent.source_mapping_id == source_mapping_id,
-                AlertEvent.alert_kind == AlertKind.SUPPORT_BREACH,
-                AlertEvent.rule_cycle_started_at == evaluation_cycle_started_at,
-            )
-        ).first()
-        if prior_breach_id is None:
-            support = min(level for level in instrument.supports if price < level)
+        support = min(level for level in eligible_supports if price < level)
     crossed_resistances = tuple(
         level
         for level in instrument.resistances

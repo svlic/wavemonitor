@@ -158,6 +158,7 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
             "last_price": "100.0000000000",
             "last_observed_at": "2026-06-30T12:00:00",
             "last_error": None,
+            "effective_support": "98.0000000000",
             "support_breached": False,
             "resistance_broken": False,
         }
@@ -208,9 +209,24 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
             )
         )
     new_cycle = datetime(2026, 6, 30, 12, 1, tzinfo=UTC)
+    instrument.supports = [Decimal("90"), Decimal("98")]
     instrument.updated_at = new_cycle
     instrument.rule_cycle_started_at = new_cycle
     session.add(instrument)
+    session.add(
+        AlertEvent(
+            instrument_id=instrument.id,
+            source_mapping_id=source.id,
+            alert_kind=AlertKind.SUPPORT_BREACH,
+            price=Decimal("97"),
+            support=Decimal("98"),
+            resistance=Decimal("130"),
+            threshold=Decimal("98"),
+            message="new cycle breach",
+            triggered_at=datetime(2026, 6, 30, 12, 2, tzinfo=UTC),
+            rule_cycle_started_at=new_cycle,
+        )
+    )
     session.add(
         AlertEvent(
             instrument_id=instrument.id,
@@ -227,7 +243,7 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
     )
     session.commit()
 
-    # When: latest prices are requested after a new-cycle resistance breakout.
+    # When: latest prices are requested after new-cycle crossings and price recovery.
     database_url = f"sqlite:///{tmp_path / 'status-api.sqlite3'}"
     with TestClient(
         create_app(
@@ -238,11 +254,12 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
     ) as test_client:
         response = test_client.get("/api/prices/latest")
 
-    # Then: only the post-edit crossing is marked and the latest price is unchanged.
+    # Then: only post-edit crossings are marked and the breached high support stays excluded.
     assert response.status_code == 200
     row = response.json()[0]
     assert row["last_price"] == "100.0000000000"
-    assert row["support_breached"] is False
+    assert row["effective_support"] == "90.0000000000"
+    assert row["support_breached"] is True
     assert row["resistance_broken"] is True
 
 
@@ -379,6 +396,7 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
             "last_price": "100.0000000000",
             "last_observed_at": "2026-06-30T12:00:00",
             "last_error": None,
+            "effective_support": "98.0000000000",
             "support_breached": False,
             "resistance_broken": False,
         }

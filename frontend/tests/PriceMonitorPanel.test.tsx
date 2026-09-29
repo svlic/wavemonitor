@@ -80,6 +80,7 @@ const prices = [
     last_price: "3500.00",
     last_observed_at: "2026-06-30T12:00:00Z",
     last_error: null,
+    effective_support: "3000",
     support_breached: false,
     resistance_broken: true,
   },
@@ -93,6 +94,7 @@ const prices = [
     last_price: "95000.50",
     last_observed_at: "2026-06-30T12:01:00Z",
     last_error: null,
+    effective_support: null,
     support_breached: true,
     resistance_broken: false,
   },
@@ -106,6 +108,7 @@ const prices = [
     last_price: "200.00",
     last_observed_at: "2026-06-30T12:02:00Z",
     last_error: null,
+    effective_support: "180",
     support_breached: false,
     resistance_broken: false,
   },
@@ -180,5 +183,24 @@ describe("PriceMonitorPanel", () => {
     expect(ethereumRow).not.toHaveTextContent("曾跌破支撑");
     expect(appleRow).not.toHaveTextContent("曾跌破支撑");
     expect(appleRow).not.toHaveTextContent("曾突破阻力");
+  });
+
+  it("uses the highest never-breached support for distance and risk/reward", () => {
+    const instrument: InstrumentWithMappings = {
+      ...instruments[0]!,
+      supports: ["85000", "90000"],
+    };
+    const price: LatestPrice = {
+      ...prices[1]!,
+      last_price: "95000",
+      effective_support: "85000",
+    };
+
+    render(<PriceMonitorPanel prices={[price]} instruments={[instrument]} />);
+
+    const row = screen.getByText("Bitcoin").closest("tr");
+    const cells = row?.querySelectorAll("td");
+    expect(cells?.[4]).toHaveTextContent("10.53%");
+    expect(cells?.[6]).toHaveTextContent("0.50");
   });
 });

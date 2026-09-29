@@ -89,9 +89,10 @@ type PriceTableRowProps = {
 
 function PriceTableRow({ row }: PriceTableRowProps) {
   const { instrument, price, source } = row;
-  const { support, resistance } = price === null
-    ? { support: undefined, resistance: undefined }
+  const { resistance } = price === null
+    ? { resistance: undefined }
     : nearestInstrumentLevels(price.last_price, instrument.supports, instrument.resistances);
+  const support = price?.effective_support ?? undefined;
   const supportPct =
     price !== null && support !== undefined
       ? computeSupportDistancePercent(price.last_price, support)

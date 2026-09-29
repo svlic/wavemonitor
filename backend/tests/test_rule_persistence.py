@@ -472,6 +472,60 @@ def test_multiple_support_levels_emit_each_downward_crossing(tmp_path: Path):
         assert [event.support for event in breaches] == [Decimal("98"), Decimal("90")]
 
 
+def test_breached_support_stays_excluded_after_price_recovers(tmp_path: Path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'breached-support.sqlite3'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        instrument = Instrument(
+            name="Bitcoin",
+            supports=["90", "98"],
+            resistances=["130"],
+            near_support_threshold="0.11",
+            risk_reward_threshold="2",
+            created_at=OBSERVED_AT,
+            updated_at=OBSERVED_AT,
+            rule_cycle_started_at=OBSERVED_AT,
+        )
+        session.add(instrument)
+        session.commit()
+        session.refresh(instrument)
+        source = SourceMapping(
+            instrument_id=instrument.id,
+            provider=Provider.BINANCE,
+            market_type=MarketType.USD_M_FUTURES,
+            symbol="BTCUSDT",
+        )
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+
+        for minute, price in enumerate(("100", "97")):
+            evaluate_and_persist_rules(
+                session=session,
+                instrument=instrument,
+                source_mapping=source,
+                price=Decimal(price),
+                observed_at=OBSERVED_AT + timedelta(minutes=minute),
+            )
+
+        recovered = evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT + timedelta(minutes=2),
+        )
+
+        assert [alert.kind for alert in recovered.alerts] == [
+            AlertKind.NEAR_SUPPORT,
+            AlertKind.RISK_REWARD,
+        ]
+        assert {alert.support for alert in recovered.alerts} == {Decimal("90")}
+
+
 def test_multiple_resistance_levels_emit_each_upward_crossing(tmp_path: Path):
     engine = create_engine(
         f"sqlite:///{tmp_path / 'resistance-levels.sqlite3'}",
