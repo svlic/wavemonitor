@@ -151,6 +151,7 @@ def test_poll_tick_keeps_prices_in_memory_and_persists_alerts_deliveries_and_sta
 ):
     # Given: one enabled instrument has three enabled source mappings and fake prices near support.
     instrument, sources = seed_instrument(session)
+    instrument.supports = [Decimal("90"), Decimal("98")]
     instrument.risk_reward_threshold = Decimal("10")
     session.add(instrument)
     session.commit()
@@ -188,6 +189,7 @@ def test_poll_tick_keeps_prices_in_memory_and_persists_alerts_deliveries_and_sta
     assert {alert.source_mapping_id for alert in alerts} == {source.id for source in sources}
     assert [delivery.status for delivery in deliveries] == [DeliveryStatus.SENT] * 6
     assert len(notifier.messages) == 6
+    assert all(r"*全部支撑* 98\.00 / 90\.00" in message for message in notifier.messages)
     assert metrics == RuntimeMetrics(
         scheduler_ready=True,
         providers_ready=True,

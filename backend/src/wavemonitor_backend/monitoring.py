@@ -215,6 +215,7 @@ class MonitoringScheduler:
                     threshold=alert.threshold,
                     metric=alert.metric,
                     triggered_at=alert.triggered_at,
+                    supports=tuple(instrument.supports),
                 ),
             )
             send_result = self._notifier.send_text(message)

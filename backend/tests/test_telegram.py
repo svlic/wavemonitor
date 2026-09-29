@@ -264,7 +264,10 @@ def test_telegram_http_failure_persists_redacted_error(
 
 def test_formatter_includes_instrument_source_rule_price_support_and_resistance():
     # Given: a long-only alert delivery payload.
-    alert = make_alert()
+    alert = replace(
+        make_alert(),
+        supports=(Decimal("90.00"), Decimal("98.00"), Decimal("85.50")),
+    )
 
     # When: the Telegram message is formatted.
     message = format_telegram_alert(alert)
@@ -277,6 +280,7 @@ def test_formatter_includes_instrument_source_rule_price_support_and_resistance(
     assert r"现价 100\.25 已贴近支撑 98\.00，相差 2\.25 / 2\.24%，接近阈值 2\.00%。" in message
     assert r"*现价* 100\.25" in message
     assert r"*支撑* 98\.00（相差 2\.25 / 2\.24%）" in message
+    assert r"*全部支撑* 98\.00 / 90\.00 / 85\.50" in message
     assert r"*阻力* 130\.00（相差 29\.75 / 29\.68%）" in message
     assert r"*风险回报* 13\.22" in message
     assert r"*时间* 2026\-06\-30 20:00:00 UTC\+8" in message

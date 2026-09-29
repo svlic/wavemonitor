@@ -32,6 +32,7 @@ class TelegramAlert:
     threshold: Decimal | None = None
     metric: Decimal | None = None
     triggered_at: datetime | None = None
+    supports: tuple[Decimal, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +160,9 @@ def format_telegram_alert(alert: TelegramAlert) -> str:
     ]
     if _show_support(alert):
         lines.append(_labeled("支撑", _level_with_distance(alert.price, alert.support, below=True)))
+    if len(alert.supports) > 1:
+        levels = " / ".join(_format_price(level) for level in sorted(alert.supports, reverse=True))
+        lines.append(_labeled("全部支撑", levels))
     if _show_resistance(alert):
         lines.append(
             _labeled("阻力", _level_with_distance(alert.price, alert.resistance, below=False))
