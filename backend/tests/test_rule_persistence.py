@@ -502,14 +502,24 @@ def test_breached_support_stays_excluded_after_price_recovers(tmp_path: Path):
         session.commit()
         session.refresh(source)
 
-        for minute, price in enumerate(("100", "97")):
-            evaluate_and_persist_rules(
-                session=session,
-                instrument=instrument,
-                source_mapping=source,
-                price=Decimal(price),
-                observed_at=OBSERVED_AT + timedelta(minutes=minute),
-            )
+        evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("100"),
+            observed_at=OBSERVED_AT,
+        )
+        legacy_state = session.exec(select(LastRuleState)).one()
+        legacy_state.risk_reward_last_alert_at = None
+        session.add(legacy_state)
+        session.commit()
+        evaluate_and_persist_rules(
+            session=session,
+            instrument=instrument,
+            source_mapping=source,
+            price=Decimal("97"),
+            observed_at=OBSERVED_AT + timedelta(minutes=1),
+        )
 
         recovered = evaluate_and_persist_rules(
             session=session,
@@ -518,12 +528,13 @@ def test_breached_support_stays_excluded_after_price_recovers(tmp_path: Path):
             price=Decimal("100"),
             observed_at=OBSERVED_AT + timedelta(minutes=2),
         )
+        risk_reward_events = session.exec(
+            select(AlertEvent).where(AlertEvent.alert_kind == AlertKind.RISK_REWARD)
+        ).all()
 
-        assert [alert.kind for alert in recovered.alerts] == [
-            AlertKind.NEAR_SUPPORT,
-            AlertKind.RISK_REWARD,
-        ]
+        assert [alert.kind for alert in recovered.alerts] == [AlertKind.NEAR_SUPPORT]
         assert {alert.support for alert in recovered.alerts} == {Decimal("90")}
+        assert len(risk_reward_events) == 1
 
 
 def test_multiple_resistance_levels_emit_each_upward_crossing(tmp_path: Path):

@@ -223,6 +223,64 @@ def test_resistance_at_or_below_price_resets_long_setup_without_risk_reward_aler
     assert evaluation.next_state.risk_reward_active is False
 
 
+def test_risk_reward_alert_emits_only_once_per_rule_cycle_after_reentry():
+    # Given: risk/reward first reaches the configured threshold.
+    first = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.01"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=RuleState(),
+        observed_at=OBSERVED_AT,
+    )
+
+    # When: it leaves and re-enters through both an ordinary reset and a support breach.
+    outside = evaluate_rules(
+        price=Decimal("105"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.01"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=first.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=30),
+    )
+    reentered = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.01"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=outside.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=60),
+    )
+    breached = evaluate_rules(
+        price=Decimal("89"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.01"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=reentered.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=90),
+    )
+    recovered = evaluate_rules(
+        price=Decimal("100"),
+        support=Decimal("90"),
+        resistance=Decimal("130"),
+        near_support_threshold=Decimal("0.01"),
+        risk_reward_threshold=Decimal("3"),
+        previous_state=breached.next_state,
+        observed_at=OBSERVED_AT + timedelta(seconds=120),
+    )
+
+    # Then: only the first eligible observation emits; the stamp survives every inactive path.
+    assert [alert.kind for alert in first.alerts] == [AlertKind.RISK_REWARD]
+    assert outside.next_state.risk_reward_active is False
+    assert AlertKind.RISK_REWARD not in {alert.kind for alert in reentered.alerts}
+    assert AlertKind.RISK_REWARD not in {alert.kind for alert in recovered.alerts}
+    assert recovered.next_state.risk_reward_last_alert_at == OBSERVED_AT
+
+
 def test_repeated_near_support_suppressed_until_condition_resets():
     # Given: a first near-support observation has activated that rule.
     first = evaluate_rules(

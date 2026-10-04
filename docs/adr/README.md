@@ -20,13 +20,14 @@
 | [0004](0004-optional-shared-password-authentication.md) | 为公网部署提供可选共享密码认证 | 待复审 |
 | [0005](0005-application-managed-sqlite-migrations.md) | 由应用启动流程管理 SQLite 迁移 | 已接受 |
 | [0006](0006-multi-level-price-rules.md) | 使用多级价格梯和固定回撤规则 | 已接受 |
-| [0007](0007-persistent-alert-state-machine.md) | 使用持久化状态机定义告警与重试 | 已接受（实现待对齐） |
+| [0007](0007-persistent-alert-state-machine.md) | 使用持久化状态机定义告警与重试 | 已接受（部分由 0014 取代；实现待对齐） |
 | [0008](0008-in-process-monitoring-lifecycle.md) | 在 FastAPI 生命周期内运行监控调度器 | 已接受 |
 | [0009](0009-frontend-api-validation-and-polling.md) | 在前端 API 边界校验数据并定时刷新 | 已接受 |
 | [0010](0010-cloudflare-workers-experiment.md) | Cloudflare Workers 与 D1 部署实验 | 已取代 |
 | [0011](0011-in-memory-latest-price-state.md) | 将最新行情状态保存在进程内存 | 已接受 |
 | [0012](0012-avoid-redundant-thin-layers.md) | 避免没有独立职责的薄抽象层 | 已接受 |
 | [0013](0013-remove-legacy-price-observation-storage.md) | 删除遗留行情观测持久化结构 | 已接受 |
+| [0014](0014-one-shot-risk-reward-alerts.md) | 盈亏比告警在规则周期内只触发一次 | 已接受 |
 
 ## 重建说明
 

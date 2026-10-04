@@ -53,6 +53,23 @@ def evaluate_and_persist_rules(
         and state_updated_at < cycle_started_at
         else rule_state_from_persisted(persisted_state)
     )
+    if previous_state.risk_reward_last_alert_at is None:
+        prior_risk_reward_at = session.exec(
+            select(AlertEvent.triggered_at)
+            .where(
+                AlertEvent.instrument_id == instrument_id,
+                AlertEvent.source_mapping_id == source_mapping_id,
+                AlertEvent.alert_kind == AlertKind.RISK_REWARD,
+                AlertEvent.rule_cycle_started_at == evaluation_cycle_started_at,
+            )
+            .order_by(AlertEvent.triggered_at)
+        ).first()
+        if prior_risk_reward_at is not None:
+            # Older versions cleared this stamp on exit; recover it from durable history.
+            previous_state = replace(
+                previous_state,
+                risk_reward_last_alert_at=utc_timestamp(prior_risk_reward_at),
+            )
     breached_supports = session.exec(
         select(AlertEvent.support).where(
             AlertEvent.instrument_id == instrument_id,

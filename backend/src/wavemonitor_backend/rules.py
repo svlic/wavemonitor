@@ -85,10 +85,11 @@ def evaluate_rules(
             next_state=RuleState(
                 last_price=price,
                 support_breach_active=support_breach_active,
-                # Other conditions are inactive while price is below support → re-arm.
+                # Edge-triggered conditions are inactive while price is below support → re-arm.
+                # Risk/reward is one-shot for the entire rule cycle, so retain its stamp.
                 near_support_alert_bucket=None,
                 near_support_last_alert_at=None,
-                risk_reward_last_alert_at=None,
+                risk_reward_last_alert_at=previous_state.risk_reward_last_alert_at,
                 breakout_last_alert_at=None,
                 support_breach_last_alert_at=next_alert_time(
                     active=support_breach_active,
@@ -188,6 +189,7 @@ def evaluate_rules(
                 alerts=alerts,
                 kind=AlertKind.RISK_REWARD,
                 previous=previous_state.risk_reward_last_alert_at,
+                rearm=False,
             ),
             breakout_last_alert_at=next_alert_time(
                 active=above_resistance_active,
@@ -373,9 +375,10 @@ def next_alert_time(
     alerts: tuple[AlertDecision, ...],
     kind: AlertKind,
     previous: datetime | None,
+    rearm: bool = True,
 ) -> datetime | None:
-    """Stamp on emit; clear when inactive so the next rising edge can re-fire."""
-    if not active:
+    """Stamp on emit; optionally clear when inactive so the next rising edge can re-fire."""
+    if not active and rearm:
         return None
     for alert in alerts:
         if alert.kind == kind:
