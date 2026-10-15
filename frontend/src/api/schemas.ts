@@ -60,6 +60,8 @@ export const LatestPriceSchema = z.object({
   effective_support: z.string().nullable(),
   support_breached: z.boolean(),
   resistance_broken: z.boolean(),
+  breached_supports: z.array(z.string()),
+  broken_resistances: z.array(z.string()),
 });
 
 export type LatestPrice = z.infer<typeof LatestPriceSchema>;

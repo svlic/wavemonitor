@@ -133,6 +133,8 @@ describe("Dashboard", () => {
         effective_support: "90000",
         support_breached: false,
         resistance_broken: false,
+        breached_supports: [],
+        broken_resistances: [],
       },
     ]);
 
@@ -191,6 +193,8 @@ describe("Dashboard", () => {
         effective_support: "91000",
         support_breached: false,
         resistance_broken: false,
+        breached_supports: [],
+        broken_resistances: [],
       },
       {
         instrument_id: 1,
@@ -205,6 +209,8 @@ describe("Dashboard", () => {
         effective_support: "91000",
         support_breached: false,
         resistance_broken: false,
+        breached_supports: [],
+        broken_resistances: [],
       },
     ]);
 
@@ -259,6 +265,8 @@ describe("Dashboard", () => {
         effective_support: "90000",
         support_breached: false,
         resistance_broken: false,
+        breached_supports: [],
+        broken_resistances: [],
       },
     ]);
 

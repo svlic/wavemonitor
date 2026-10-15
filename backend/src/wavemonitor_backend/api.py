@@ -160,20 +160,21 @@ def list_recent_alerts(session: Session) -> list[AlertResponse]:
 def list_latest_prices(
     session: Session, price_store: LatestPriceStore
 ) -> list[LatestPriceResponse]:
-    crossing_kinds_by_source: dict[int, set[AlertKind]] = {}
     breached_supports_by_source: dict[int, list[Decimal]] = {}
+    broken_resistances_by_source: dict[int, list[Decimal]] = {}
     crossing_events = session.exec(
-        select(AlertEvent.source_mapping_id, AlertEvent.alert_kind, AlertEvent.support)
+        select(AlertEvent.source_mapping_id, AlertEvent.alert_kind, AlertEvent.threshold)
         .join(Instrument, AlertEvent.instrument_id == Instrument.id)
         .where(
             AlertEvent.alert_kind.in_((AlertKind.SUPPORT_BREACH, AlertKind.RESISTANCE_BREAKOUT)),
             AlertEvent.rule_cycle_started_at == Instrument.rule_cycle_started_at,
         )
     ).all()
-    for source_mapping_id, alert_kind, support in crossing_events:
-        crossing_kinds_by_source.setdefault(source_mapping_id, set()).add(alert_kind)
+    for source_mapping_id, alert_kind, threshold in crossing_events:
         if alert_kind == AlertKind.SUPPORT_BREACH:
-            breached_supports_by_source.setdefault(source_mapping_id, []).append(support)
+            breached_supports_by_source.setdefault(source_mapping_id, []).append(threshold)
+        else:
+            broken_resistances_by_source.setdefault(source_mapping_id, []).append(threshold)
 
     prices: list[LatestPriceResponse] = []
     for instrument in session.exec(select(Instrument).order_by(Instrument.id)).all():
@@ -187,8 +188,8 @@ def list_latest_prices(
             if status is None or status.latest_success is None:
                 continue
             latest_success = status.latest_success
-            crossing_kinds = crossing_kinds_by_source.get(source_id, set())
             breached_supports = breached_supports_by_source.get(source_id, [])
+            broken_resistances = broken_resistances_by_source.get(source_id, [])
             eligible_supports = unbreached_supports(instrument.supports, breached_supports)
             effective_support, _ = nearest_pair(
                 eligible_supports, instrument.resistances, latest_success.price
@@ -207,8 +208,14 @@ def list_latest_prices(
                     effective_support=(
                         format_price(effective_support) if effective_support is not None else None
                     ),
-                    support_breached=AlertKind.SUPPORT_BREACH in crossing_kinds,
-                    resistance_broken=AlertKind.RESISTANCE_BREAKOUT in crossing_kinds,
+                    support_breached=bool(breached_supports),
+                    resistance_broken=bool(broken_resistances),
+                    breached_supports=[
+                        format_price(level) for level in sorted(set(breached_supports))
+                    ],
+                    broken_resistances=[
+                        format_price(level) for level in sorted(set(broken_resistances))
+                    ],
                 )
             )
     return prices

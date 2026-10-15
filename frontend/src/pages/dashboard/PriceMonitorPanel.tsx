@@ -114,10 +114,14 @@ function PriceTableRow({ row }: PriceTableRowProps) {
         {price !== null && (price.support_breached || price.resistance_broken) && (
           <span className="price-table-row__crossings" aria-label="历史价位突破">
             {price.support_breached && (
-              <span className="price-crossing price-crossing--support">曾跌破支撑</span>
+              <span className="price-crossing price-crossing--support">
+                曾跌破支撑{formatLevels(price.breached_supports)}
+              </span>
             )}
             {price.resistance_broken && (
-              <span className="price-crossing price-crossing--resistance">曾突破阻力</span>
+              <span className="price-crossing price-crossing--resistance">
+                曾突破阻力{formatLevels(price.broken_resistances)}
+              </span>
             )}
           </span>
         )}

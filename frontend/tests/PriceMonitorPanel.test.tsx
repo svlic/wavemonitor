@@ -83,6 +83,8 @@ const prices = [
     effective_support: "3000",
     support_breached: false,
     resistance_broken: true,
+    breached_supports: [],
+    broken_resistances: ["3800.125", "4000"],
   },
   {
     instrument_id: 1,
@@ -97,6 +99,8 @@ const prices = [
     effective_support: null,
     support_breached: true,
     resistance_broken: false,
+    breached_supports: ["90000"],
+    broken_resistances: [],
   },
   {
     instrument_id: 3,
@@ -111,6 +115,8 @@ const prices = [
     effective_support: "180",
     support_breached: false,
     resistance_broken: false,
+    breached_supports: [],
+    broken_resistances: [],
   },
 ] satisfies readonly LatestPrice[];
 
@@ -177,9 +183,9 @@ describe("PriceMonitorPanel", () => {
     const bitcoinRow = screen.getByText("Bitcoin").closest("tr");
     const ethereumRow = screen.getByText("Ethereum").closest("tr");
     const appleRow = screen.getByText("Apple").closest("tr");
-    expect(bitcoinRow).toHaveTextContent("曾跌破支撑");
+    expect(bitcoinRow).toHaveTextContent("曾跌破支撑90000.00");
     expect(bitcoinRow).not.toHaveTextContent("曾突破阻力");
-    expect(ethereumRow).toHaveTextContent("曾突破阻力");
+    expect(ethereumRow).toHaveTextContent("曾突破阻力3800.13、4000.00");
     expect(ethereumRow).not.toHaveTextContent("曾跌破支撑");
     expect(appleRow).not.toHaveTextContent("曾跌破支撑");
     expect(appleRow).not.toHaveTextContent("曾突破阻力");

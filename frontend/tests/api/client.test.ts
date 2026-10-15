@@ -67,6 +67,8 @@ describe("ApiClient", () => {
             effective_support: "90",
             support_breached: true,
             resistance_broken: false,
+            breached_supports: ["98"],
+            broken_resistances: [],
           },
         ]),
         { status: 200 },
@@ -79,6 +81,8 @@ describe("ApiClient", () => {
       effective_support: "90",
       support_breached: true,
       resistance_broken: false,
+      breached_supports: ["98"],
+      broken_resistances: [],
     });
   });
 

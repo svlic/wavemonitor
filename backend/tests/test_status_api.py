@@ -161,6 +161,8 @@ def test_operational_surfaces_expose_runtime_latest_alerts_and_source_errors(
             "effective_support": "98.0000000000",
             "support_breached": False,
             "resistance_broken": False,
+            "breached_supports": [],
+            "broken_resistances": [],
         }
     ]
     assert alerts_response.status_code == 200
@@ -200,9 +202,9 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
                 source_mapping_id=source.id,
                 alert_kind=kind,
                 price=Decimal("100"),
-                support=Decimal("98"),
-                resistance=Decimal("130"),
-                threshold=Decimal("98") if kind == AlertKind.SUPPORT_BREACH else Decimal("130"),
+                support=Decimal("99"),
+                resistance=Decimal("140"),
+                threshold=Decimal("99") if kind == AlertKind.SUPPORT_BREACH else Decimal("140"),
                 message=kind.value,
                 triggered_at=BASE_TIME,
                 rule_cycle_started_at=BASE_TIME,
@@ -227,20 +229,21 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
             rule_cycle_started_at=new_cycle,
         )
     )
-    session.add(
-        AlertEvent(
-            instrument_id=instrument.id,
-            source_mapping_id=source.id,
-            alert_kind=AlertKind.RESISTANCE_BREAKOUT,
-            price=Decimal("131"),
-            support=Decimal("98"),
-            resistance=Decimal("130"),
-            threshold=Decimal("130"),
-            message="new cycle breakout",
-            triggered_at=datetime(2026, 6, 30, 12, 2, tzinfo=UTC),
-            rule_cycle_started_at=new_cycle,
+    for level in ("130", "120.25", "130"):
+        session.add(
+            AlertEvent(
+                instrument_id=instrument.id,
+                source_mapping_id=source.id,
+                alert_kind=AlertKind.RESISTANCE_BREAKOUT,
+                price=Decimal("131"),
+                support=Decimal("98"),
+                resistance=Decimal(level),
+                threshold=Decimal(level),
+                message="new cycle breakout",
+                triggered_at=datetime(2026, 6, 30, 12, 2, tzinfo=UTC),
+                rule_cycle_started_at=new_cycle,
+            )
         )
-    )
     session.commit()
 
     # When: latest prices are requested after new-cycle crossings and price recovery.
@@ -261,6 +264,8 @@ def test_latest_prices_marks_only_crossings_after_last_instrument_edit(
     assert row["effective_support"] == "90.0000000000"
     assert row["support_breached"] is True
     assert row["resistance_broken"] is True
+    assert row["breached_supports"] == ["98.0000000000"]
+    assert row["broken_resistances"] == ["120.2500000000", "130.0000000000"]
 
 
 def test_source_errors_omit_disabled_instrument_and_source(tmp_path: Path, session: Session):
@@ -399,6 +404,8 @@ def test_latest_prices_keep_last_success_after_newer_source_error(tmp_path: Path
             "effective_support": "98.0000000000",
             "support_breached": False,
             "resistance_broken": False,
+            "breached_supports": [],
+            "broken_resistances": [],
         }
     ]
 

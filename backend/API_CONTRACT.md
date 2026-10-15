@@ -22,6 +22,10 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | GET | `/api/telegram/readiness` | Returns Telegram readiness only; secrets are never exposed. |
 | POST | `/api/telegram/test` | Sends a Telegram test only when credentials are configured; response/logs redact secrets. |
 
+## Historical crossing levels
+
+Each `/api/prices/latest` row includes required `breached_supports` and `broken_resistances` arrays of decimal strings. These contain the distinct support-breach and resistance-breakout event thresholds recorded for that source in the current rule-evaluation cycle, sorted numerically ascending; no events means `[]`. They retain the actual event values after price recovery and exclude prior-cycle events. A single observation crossing several levels records only the threshold selected by the existing rule engine, not every intermediate level. The existing boolean flags are true exactly when their corresponding arrays are non-empty.
+
 ## Source mapping identity
 
 - Uniqueness is **per instrument**: `(instrument_id, provider, market_type, symbol)` where `symbol` is normalized to uppercase on input.

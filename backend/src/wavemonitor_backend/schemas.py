@@ -217,6 +217,8 @@ class LatestPriceResponse(BaseModel):
     effective_support: str | None
     support_breached: bool
     resistance_broken: bool
+    breached_supports: list[str]
+    broken_resistances: list[str]
 
 
 class SourceErrorResponse(BaseModel):
