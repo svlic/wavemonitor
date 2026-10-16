@@ -300,6 +300,22 @@ wavemonitor/
 **Q：有标的但仪表盘无价格**  
 确认标的已启用、数据源映射已启用且 symbol 正确；在 **告警与诊断** 查看数据源错误表或 `GET /api/source-errors`。容器需能访问外网。
 
+**Q：价格长时间不更新，如何排查**
+
+先比较 `GET /api/prices/latest` 的 `last_observed_at` 和 `GET /api/source-errors` 的错误，
+再查看 `GET /api/runtime` 的 `last_tick_started_at`、`last_tick_finished_at`、
+`source_errors` 和 `providers_ready`。默认在每轮结束后等待 120 秒，因此实际更新间隔
+还包含整轮请求和通知耗时；`/health` 可访问不代表行情仍然新鲜。
+
+行情 SDK 单次调用最多等待 20 秒，超时保留最后成功价格及原时间，并记录 `timeout`。
+同一供应商若仍有未完成请求，后续来源会报告 `Previous provider request is still running`，
+但其他供应商继续轮询；不会无限追加请求线程。请求结束后会重新取价，成功后清除错误。
+Hyperliquid 同时设置了 5 秒网络超时，首次联网初始化失败也会在后续轮询重试。
+若同一供应商持续报告未完成请求，说明 SDK 调用仍未返回，应检查供应商和代理网络；
+必要时重启后端以释放卡死请求。Python 线程隔离不能强杀 SDK，也不能保证故障供应商
+永久卡死后自行恢复。排查时保留上述诊断结果和后端日志，不要仅凭价格不变判断刷新失败
+（休市期间价格也可能不变）。
+
 **Q：如何备份数据**  
 从卷中拷贝 SQLite 文件，例如：
 

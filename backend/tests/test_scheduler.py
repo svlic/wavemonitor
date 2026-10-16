@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from threading import Event
+from time import monotonic, sleep
 from typing import Final
 
 import pytest
@@ -144,6 +146,92 @@ def price(
         timestamp=observed_at,
         raw_metadata={"path": "fake.price", "raw_price": value},
     )
+
+
+def test_blocked_provider_does_not_stop_other_prices_or_accumulate_requests(
+    session: Session,
+) -> None:
+    _, sources = seed_instrument(session)
+    other = SourceMapping(
+        instrument_id=sources[0].instrument_id,
+        provider=Provider.YFINANCE,
+        market_type=MarketType.EQUITY,
+        symbol="OTHER",
+    )
+    session.add(other)
+    session.commit()
+    release = Event()
+    finished = Event()
+    calls: list[str] = []
+
+    class BlockingAdapter:
+        def get_latest_price(self, symbol: str, market_type: MarketType) -> PriceAdapterResult:
+            calls.append(symbol)
+            try:
+                assert release.wait(5), "test did not release blocked provider"
+                value = "101" if len(calls) == 1 else "202"
+                return price(Provider.YFINANCE, market_type, symbol, value, BASE_TIME)
+            finally:
+                finished.set()
+
+    registry = AdapterRegistry(
+        adapters={
+            (Provider.YFINANCE, MarketType.EQUITY): BlockingAdapter(),
+            (Provider.BINANCE, MarketType.USD_M_FUTURES): FakePriceAdapter(
+                price(Provider.BINANCE, MarketType.USD_M_FUTURES, "BTCUSDT", "150", BASE_TIME)
+            ),
+            (Provider.HYPERLIQUID, MarketType.PERPETUAL): FakePriceAdapter(
+                price(Provider.HYPERLIQUID, MarketType.PERPETUAL, "BTC", "160", BASE_TIME)
+            ),
+        },
+        poll_timeout_seconds=0.02,
+    )
+    scheduler = MonitoringScheduler(registry, FakeNotifier())
+    try:
+        for _ in range(3):
+            metrics = scheduler.run_tick(session)
+            assert metrics.polled_sources == 4
+            assert metrics.source_errors == 2
+            assert metrics.observations_written == 2
+        assert calls == ["BTC"]
+        assert "timeout:" in scheduler.price_store.get(sources[0].id).last_error
+        assert scheduler.price_store.get(sources[1].id).latest_success.price == Decimal("150")
+        assert scheduler.price_store.get(sources[2].id).latest_success.price == Decimal("160")
+    finally:
+        release.set()
+        assert finished.wait(1)
+
+    # A late result cannot publish itself; the next tick must fetch a fresh quote.
+    assert scheduler.price_store.get(sources[0].id).latest_success is None
+    deadline = monotonic() + 1
+    while True:
+        metrics = scheduler.run_tick(session)
+        if metrics.source_errors == 0 or monotonic() >= deadline:
+            break
+        sleep(0.001)
+    assert metrics.source_errors == 0
+    assert calls == ["BTC", "BTC", "OTHER"]
+    assert scheduler.price_store.get(sources[0].id).last_error is None
+    assert scheduler.price_store.get(sources[0].id).latest_success.price == Decimal("202")
+    assert scheduler.price_store.get(other.id).latest_success.price == Decimal("202")
+
+
+def test_unexpected_adapter_exception_is_isolated_and_retried(session: Session) -> None:
+    _, sources = seed_instrument(session)
+
+    class RaisingAdapter:
+        def get_latest_price(self, symbol: str, market_type: MarketType) -> PriceAdapterResult:
+            raise RuntimeError("unexpected SDK failure")
+
+    scheduler = MonitoringScheduler(
+        AdapterRegistry(adapters={(Provider.YFINANCE, MarketType.EQUITY): RaisingAdapter()}),
+        FakeNotifier(),
+    )
+    for _ in range(2):
+        metrics = scheduler.run_tick(session)
+        assert metrics.polled_sources == 3
+        assert metrics.source_errors == 3
+        assert "unexpected SDK failure" in scheduler.price_store.get(sources[0].id).last_error
 
 
 def test_poll_tick_keeps_prices_in_memory_and_persists_alerts_deliveries_and_states(

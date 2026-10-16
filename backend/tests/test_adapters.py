@@ -4,6 +4,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import NoReturn
 
+import pytest
+
+import wavemonitor_backend.adapters as adapters
 from wavemonitor_backend.adapters import (
     AdapterError,
     AdapterErrorKind,
@@ -384,6 +387,30 @@ def test_hyperliquid_adapter_maps_provider_errors_to_typed_error():
     assert isinstance(result, AdapterError)
     assert result.kind == AdapterErrorKind.PROVIDER_ERROR
     assert result.message == "sdk unavailable"
+
+
+def test_hyperliquid_initialization_is_lazy_and_recovers_after_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[None] = []
+
+    def create_client() -> FakeHyperliquidInfo:
+        attempts.append(None)
+        if len(attempts) == 1:
+            raise TimeoutError("metadata request timed out")
+        return FakeHyperliquidInfo({"BTC": "42.5"})
+
+    monkeypatch.setattr(adapters, "default_hyperliquid_info_client", create_client)
+    adapter = HyperliquidAdapter()
+    assert attempts == []
+    failure = adapter.get_latest_price("BTC", MarketType.PERPETUAL)
+    assert isinstance(failure, AdapterError)
+    assert failure.kind == AdapterErrorKind.TIMEOUT
+    for _ in range(2):
+        result = adapter.get_latest_price("BTC", MarketType.PERPETUAL)
+        assert isinstance(result, PriceResult)
+        assert result.price == Decimal("42.5")
+    assert len(attempts) == 2
 
 
 def test_adapters_do_not_create_default_clients_during_mocked_tests():

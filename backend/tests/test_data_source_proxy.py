@@ -37,8 +37,9 @@ def test_hyperliquid_uses_proxy_during_construction_and_for_rest_session(
     observed: dict[str, object] = {}
 
     class FakeInfo:
-        def __init__(self, *, skip_ws: bool) -> None:
+        def __init__(self, *, skip_ws: bool, timeout: float) -> None:
             observed["skip_ws"] = skip_ws
+            observed["timeout"] = timeout
             observed["constructor_proxy"] = os.environ.get("ALL_PROXY")
             self.session = SimpleNamespace(proxies={})
 
@@ -58,6 +59,7 @@ def test_hyperliquid_uses_proxy_during_construction_and_for_rest_session(
 
     assert observed == {
         "skip_ws": True,
+        "timeout": 5.0,
         "constructor_proxy": "socks5://proxy.internal:1080",
     }
     assert client.session.proxies == {

@@ -28,6 +28,7 @@
 | [0012](0012-avoid-redundant-thin-layers.md) | 避免没有独立职责的薄抽象层 | 已接受 |
 | [0013](0013-remove-legacy-price-observation-storage.md) | 删除遗留行情观测持久化结构 | 已接受 |
 | [0014](0014-one-shot-risk-reward-alerts.md) | 盈亏比告警在规则周期内只触发一次 | 已接受 |
+| [0015](0015-bounded-provider-polling.md) | 为行情供应商请求设置有界等待与隔离 | 已接受 |
 
 ## 重建说明
 

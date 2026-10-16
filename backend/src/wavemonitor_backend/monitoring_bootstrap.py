@@ -6,7 +6,6 @@ from typing import Final
 from sqlalchemy import Engine
 
 from wavemonitor_backend.adapters import BinanceFuturesAdapter, HyperliquidAdapter, YFinanceAdapter
-from wavemonitor_backend.data_source_proxy import default_hyperliquid_info_client
 from wavemonitor_backend.db import session_scope
 from wavemonitor_backend.latest_prices import LatestPriceStore
 from wavemonitor_backend.lifecycle import MonitoringLifecycle, WakingTicker
@@ -49,9 +48,7 @@ def build_adapter_registry() -> AdapterRegistry:
                 Provider.BINANCE,
                 MarketType.COIN_M_FUTURES,
             ): BinanceFuturesAdapter(usd_m_client=usd_m, coin_m_client=coin_m),
-            (Provider.HYPERLIQUID, MarketType.PERPETUAL): HyperliquidAdapter(
-                info_client=default_hyperliquid_info_client(),
-            ),
+            (Provider.HYPERLIQUID, MarketType.PERPETUAL): HyperliquidAdapter(),
         }
     )
 

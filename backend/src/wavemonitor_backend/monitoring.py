@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from concurrent.futures import Future
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from threading import Thread
 from typing import Final, Protocol, TypeAlias, assert_never
 
 from sqlmodel import Session, select
@@ -81,8 +83,15 @@ class RuntimeMetricsStore:
 
 
 class AdapterRegistry:
-    def __init__(self, adapters: Mapping[tuple[Provider, MarketType], PollingPriceAdapter]) -> None:
+    def __init__(
+        self,
+        adapters: Mapping[tuple[Provider, MarketType], PollingPriceAdapter],
+        *,
+        poll_timeout_seconds: float = 20.0,
+    ) -> None:
         self._adapters = dict(adapters)
+        self._poll_timeout_seconds = poll_timeout_seconds
+        self._inflight: dict[Provider, Future[PriceAdapterResult]] = {}
 
     def poll(self, source: SourceMapping) -> PriceAdapterResult:
         adapter = self._adapters.get((source.provider, source.market_type))
@@ -98,7 +107,46 @@ class AdapterRegistry:
                     "market_type": source.market_type.value,
                 },
             )
-        return adapter.get_latest_price(source.symbol, source.market_type)
+        # The scheduler is the sole caller. Keep at most one SDK call per provider,
+        # including after a timeout: abandoning an unkillable thread must not leak
+        # more threads every tick or concurrently reuse the provider's HTTP client.
+        previous = self._inflight.get(source.provider)
+        if previous is not None and not previous.done():
+            return AdapterError(
+                source=source.provider,
+                market_type=source.market_type,
+                symbol=source.symbol,
+                kind=AdapterErrorKind.TIMEOUT,
+                message="Previous provider request is still running; skipping until it finishes",
+                raw_metadata={},
+            )
+        future: Future[PriceAdapterResult] = Future()
+        self._inflight[source.provider] = future
+        # Copy scalars: no ORM objects or SQLite session cross this thread boundary.
+        symbol, market_type = source.symbol, source.market_type
+
+        def fetch() -> None:
+            try:
+                future.set_result(adapter.get_latest_price(symbol, market_type))
+            except Exception as exc:
+                future.set_exception(exc)
+
+        Thread(target=fetch, name=f"price-{source.provider.value}", daemon=True).start()
+        try:
+            return future.result(timeout=self._poll_timeout_seconds)
+        except Exception as exc:
+            return AdapterError(
+                source=source.provider,
+                market_type=source.market_type,
+                symbol=source.symbol,
+                kind=(
+                    AdapterErrorKind.TIMEOUT
+                    if isinstance(exc, TimeoutError)
+                    else AdapterErrorKind.PROVIDER_ERROR
+                ),
+                message=str(exc) or f"Provider request exceeded {self._poll_timeout_seconds:g}s",
+                raw_metadata={"exception_type": type(exc).__name__},
+            )
 
 
 class MonitoringScheduler:

@@ -8,7 +8,10 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Protocol, TypeAlias
 
-from wavemonitor_backend.data_source_proxy import configure_yfinance_proxy
+from wavemonitor_backend.data_source_proxy import (
+    configure_yfinance_proxy,
+    default_hyperliquid_info_client,
+)
 from wavemonitor_backend.models import MarketType, Provider
 
 RawMetadata: TypeAlias = dict[str, object]
@@ -321,7 +324,7 @@ class HyperliquidAdapter:
     def __init__(
         self,
         *,
-        info_client: HyperliquidInfoClient,
+        info_client: HyperliquidInfoClient | None = None,
         clock: Clock = _utc_now,
     ) -> None:
         self._info_client = info_client
@@ -336,6 +339,10 @@ class HyperliquidAdapter:
         )
         dex, path = _hyperliquid_mids_scope(identity.symbol)
         try:
+            # Info construction fetches metadata. Do it inside the bounded polling
+            # request so a provider outage cannot prevent application startup.
+            if self._info_client is None:
+                self._info_client = default_hyperliquid_info_client()
             result = _price_result(
                 identity,
                 self._info_client.all_mids(dex).get(identity.symbol),

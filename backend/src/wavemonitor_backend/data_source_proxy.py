@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Final, Protocol
 
 DATA_SOURCE_SOCKS5_PROXY_ENV: Final[str] = "WAVEMONITOR_SOCKS5_PROXY"
+DATA_SOURCE_TIMEOUT_SECONDS: Final[float] = 5.0
 _SOCKS5_SCHEMES: Final[tuple[str, ...]] = ("socks5://", "socks5h://")
 
 
@@ -77,7 +78,7 @@ def default_hyperliquid_info_client() -> HyperliquidInfoClient:
     from hyperliquid.info import Info
 
     with hyperliquid_proxy_environment() as proxy:
-        client = Info(skip_ws=True)
+        client = Info(skip_ws=True, timeout=DATA_SOURCE_TIMEOUT_SECONDS)
     if proxy is not None:
         client.session.proxies.update(proxy_mapping(proxy))
     return client
