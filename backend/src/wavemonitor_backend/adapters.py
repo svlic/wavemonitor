@@ -269,19 +269,19 @@ class BinanceFuturesAdapter:
         identity = PriceIdentity(Provider.BINANCE, market_type, _normalize_symbol(symbol))
         client = self._client_for_market(market_type)
         try:
-            mark_result = self._payload_result(
+            mark_result = _price_result(
                 identity,
-                client.mark_price(identity.symbol),
-                "markPrice",
+                client.mark_price(identity.symbol).get("markPrice"),
                 "mark_price.markPrice",
+                self._clock,
             )
             if mark_result is not None:
                 return mark_result
-            ticker_result = self._payload_result(
+            ticker_result = _price_result(
                 identity,
-                client.ticker_price(identity.symbol),
-                "price",
+                client.ticker_price(identity.symbol).get("price"),
                 "ticker_price.price",
+                self._clock,
             )
         except Exception as exc:
             return _adapter_error(identity, exc)
@@ -303,22 +303,6 @@ class BinanceFuturesAdapter:
             return self._coin_m_client
         raise ValueError(f"unsupported Binance market type: {market_type.value}")
 
-    def _payload_result(
-        self,
-        identity: PriceIdentity,
-        payload: dict[str, object],
-        price_key: str,
-        path: str,
-    ) -> PriceResult | None:
-        return _price_result(identity, payload.get(price_key), path, self._clock)
-
-
-def _hyperliquid_mids_scope(symbol: str) -> tuple[str, str]:
-    if ":" not in symbol:
-        return "", f"all_mids.{symbol}"
-    dex = symbol.split(":", maxsplit=1)[0]
-    return dex, f"all_mids.{dex}.{symbol}"
-
 
 class HyperliquidAdapter:
     def __init__(
@@ -337,7 +321,11 @@ class HyperliquidAdapter:
             MarketType.PERPETUAL,
             _normalize_hyperliquid_symbol(symbol),
         )
-        dex, path = _hyperliquid_mids_scope(identity.symbol)
+        if ":" not in identity.symbol:
+            dex, path = "", f"all_mids.{identity.symbol}"
+        else:
+            dex = identity.symbol.split(":", maxsplit=1)[0]
+            path = f"all_mids.{dex}.{identity.symbol}"
         try:
             # Info construction fetches metadata. Do it inside the bounded polling
             # request so a provider outage cannot prevent application startup.

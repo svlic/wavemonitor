@@ -62,9 +62,6 @@ export function computeRiskRewardRatio(
     return null;
   }
   const denominator = priceN - supportN;
-  if (denominator <= 0) {
-    return null;
-  }
   return (resistanceN - priceN) / denominator;
 }
 
