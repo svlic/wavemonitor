@@ -119,6 +119,22 @@ docker compose up --build -d
 
 首次会构建 `backend`、`frontend` 镜像。`frontend` 会等待 `backend` 健康检查通过后再启动。
 
+**低配置机器构建**：前后端同时构建可能争抢 CPU 和内存。可以逐个构建服务，再启动，
+降低同时构建的资源峰值（不限制单个编译进程的 CPU，也不保证总耗时更短）：
+
+```bash
+docker compose build backend && docker compose build frontend && docker compose up -d --no-build
+```
+
+镜像构建使用 BuildKit 缓存：后端依赖单独成层，仅修改 Python 源码时不重新安装第三方
+依赖；pip/npm 下载缓存也可在依赖清单变化后复用。首次构建仍需下载和安装依赖，
+前端仍执行 TypeScript 类型检查与 Vite 打包。日常更新不要加 `--no-cache` 或清理 builder
+缓存，否则会失去部分或全部复用收益；缓存会额外占用磁盘。只修改一个服务时可用
+`docker compose build backend` 或 `docker compose build frontend` 单独构建。
+
+若仍然很慢，用 `docker compose --progress plain build backend`（或 `frontend`）查看具体
+耗时步骤，区分依赖下载、源码编译和类型检查；仅凭某一步长时间停留不能判定是 CPU 瓶颈。
+
 **升级提醒**：从曾持久化行情观测的旧版本升级时，后端启动迁移会删除已废弃的
 `priceobservation` 表。该表不再用于产品功能；如需自行留存其中的历史行情，请先备份
 SQLite 数据库再升级。
