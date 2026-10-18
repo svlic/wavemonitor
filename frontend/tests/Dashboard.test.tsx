@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/pages/dashboard/Dashboard";
 import { apiClient } from "../src/api/client";
@@ -11,6 +11,7 @@ vi.mock("../src/api/client", async (importOriginal) => {
     apiClient: {
       getRuntime: vi.fn(),
       getLatestPrices: vi.fn(),
+      refreshPrices: vi.fn(),
       getInstruments: vi.fn(),
     },
   };
@@ -35,11 +36,55 @@ describe("Dashboard", () => {
     vi.mocked(apiClient.getRuntime).mockClear();
     vi.mocked(apiClient.getLatestPrices).mockClear();
     vi.mocked(apiClient.getInstruments).mockClear();
+    vi.mocked(apiClient.refreshPrices).mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("waits for a new polling tick before reading refreshed data", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
+    let finish!: () => void;
+    vi.mocked(apiClient.refreshPrices).mockImplementation(() => new Promise<void>((resolve) => {
+      finish = resolve;
+    }));
+    render(<Dashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: "刷新数据" }));
+    expect(screen.getByRole("button", { name: "刷新中..." })).toBeDisabled();
+    expect(apiClient.getLatestPrices).toHaveBeenCalledTimes(1);
+    vi.mocked(apiClient.getRuntime).mockResolvedValue({ ...emptyRuntime, enabled_sources: 7 });
+    await act(async () => finish());
+    expect(await screen.findByText("7")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新数据" })).toBeEnabled();
+  });
+
+  it("allows retry after a timeout and continues automatic reloads", async () => {
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getLatestPrices).mockResolvedValue([]);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([]);
+    render(<Dashboard />);
+    const button = await screen.findByRole("button", { name: "刷新数据" });
+    const timeout = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    vi.mocked(apiClient.refreshPrices).mockImplementation((signal) => new Promise((_, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    fireEvent.click(button);
+    await act(async () => timeout.abort(new DOMException("Timed out", "TimeoutError")));
+    expect(screen.getByRole("alert")).toHaveTextContent("请求超时，请重试。");
+    vi.mocked(AbortSignal.timeout).mockRestore();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    // Retry the failed action, then verify periodic reads still continue.
+    vi.mocked(apiClient.refreshPrices).mockResolvedValue();
+    fireEvent.click(screen.getByRole("button", { name: "重试加载" }));
+    await screen.findByRole("button", { name: "刷新数据" });
+    vi.mocked(apiClient.getRuntime).mockResolvedValue({ ...emptyRuntime, enabled_sources: 9 });
+    await act(async () => vi.advanceTimersByTime(120_000));
+    expect(await screen.findByText("9")).toBeInTheDocument();
   });
 
   it("shows loading state initially", () => {

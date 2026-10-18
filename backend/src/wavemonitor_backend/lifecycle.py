@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
 from threading import get_ident
 from typing import Protocol, runtime_checkable
 
@@ -30,6 +31,12 @@ class ImmediateTickRequester(Protocol):
 
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
+
+
+@dataclass
+class RefreshRequest:
+    completed: anyio.Event = field(default_factory=anyio.Event)
+    failed: bool = False
 
 
 class WakingTicker:
@@ -77,18 +84,36 @@ class MonitoringLifecycle:
         self._runner = runner
         self._session_factory = session_factory
         self._ticker = ticker
+        self._refresh_requested: RefreshRequest | None = None
+
+    async def refresh(self) -> None:
+        if self._refresh_requested is None:
+            self._refresh_requested = RefreshRequest()
+        request = self._refresh_requested
+        self.request_tick()
+        with anyio.fail_after(45):
+            await request.completed.wait()
+        if request.failed:
+            raise RuntimeError("Monitoring tick failed")
 
     async def run(self) -> None:
         while True:
+            # Requests arriving during a tick wait for the next complete tick.
+            request = self._refresh_requested
+            self._refresh_requested = None
             try:
                 # Whole sync tick (urlopen/sleep/SQLite) off the event loop.
                 # Session is created inside the worker thread for SQLite safety.
                 await anyio.to_thread.run_sync(self._run_tick_in_worker)
             except Exception:
+                if request is not None:
+                    request.failed = True
                 LOGGER.exception("monitoring scheduler tick failed; continuing after interval")
                 record_failure = getattr(self._runner, "record_tick_failure", None)
                 if callable(record_failure):
                     record_failure()
+            if request is not None:
+                request.completed.set()
             await self._ticker.wait()
 
     def _run_tick_in_worker(self) -> None:

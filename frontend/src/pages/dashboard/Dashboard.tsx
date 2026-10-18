@@ -12,14 +12,23 @@ function loadDashboardData(signal?: AbortSignal) {
   ]);
 }
 
+async function refreshDashboardData(signal?: AbortSignal) {
+  await apiClient.refreshPrices(signal);
+  return loadDashboardData(signal);
+}
+
 export function Dashboard() {
-  const { state, errorMessage, refreshing, data, refresh } = useLoadData(loadDashboardData);
+  const { state, errorMessage, refreshing, data, refresh, reload } = useLoadData(
+    loadDashboardData,
+    refreshDashboardData,
+  );
   const [runtime, prices, instruments] = data ?? [null, [], []];
 
   useEffect(() => {
-    const id = window.setInterval(refresh, 120_000);
+    if (refreshing) return;
+    const id = window.setInterval(reload, 120_000);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [reload, refreshing]);
 
   if (state === "loading") {
     return (

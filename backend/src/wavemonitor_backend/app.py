@@ -164,6 +164,8 @@ class AppLifecycle(Protocol):
 
     def request_tick(self) -> None: ...
 
+    async def refresh(self) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class AppRuntime:
@@ -376,6 +378,19 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         session: Session = Depends(get_session),
     ) -> list[LatestPriceResponse]:
         return list_latest_prices(session, app_runtime.price_store)
+
+    @app.post("/api/prices/refresh", status_code=status.HTTP_204_NO_CONTENT)
+    async def refresh_prices_endpoint() -> Response:
+        lifecycle = app_runtime.monitoring_lifecycle
+        if lifecycle is None:
+            raise HTTPException(status_code=503, detail="行情监控未启用。")
+        try:
+            await lifecycle.refresh()
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="行情刷新超时，请查看来源错误。") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="行情轮询失败，请检查后端日志。") from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/source-errors", response_model=list[SourceErrorResponse])
     def list_source_errors_endpoint(

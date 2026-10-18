@@ -22,6 +22,21 @@ This file mirrors the backend MVP routes from `.omo/plans/stock-data-monitor-bui
 | GET | `/api/telegram/readiness` | Returns Telegram readiness only; secrets are never exposed. |
 | POST | `/api/telegram/test` | Sends a Telegram test only when credentials are configured; response/logs redact secrets. |
 
+## Manual price refresh
+
+`POST /api/prices/refresh` requests a new tick on the existing serial scheduler and
+waits for that tick to finish before returning **204** (no body). Requests queued
+before a tick starts are coalesced. A request during an existing tick waits for the
+next tick, so all enabled sources are attempted after the request. Normal rule
+evaluation and notification behavior applies. GET endpoints remain read-only.
+The caller then reads `/api/prices/latest` and `/api/runtime` as usual.
+
+Monitoring disabled or a failed tick returns **503**; waiting longer than 45 seconds
+returns **504**, without cancelling the background tick. Individual provider failures
+do not fail the whole tick: inspect `/api/source-errors` and quote timestamps; a 204
+does not guarantee that every provider returned a fresh quote. Authentication is the
+same as other `/api/*` routes.
+
 ## Historical crossing levels
 
 Each `/api/prices/latest` row includes required `breached_supports` and `broken_resistances` arrays of decimal strings. These contain the distinct support-breach and resistance-breakout event thresholds recorded for that source in the current rule-evaluation cycle, sorted numerically ascending; no events means `[]`. They retain the actual event values after price recovery and exclude prior-cycle events. A single observation crossing several levels records only the threshold selected by the existing rule engine, not every intermediate level. The existing boolean flags are true exactly when their corresponding arrays are non-empty.

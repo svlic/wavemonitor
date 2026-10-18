@@ -9,6 +9,15 @@ describe("ApiClient", () => {
     vi.unstubAllGlobals();
   });
 
+  it("requests and accepts a completed manual price refresh", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(client.refreshPrices()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: "/api/prices/refresh" }),
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+  });
+
   it("throws ApiError on non-200 response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("Internal Server Error", { status: 500, statusText: "Internal Server Error" }),

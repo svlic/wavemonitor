@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Event, get_ident
 
 import anyio
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -255,3 +256,87 @@ def test_monitoring_scheduler_record_tick_failure_clears_readiness_flags():
     assert metrics.providers_ready is False
     assert metrics.enabled_sources == 2
     assert metrics.last_tick_finished_at == datetime(2026, 6, 30, 12, 1, tzinfo=UTC)
+
+
+def test_refresh_waits_for_a_new_tick_and_coalesces_callers(tmp_path: Path):
+    async def scenario() -> None:
+        engine = create_database_engine(f"sqlite:///{tmp_path / 'refresh.sqlite3'}")
+        create_schema(engine)
+        started = Event()
+        release = Event()
+        runner = FakeTickRunner()
+
+        class HeldRunner:
+            def run_tick(self, session: Session) -> RuntimeMetrics:
+                started.set()
+                assert release.wait(2)
+                return runner.run_tick(session)
+
+        lifecycle = MonitoringLifecycle(
+            HeldRunner(),
+            lambda: session_scope(engine),
+            WakingTicker(60),
+        )
+        completed: list[int] = []
+
+        async def refresh() -> None:
+            await lifecycle.refresh()
+            completed.append(runner.ticks)
+
+        with anyio.fail_after(3):
+            async with anyio.create_task_group() as group:
+                group.start_soon(lifecycle.run)
+                assert await anyio.to_thread.run_sync(started.wait, 1)
+                group.start_soon(refresh)
+                group.start_soon(refresh)
+                await anyio.sleep(0)
+                assert completed == []
+                release.set()
+                while len(completed) < 2:
+                    await anyio.sleep(0)
+                assert completed == [2, 2]
+                group.cancel_scope.cancel()
+
+    anyio.run(scenario)
+
+
+@pytest.mark.parametrize(
+    "failure, expected", [(None, 204), (RuntimeError(), 503), (TimeoutError(), 504)]
+)
+def test_refresh_endpoint_waits_and_reports_failure(
+    tmp_path: Path,
+    failure: Exception | None,
+    expected: int,
+):
+    class Lifecycle(FakeAppLifecycle):
+        async def refresh(self) -> None:
+            await anyio.sleep(0)
+            if failure is not None:
+                raise failure
+            self.tick_requests += 1
+
+    lifecycle = Lifecycle()
+    with TestClient(
+        create_app(
+            AppRuntime(
+                settings=Settings(),
+                database_url=f"sqlite:///{tmp_path / 'refresh-api.sqlite3'}",
+                monitoring_lifecycle=lifecycle,
+            )
+        )
+    ) as client:
+        response = client.post("/api/prices/refresh")
+        assert response.status_code == expected
+        assert lifecycle.tick_requests == (1 if failure is None else 0)
+
+
+def test_refresh_endpoint_rejects_disabled_monitoring(tmp_path: Path):
+    with TestClient(
+        create_app(
+            AppRuntime(
+                settings=Settings(),
+                database_url=f"sqlite:///{tmp_path / 'disabled.sqlite3'}",
+            )
+        )
+    ) as client:
+        assert client.post("/api/prices/refresh").status_code == 503

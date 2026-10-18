@@ -139,6 +139,14 @@ export class ApiClient {
     return this.fetch("/api/prices/latest", z.array(LatestPriceSchema), this.requestInit(signal));
   }
 
+  async refreshPrices(signal?: AbortSignal): Promise<void> {
+    await this.fetch(
+      "/api/prices/refresh",
+      EmptyResponseSchema,
+      this.requestInit(signal, { method: "POST" }),
+    );
+  }
+
   async getRecentAlerts(signal?: AbortSignal): Promise<readonly RecentAlert[]> {
     return this.fetch("/api/alerts", z.array(RecentAlertSchema), this.requestInit(signal));
   }
