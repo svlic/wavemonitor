@@ -47,23 +47,28 @@ API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 
 ## 安装与部署（Docker Compose）
 
-以下步骤假设已将仓库克隆到本机，并在**项目根目录**（含 `docker-compose.yml` 的目录）执行命令。
+使用 GitHub Actions 已发布的 GHCR 镜像部署，**无需克隆仓库、下载源码或在服务器编译**。
+服务器只需 Docker、Docker Compose，以及用于下载配置文件的 `curl`。
 
-### 1. 获取代码
+### 1. 创建部署目录并下载配置
 
-```bash
-git clone https://github.com/svlic/wavemonitor.git
+在首次部署时执行以下命令，仅下载两个配置文件，不下载应用源码：
+
+```bash copy Copy Deployment Setup
+mkdir wavemonitor
 cd wavemonitor
+curl -fSL https://raw.githubusercontent.com/svlic/wavemonitor/main/docker-compose.yml -o docker-compose.yml
+curl -fSL https://raw.githubusercontent.com/svlic/wavemonitor/main/.env.example -o .env.example
 ```
 
-若你已有源码目录，直接进入该目录即可。部署仅需 `docker-compose.yml` 和 `.env`，
-无需在服务器安装 Python、Node.js 或编译源码。
+后续部署与运维命令均在此**部署目录**（含 `docker-compose.yml` 的目录）执行。
+已有部署时直接进入原目录，保留原 `.env` 和数据卷，不要重复初始化或覆盖配置。
 
 ### 2. 配置环境变量
 
-在项目根目录复制示例文件并编辑：
+首次部署时复制模板，然后编辑 `.env`，按需填写访问密码和 Telegram 配置：
 
-```bash
+```bash copy Copy Environment Setup
 cp .env.example .env
 ```
 
@@ -88,13 +93,10 @@ WAVEMONITOR_WEB_PASSWORD=change-me
 # WAVEMONITOR_SESSION_SECRET=
 # 可选：所有行情数据源使用的 SOCKS5 代理；推荐 socks5h，让 DNS 查询也经过代理
 # WAVEMONITOR_SOCKS5_PROXY=socks5h://proxy-host:1080
-
-# ---------- 本地开发常用（Docker Compose 默认不读取下列变量，见下文说明）----------
-# 本地 SQLite（相对路径，文件落在项目根目录）
-DATABASE_URL=sqlite:///./wavemonitor.sqlite3
-# 本地前端请求后端的根地址；生产 Docker 前端走同源 /api，无需设置
-VITE_API_BASE_URL=http://localhost:8000
 ```
+
+模板中的 `DATABASE_URL` 与 `VITE_API_BASE_URL` 仅供源码开发使用，镜像部署无需修改，
+Compose 不读取这两项的模板值；Docker 后端数据库路径固定在数据卷内，前端通过同源 `/api` 访问后端。
 
 **Docker Compose 实际注入后端的变量**（定义在 `docker-compose.yml`）：
 
@@ -213,7 +215,7 @@ docker compose pull && docker compose up -d --no-build
    - **个人**：先给 Bot 发一条消息，再访问 `https://api.telegram.org/bot<TOKEN>/getUpdates`，在 JSON 中查看 `message.chat.id`。
    - **群组**：将 Bot 拉入群并发言一次，同样在 `getUpdates` 中查看群的 `id`（常为负数）。
    - **频道**：将 Bot 设为管理员，频道 ID 多为 `-100` 开头。
-3. 将 Token 与 Chat ID 写入项目根目录 `.env` 的 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。
+3. 将 Token 与 Chat ID 写入部署目录 `.env` 的 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`。
 4. 重启后端使环境变量生效：
 
    ```bash
@@ -246,7 +248,13 @@ docker compose pull && docker compose up -d --no-build
 
 ## 本地开发
 
-适合改代码、跑测试，**不依赖 Docker**。
+以下仅供修改源码、跑测试使用，**镜像部署无需执行**。本地开发不依赖 Docker。
+先克隆源码，再在项目根目录执行本节命令：
+
+```bash copy Copy Development Setup
+git clone https://github.com/svlic/wavemonitor.git
+cd wavemonitor
+```
 
 ### 镜像构建与发布
 
