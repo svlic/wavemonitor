@@ -31,8 +31,9 @@ API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 | --- | --- |
 | Docker | 24+ |
 | Docker Compose | v2（`docker compose` 子命令） |
-| 磁盘 | 约 500MB 镜像与构建缓存；数据库在命名卷中增长 |
-| 网络 | 容器需访问外网以拉取 Binance / Hyperliquid / Yahoo Finance 等行情 |
+| 架构 | Linux amd64（x86_64）或 arm64（aarch64）；不支持 32 位 ARM |
+| 磁盘 | 需预留镜像与数据库空间；部署端不再需要构建缓存 |
+| 网络 | 部署端需能访问 `ghcr.io` 拉取镜像；容器需访问 Binance / Hyperliquid / Yahoo Finance 等行情服务 |
 
 ### 本地开发
 
@@ -51,11 +52,12 @@ API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 ### 1. 获取代码
 
 ```bash
-git clone <你的仓库地址> wavemonitor
+git clone https://github.com/svlic/wavemonitor.git
 cd wavemonitor
 ```
 
-若你已有源码目录，直接进入该目录即可。
+若你已有源码目录，直接进入该目录即可。部署仅需 `docker-compose.yml` 和 `.env`，
+无需在服务器安装 Python、Node.js 或编译源码。
 
 ### 2. 配置环境变量
 
@@ -68,6 +70,11 @@ cp .env.example .env
 **完整配置示例**（按需修改；勿将含真实 Token 的 `.env` 提交到 Git）：
 
 ```bash
+# ---------- Docker 镜像 ----------
+WAVEMONITOR_IMAGE_PREFIX=ghcr.io/svlic/wavemonitor
+# 可改为已发布的 v* 标签或 sha-<完整提交 SHA>，前后端使用相同标签
+WAVEMONITOR_IMAGE_TAG=latest
+
 # ---------- Telegram（可选；不填则仅 Web 告警，不推送）----------
 # 在 @BotFather 创建 Bot 后获得的 Token
 TELEGRAM_BOT_TOKEN=123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -111,29 +118,36 @@ Compose **不会**自动把 `WAVEMONITOR_POLL_INTERVAL_SECONDS`、`WAVEMONITOR_M
       # WAVEMONITOR_MONITORING_DISABLED: "1"   # 设为 1/true/yes 可关闭后台轮询
 ```
 
-### 3. 构建并启动
+### 3. 拉取镜像并启动
 
 ```bash
-docker compose up --build -d
+docker compose pull && docker compose up -d --no-build
 ```
 
-首次会构建 `backend`、`frontend` 镜像。`frontend` 会等待 `backend` 健康检查通过后再启动。
+默认拉取 `ghcr.io/svlic/wavemonitor-backend:latest` 和
+`ghcr.io/svlic/wavemonitor-frontend:latest`。两个镜像均包含 `linux/amd64` 与
+`linux/arm64`，Docker 自动选择宿主机架构，无需手动指定 `platform`。
+`frontend` 会等待 `backend` 健康检查通过后再启动。
 
-**低配置机器构建**：前后端同时构建可能争抢 CPU 和内存。可以逐个构建服务，再启动，
-降低同时构建的资源峰值（不限制单个编译进程的 CPU，也不保证总耗时更短）：
+**首次发布前提**：仓库的 GitHub Actions 工作流必须先成功发布两个镜像，才能拉取。
+GHCR 新建包默认可能为私有；维护者需在两个包的 Package settings 中将可见性改为
+Public，才能免登录部署。若保持私有，部署者需使用具有包读取权限的账号及
+`read:packages` 令牌登录（令牌通过标准输入，不写入 Compose 或命令历史）：
 
 ```bash
-docker compose build backend && docker compose build frontend && docker compose up -d --no-build
+read -rsp 'GHCR token: ' GHCR_TOKEN; echo
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+unset GHCR_TOKEN
 ```
 
-镜像构建使用 BuildKit 缓存：后端依赖单独成层，仅修改 Python 源码时不重新安装第三方
-依赖；pip/npm 下载缓存也可在依赖清单变化后复用。首次构建仍需下载和安装依赖，
-前端仍执行 TypeScript 类型检查与 Vite 打包。日常更新不要加 `--no-cache` 或清理 builder
-缓存，否则会失去部分或全部复用收益；缓存会额外占用磁盘。只修改一个服务时可用
-`docker compose build backend` 或 `docker compose build frontend` 单独构建。
+**版本选择**：`latest` 跟随 `main` 的成功构建；生产环境建议将 `.env` 的
+`WAVEMONITOR_IMAGE_TAG` 固定为已发布的 `v1.2.3` 等 Git 标签，或
+`sha-<40 位完整提交 SHA>`，避免更新时意外切换版本。前后端共用此标签。
+回退时改回此前已发布的标签，再执行同一条拉取与启动命令；镜像回退不会还原数据库，
+涉及数据库迁移时应先备份并确认兼容性。
 
-若仍然很慢，用 `docker compose --progress plain build backend`（或 `frontend`）查看具体
-耗时步骤，区分依赖下载、源码编译和类型检查；仅凭某一步长时间停留不能判定是 CPU 瓶颈。
+Fork 部署时，将 `WAVEMONITOR_IMAGE_PREFIX` 改为小写的
+`ghcr.io/<owner>/<repo>`，并确认该仓库已发布对应镜像。
 
 **升级提醒**：从曾持久化行情观测的旧版本升级时，后端启动迁移会删除已废弃的
 `priceobservation` 表。该表不再用于产品功能；如需自行留存其中的历史行情，请先备份
@@ -175,8 +189,8 @@ docker compose down
 # 停止并删除数据库卷（清空 SQLite，慎用）
 docker compose down -v
 
-# 重新构建并滚动更新
-docker compose up --build -d
+# 拉取所选标签的新镜像并重建容器（单实例更新会短暂中断服务）
+docker compose pull && docker compose up -d --no-build
 ```
 
 **数据持久化**：SQLite 保存在 Docker 命名卷 `wavemonitor-sqlite`，挂载到后端容器
@@ -216,6 +230,8 @@ docker compose up --build -d
 
 | 变量 | 默认值 / 行为 | 说明 |
 | --- | --- | --- |
+| `WAVEMONITOR_IMAGE_PREFIX` | `ghcr.io/svlic/wavemonitor` | 仅 Compose 使用；自动追加 `-backend` / `-frontend` |
+| `WAVEMONITOR_IMAGE_TAG` | `latest` | 仅 Compose 使用；两个服务共用的镜像标签，可固定为已发布的 `v*` 或 `sha-<完整提交 SHA>` |
 | `DATABASE_URL` | 本地：`sqlite:///./wavemonitor.sqlite3` | SQLAlchemy 连接串；Docker 后端使用卷内绝对路径 |
 | `TELEGRAM_BOT_TOKEN` | 无 | Telegram Bot Token（可选） |
 | `TELEGRAM_CHAT_ID` | 无 | 告警接收方 Chat ID（可选） |
@@ -231,6 +247,32 @@ docker compose up --build -d
 ## 本地开发
 
 适合改代码、跑测试，**不依赖 Docker**。
+
+### 镜像构建与发布
+
+工作流 [`.github/workflows/images.yml`](.github/workflows/images.yml) 使用
+Buildx、QEMU 和 GitHub Actions 缓存，分别构建前后端的 amd64/arm64 多架构镜像：
+
+- 推送到 `main`：发布 `latest` 和 `sha-<完整提交 SHA>`。
+- 推送 `v*` Git 标签：发布同名版本标签和提交标签，不覆盖 `latest`。
+- 面向 `main` 的 Pull Request：只构建验证，不登录 GHCR、不推送镜像。
+- 手动运行（Actions → Build and publish images → Run workflow）：发布提交标签；
+  若选择 `main`，同时更新 `latest`。
+
+工作流通过内置 `GITHUB_TOKEN` 发布（`packages: write`），无需额外配置发布密钥。
+仓库需允许 GitHub Actions 运行和写入 Packages。前后端独立发布，不是原子操作；
+升级前确认两个任务都成功，固定提交标签可避免 `latest` 在发布期间短暂指向不同提交。
+
+如需在本机验证 Dockerfile，可显式构建本地标签，不修改默认部署配置：
+
+```bash
+docker build -f backend/Dockerfile -t wavemonitor-local-backend:dev .
+docker build -f frontend/Dockerfile -t wavemonitor-local-frontend:dev frontend
+WAVEMONITOR_IMAGE_PREFIX=wavemonitor-local WAVEMONITOR_IMAGE_TAG=dev docker compose up -d --no-build --pull never
+```
+
+这些命令只构建宿主机架构。依赖层和 pip/npm 下载缓存仍由 BuildKit 复用；
+低配置机器可按上面的顺序逐个构建，避免前后端同时争抢资源。
 
 ### 后端
 

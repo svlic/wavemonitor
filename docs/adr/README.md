@@ -29,7 +29,8 @@
 | [0013](0013-remove-legacy-price-observation-storage.md) | 删除遗留行情观测持久化结构 | 已接受 |
 | [0014](0014-one-shot-risk-reward-alerts.md) | 盈亏比告警在规则周期内只触发一次 | 已接受 |
 | [0015](0015-bounded-provider-polling.md) | 为行情供应商请求设置有界等待与隔离 | 已接受 |
-| [0016](0016-container-build-cache.md) | 分离容器依赖层并复用构建缓存 | 已接受 |
+| [0016](0016-container-build-cache.md) | 分离容器依赖层并复用构建缓存 | 已接受（部署端构建方式由 0017 取代，缓存策略保留） |
+| [0017](0017-ghcr-multiarch-images.md) | 通过 GitHub Actions 发布 GHCR 多架构镜像 | 已接受 |
 
 ## 重建说明
 
